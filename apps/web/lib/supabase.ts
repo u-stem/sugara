@@ -17,18 +17,28 @@ if (typeof window !== "undefined") {
   // Surface transport-level close codes to diagnose Realtime reconnect storms.
   // 1006 = abnormal close, 1008 = policy violation (auth), 4xxx = Phoenix-level.
   // RealtimeClient has no public onClose/onError; stateChangeCallbacks is the
-  // documented extension point. Guard against future supabase-js refactors that
-  // rename or drop the field — silent failure would leave us with no diagnostics.
+  // documented extension point. Since supabase-js 2.106 (realtime-js 2.106 via
+  // @supabase/phoenix) entries are [ref, callback] tuples — Phoenix's
+  // triggerStateCallbacks invokes the callback (2nd element) with the event.
+  // The ref (1st element) is only used for removal, which we never do, so it is
+  // just a label. Guard against future refactors that rename or drop the field —
+  // silent failure would leave us with no diagnostics.
   const cbs = supabase.realtime.stateChangeCallbacks;
   if (cbs?.close && cbs.error) {
-    cbs.close.push((e: CloseEvent) => {
-      console.warn(
-        `[Realtime][socket] close code=${e?.code ?? "?"} reason=${e?.reason || "(none)"}`,
-      );
-    });
-    cbs.error.push((e: Event) => {
-      console.warn("[Realtime][socket] error", e);
-    });
+    cbs.close.push([
+      "sugara-diagnostics",
+      (e: CloseEvent) => {
+        console.warn(
+          `[Realtime][socket] close code=${e?.code ?? "?"} reason=${e?.reason || "(none)"}`,
+        );
+      },
+    ]);
+    cbs.error.push([
+      "sugara-diagnostics",
+      (e: Event) => {
+        console.warn("[Realtime][socket] error", e);
+      },
+    ]);
   } else {
     console.warn("[Realtime] stateChangeCallbacks unavailable — socket-level diagnostics disabled");
   }
