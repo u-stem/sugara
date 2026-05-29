@@ -4,13 +4,12 @@
 # Success: silent (exit 0). Failure: output errors (exit 2).
 #
 # Full-monorepo `bun run test` on every stop was ~13s for a ~1100-test suite and ran even when
-# the model had only edited docs. Opus 4.7 can judge when to run tests itself, so this hook now
+# the model had only edited docs. Opus 4.8 can judge when to run tests itself, so this hook now
 # acts as a safety net that only kicks in for packages with staged/unstaged changes.
 set -euo pipefail
 
 cd "${CLAUDE_PROJECT_DIR:-.}"
 
-LOG_FAILURE="/Users/mikiya/ws/claude-settings/hooks/log-failure.sh"
 LOG_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude/failure-log.jsonl"
 
 # Gate 1: refuse to stop while unresolved lint/type errors are logged. This runs BEFORE the
@@ -35,36 +34,94 @@ if [ "${SUGARA_SKIP_POST_STOP_TEST:-0}" = "1" ]; then
   exit 0
 fi
 
+# failure-log.jsonl is CURRENT state (not append-only history): drop the stale entry for this
+# package+category before recording fresh state, so a now-passing package clears its prior
+# failure and gate 1 stays accurate. Mirrors post-edit.sh; kept self-contained (no call out to
+# the archived claude-settings repo) so the pkg field is always set and prune stays sound.
+prune_log() {
+  local category="$1" pkg="$2"
+  [ -f "$LOG_FILE" ] || return 0
+  local tmp
+  tmp=$(mktemp)
+  if jq -c --arg pkg "$pkg" --arg cat "$category" \
+      'select(.pkg != $pkg or .category != $cat)' \
+      "$LOG_FILE" > "$tmp" 2>/dev/null; then
+    if [ -s "$tmp" ]; then
+      mv "$tmp" "$LOG_FILE"
+    else
+      rm -f "$LOG_FILE"
+      rm -f "$tmp"
+    fi
+  else
+    # Malformed JSONL — leave the log untouched so a human can inspect it.
+    rm -f "$tmp"
+  fi
+}
+
+# Append a fresh failure entry with the same {ts, pkg, category, error} schema post-edit.sh uses.
+append_failure() {
+  local category="$1" pkg="$2" output_text="$3"
+  local first_error
+  first_error=$(printf '%s\n' "$output_text" | grep -E '(error|Error|ERROR|FAIL|✗)' | head -1 | sed 's/^[[:space:]]*//')
+  if [ -z "$first_error" ]; then
+    first_error=$(printf '%s\n' "$output_text" | head -1 | sed 's/^[[:space:]]*//')
+  fi
+  local ts
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  mkdir -p "$(dirname "$LOG_FILE")"
+  jq -nc \
+    --arg ts "$ts" \
+    --arg pkg "$pkg" \
+    --arg category "$category" \
+    --arg error "$first_error" \
+    '{ts: $ts, pkg: $pkg, category: $category, error: $error}' \
+    >> "$LOG_FILE"
+}
+
 # Gate 2: scope tests to packages with staged/unstaged/untracked changes.
 changed=$(git status --porcelain 2>/dev/null | awk '{print $2}' || true)
 if [ -z "$changed" ]; then
   exit 0
 fi
 
-filters=()
-add_filter() {
-  for existing in "${filters[@]:-}"; do
+pkgs=()
+add_pkg() {
+  for existing in "${pkgs[@]:-}"; do
     [ "$existing" = "$1" ] && return
   done
-  filters+=("$1")
+  pkgs+=("$1")
 }
 
 while IFS= read -r path; do
   [ -z "$path" ] && continue
   case "$path" in
-    apps/web/*)        add_filter "--filter=@sugara/web" ;;
-    apps/api/*)        add_filter "--filter=@sugara/api" ;;
-    packages/shared/*) add_filter "--filter=@sugara/shared" ;;
+    apps/web/*)        add_pkg "@sugara/web" ;;
+    apps/api/*)        add_pkg "@sugara/api" ;;
+    packages/shared/*) add_pkg "@sugara/shared" ;;
   esac
 done <<< "$changed"
 
 # No touched packages → nothing to run.
-if [ "${#filters[@]}" -eq 0 ]; then
+if [ "${#pkgs[@]}" -eq 0 ]; then
   exit 0
 fi
 
-output=$(bun run "${filters[@]}" test 2>&1) || {
-  [ -x "$LOG_FAILURE" ] && echo "$output" | "$LOG_FAILURE" test
-  echo "$output" >&2
+# Run tests per package so each failure is attributed to the right pkg in the log (gate 1 keys
+# on pkg+category, matching post-edit.sh).
+errors=""
+for pkg in "${pkgs[@]}"; do
+  set +e
+  output=$(bun run --filter "$pkg" test 2>&1)
+  rc=$?
+  set -e
+  prune_log "test" "$pkg"
+  if [ $rc -ne 0 ]; then
+    errors="${errors}${output}\n"
+    append_failure "test" "$pkg" "$output"
+  fi
+done
+
+if [ -n "$errors" ]; then
+  printf '%b' "$errors" >&2
   exit 2
-}
+fi
