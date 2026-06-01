@@ -293,7 +293,10 @@ export type Transfer = {
 export type Settlement = {
   totalAmount: number;
   balances: { userId: string; name: string; net: number }[];
+  /** Minimal-transfer settlement: fewest payments to settle all balances. */
   transfers: Transfer[];
+  /** Advance-based settlement: repay each expense's payer directly (pairs netted). */
+  directTransfers: Transfer[];
 };
 
 export type CategoryTotal = {

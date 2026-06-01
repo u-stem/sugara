@@ -757,7 +757,6 @@
     "totalSpending": "Total Spending",
     "totalSpendingAmount": "Total: {amount} JPY",
     "showDetails": "Show Details",
-    "advanceStatus": "Advance Status",
     "byCategory": "By Category",
     "countSuffix": "{count} items",
     "paidBy": "Paid by {name}",
@@ -773,6 +772,10 @@
     "settlement": "Settlement",
     "settlementComplete": "Settlement Complete",
     "settlementProgress": "{checked}/{total} done",
+    "settlementModeDirect": "By payer",
+    "settlementModeMinimal": "Minimal",
+    "settlementHintDirect": "Amounts repaid directly to each payer (offset within a pair)",
+    "settlementHintMinimal": "Amounts calculated to minimize the number of transfers",
     "unsettled": "Unsettled"
   },
   "poll": {

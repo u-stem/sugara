@@ -80,3 +80,67 @@ export function calculateSettlement(expenses: ExpenseData[], members: UserInfo[]
 
   return { totalAmount, balances, transfers };
 }
+
+/**
+ * Advance-based transfers: each member repays the person who actually paid for
+ * the expense, with reciprocal debts between the same pair netted out. Unlike
+ * the minimal settlement, this preserves "who covered for whom", which matches
+ * users' intuition at the cost of more transfers.
+ */
+export function calculateDirectTransfers(
+  expenses: ExpenseData[],
+  members: UserInfo[],
+): { from: UserInfo; to: UserInfo; amount: number }[] {
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+
+  // debtMap[debtor][creditor] = amount the debtor owes the creditor
+  const debtMap = new Map<string, Map<string, number>>();
+  const addDebt = (debtor: string, creditor: string, amount: number) => {
+    // set() is a no-op when `inner` is the existing reference, but required
+    // for the newly created Map on first access of this debtor.
+    const inner = debtMap.get(debtor) ?? new Map<string, number>();
+    inner.set(creditor, (inner.get(creditor) ?? 0) + amount);
+    debtMap.set(debtor, inner);
+  };
+
+  for (const expense of expenses) {
+    const payer = expense.paidByUserId;
+    if (!memberMap.has(payer)) {
+      logger.warn({ userId: payer }, "Payer found in expenses but not in member list");
+      continue;
+    }
+    for (const split of expense.splits) {
+      if (split.userId === payer) continue; // payer self-funds their own share
+      if (!memberMap.has(split.userId)) {
+        logger.warn({ userId: split.userId }, "User found in expenses but not in member list");
+        continue;
+      }
+      addDebt(split.userId, payer, split.amount);
+    }
+  }
+
+  // Net out reciprocal debts per unordered pair, visiting each pair once.
+  const transfers: { from: UserInfo; to: UserInfo; amount: number }[] = [];
+  const seen = new Set<string>();
+  for (const [a, creditors] of debtMap) {
+    for (const b of creditors.keys()) {
+      const key = a < b ? `${a}|${b}` : `${b}|${a}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const aToB = debtMap.get(a)?.get(b) ?? 0;
+      const bToA = debtMap.get(b)?.get(a) ?? 0;
+      const net = aToB - bToA;
+      if (net === 0) continue;
+
+      const fromId = net > 0 ? a : b;
+      const toId = net > 0 ? b : a;
+      const from = memberMap.get(fromId);
+      const to = memberMap.get(toId);
+      if (!from || !to) continue;
+      transfers.push({ from, to, amount: Math.abs(net) });
+    }
+  }
+
+  return transfers.sort((x, y) => y.amount - x.amount);
+}
