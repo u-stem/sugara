@@ -757,7 +757,6 @@
     "totalSpending": "合計支出",
     "totalSpendingAmount": "合計支出: {amount}円",
     "showDetails": "明細を表示",
-    "advanceStatus": "立替状況",
     "byCategory": "カテゴリ別",
     "countSuffix": "{count}件",
     "paidBy": "{name}が支払い",
@@ -773,6 +772,10 @@
     "settlement": "精算",
     "settlementComplete": "精算完了",
     "settlementProgress": "{checked}/{total} 完了",
+    "settlementModeDirect": "立替ごと",
+    "settlementModeMinimal": "最小送金",
+    "settlementHintDirect": "各支払い者に直接返す金額です(同じ相手とは相殺)",
+    "settlementHintMinimal": "送金回数が最小になるよう計算した金額です",
     "unsettled": "未精算"
   },
   "poll": {

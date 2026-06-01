@@ -24,7 +24,11 @@ import { logActivity } from "../lib/activity-logger";
 import { ERROR_MSG } from "../lib/constants";
 import { notifyUsers } from "../lib/notifications";
 import { getParam } from "../lib/params";
-import { calculateEqualSplit, calculateSettlement } from "../lib/settlement";
+import {
+  calculateDirectTransfers,
+  calculateEqualSplit,
+  calculateSettlement,
+} from "../lib/settlement";
 import { requireAuth } from "../middleware/auth";
 import { requireTripAccess } from "../middleware/require-trip-access";
 import type { AppEnv } from "../types";
@@ -67,7 +71,10 @@ expenseRoutes.get("/:tripId/expenses", requireTripAccess(), async (c) => {
     splits: e.splits.map((s) => ({ userId: s.userId, amount: s.amount })),
   }));
 
-  const settlement = calculateSettlement(expenseData, memberInfos);
+  const settlement = {
+    ...calculateSettlement(expenseData, memberInfos),
+    directTransfers: calculateDirectTransfers(expenseData, memberInfos),
+  };
 
   const categoryMap = new Map<string, { total: number; count: number }>();
   for (const e of expenseList) {
