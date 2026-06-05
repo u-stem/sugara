@@ -1,6 +1,9 @@
+# App version is managed solely in tauri.conf.json (Tauri uses it as the single
+# source of truth and overrides this value). Keep this fixed at 0.0.0 — this crate
+# is never published, and its version only appears in cargo build logs.
 [package]
 name = "sugara-desktop"
-version = "0.4.1"
+version = "0.0.0"
 edition = "2021"
 
 [lib]
