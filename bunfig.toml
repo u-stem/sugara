@@ -1,0 +1,5 @@
+# Pin exact versions on `bun add` (no caret/tilde ranges).
+# Supply-chain hardening: a compromised patch/minor release is not auto-pulled
+# when the lockfile is regenerated or a non-frozen install runs.
+[install]
+exact = true
