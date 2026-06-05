@@ -56,5 +56,8 @@ docs/superpowers/
 apps/desktop/src-tauri/gen/
 apps/desktop/src-tauri/target/
 
+# Claude Code (local-only artifacts; hooks/skills are tracked intentionally)
+.claude/subagent-log.jsonl
+
 # Misc
 *.tsbuildinfo
