@@ -136,4 +136,47 @@ describe("ApiError", () => {
     expect(error.status).toBe(404);
     expect(error).toBeInstanceOf(Error);
   });
+
+  it("optionally carries a code and details", () => {
+    const error = new ApiError("invalid", 400, "VALIDATION", { f: ["x"] });
+    expect(error.code).toBe("VALIDATION");
+    expect(error.details).toEqual({ f: ["x"] });
+  });
+});
+
+describe("fetchApi error shape parsing", () => {
+  it("parses the standardized { code, message, details } shape", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: () =>
+        Promise.resolve({
+          code: "VALIDATION",
+          message: "入力内容を確認してください",
+          details: { fieldErrors: { title: ["Required"] } },
+        }),
+    });
+
+    await expect(apiVoid("/api/x", { method: "POST" })).rejects.toMatchObject({
+      status: 400,
+      code: "VALIDATION",
+      message: "入力内容を確認してください",
+      details: { fieldErrors: { title: ["Required"] } },
+    });
+  });
+
+  it("keeps a legacy object { error } (Zod flatten) as details instead of swallowing it", async () => {
+    const flatten = { formErrors: [], fieldErrors: { title: ["Required"] } };
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: () => Promise.resolve({ error: flatten }),
+    });
+
+    const err = await apiVoid("/api/x", { method: "POST" }).catch((e) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(400);
+    expect(err.details).toEqual(flatten);
+    expect(err.message).toContain("400");
+  });
 });

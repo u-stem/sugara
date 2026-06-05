@@ -4,10 +4,43 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    // Standardized error code (e.g. "VALIDATION"); undefined for legacy responses.
+    public code?: string,
+    // Structured error detail (e.g. Zod flatten); undefined when not provided.
+    public details?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+// Parse an error body into { message, code, details }, accepting both the
+// standardized { code, message, details? } shape and legacy { error } responses.
+// A legacy object `error` (e.g. Zod flatten) is preserved as `details` rather
+// than being dropped behind a generic message.
+function parseErrorBody(
+  body: unknown,
+  status: number,
+): {
+  message: string;
+  code?: string;
+  details?: unknown;
+} {
+  const fallback = `API error: ${status}`;
+  if (body === null || typeof body !== "object") {
+    return { message: fallback };
+  }
+  const record = body as Record<string, unknown>;
+  if (typeof record.code === "string" && typeof record.message === "string") {
+    return { message: record.message, code: record.code, details: record.details };
+  }
+  if (typeof record.error === "string") {
+    return { message: record.error };
+  }
+  if (record.error !== undefined) {
+    return { message: fallback, details: record.error };
+  }
+  return { message: fallback };
 }
 
 type FetchOptions = RequestInit & {
@@ -36,9 +69,8 @@ async function fetchApi(path: string, options: FetchOptions): Promise<Response> 
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "Unknown error" }));
-    const error = body.error;
-    const message = typeof error === "string" ? error : `API error: ${res.status}`;
-    throw new ApiError(message, res.status);
+    const { message, code, details } = parseErrorBody(body, res.status);
+    throw new ApiError(message, res.status, code, details);
   }
 
   return res;
