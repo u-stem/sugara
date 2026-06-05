@@ -88,6 +88,10 @@ export default withSentryConfig(config, {
   authToken: process.env.SENTRY_AUTH_TOKEN,
   silent: !process.env.CI,
   widenClientFileUpload: true,
-  disableLogger: true,
-  automaticVercelMonitors: false,
+  webpack: {
+    // We have no Vercel Cron Jobs; keep auto-monitor instrumentation off.
+    automaticVercelMonitors: false,
+    // Strip Sentry SDK debug logging from the client bundle.
+    treeshake: { removeDebugLogging: true },
+  },
 });
