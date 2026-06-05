@@ -80,7 +80,8 @@ gh pr create --title "<type>: <日本語タイトル>" --body "<本文>"
 ### Vercel 自動デプロイ
 
 - `main` への merge をトリガーに Vercel が web アプリをデプロイ
-- `turbo-ignore` で `@sugara/web` / `@sugara/api` / `@sugara/shared` に変更がない場合はスキップ
+- Vercel native skipping (Settings → Build and Deployment → Skip deployment) で `@sugara/web` / `@sugara/api` / `@sugara/shared` に変更がない場合はスキップ (workspace 依存グラフを Vercel が解析)
+- `apps/web/vercel.json` の `ignoreCommand` は `[skip ci]` / `[skip deploy]` コミットと `dependabot/*` ブランチのスキップを担う (native skipping では代替されない独自ガード)
 - `[skip ci]` `[skip deploy]` コミットメッセージでスキップ可能 (本番 deploy を意図的に止めたい場合のみ)
 
 ### DB migration

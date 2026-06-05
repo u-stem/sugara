@@ -50,7 +50,7 @@ graph LR
     Actions -.->|release| Desktop["デスクトップアプリ"]
 ```
 
-- Web: main への push で Vercel が自動デプロイ。`turbo-ignore` で関連変更がなければスキップ
+- Web: main への push で Vercel が自動デプロイ。Vercel native skipping で関連変更がなければスキップ
 - デスクトップ: `tauri.conf.json` のバージョン変更 → タグ作成 → ビルド → リリース
 - DB マイグレーションは Vercel ビルド時に `MIGRATION_URL` (Direct Connection) 経由で自動実行
 
