@@ -47,6 +47,8 @@ import { UserAvatar } from "@/components/user-avatar";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { QUERY_CONFIG } from "@/lib/query-config";
 import { queryKeys } from "@/lib/query-keys";
+import { reportError } from "@/lib/report-error";
+import { isExpectedClientError } from "@/lib/sentry-options";
 
 type MemberDialogProps = {
   tripId: string;
@@ -117,11 +119,14 @@ export function MemberDialog({
       });
       toast.success(tm("memberAdded"));
       if (sendFriendRequest) {
-        // Send friend request silently - ignore errors (already friends, etc.)
+        // Send friend request silently. Already-friends / duplicate are expected
+        // (4xx) and ignored; report anything unexpected to monitoring.
         api("/api/friends/requests", {
           method: "POST",
           body: JSON.stringify({ addresseeId: userId }),
-        }).catch(() => {});
+        }).catch((err) => {
+          if (!isExpectedClientError(err)) reportError(err);
+        });
       }
       setUserId("");
       invalidateMembers();

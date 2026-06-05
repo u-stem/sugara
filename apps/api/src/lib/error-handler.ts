@@ -6,6 +6,7 @@ import {
   type HttpErrorStatus,
 } from "@sugara/shared";
 import type { Context } from "hono";
+import { reportError } from "./error-reporter";
 import { logger } from "./logger";
 
 // Standardized error body { code, message, details? }. The legacy `error` string
@@ -23,9 +24,11 @@ function errorBody(code: ErrorCode, message: string, details?: unknown) {
  * Postgres uuid syntax) to 400; falls back to 500 for everything else.
  */
 export function handleError(err: Error, c: Context) {
+  const requestId = c.get("requestId");
   if (err instanceof AppError) {
     if (err.httpStatus >= 500) {
-      logger.error({ err, requestId: c.get("requestId") }, "AppError (server)");
+      logger.error({ err, requestId }, "AppError (server)");
+      reportError(err, { requestId });
     }
     return c.json(errorBody(err.code, err.message, err.details), err.httpStatus);
   }
@@ -35,7 +38,9 @@ export function handleError(err: Error, c: Context) {
   if (err.message?.includes("invalid input syntax for type uuid")) {
     return c.json(errorBody(ERROR_CODE.INVALID_ID_FORMAT, ERROR_MSG.INVALID_ID_FORMAT), 400);
   }
-  logger.error({ err, requestId: c.get("requestId") }, "Unhandled error");
+  // Unexpected error: log and forward to the injected reporter (Sentry in prod).
+  logger.error({ err, requestId }, "Unhandled error");
+  reportError(err, { requestId });
   const status: HttpErrorStatus = 500;
   return c.json(errorBody(ERROR_CODE.INTERNAL, ERROR_MSG.INTERNAL_ERROR), status);
 }

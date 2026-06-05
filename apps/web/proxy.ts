@@ -14,7 +14,10 @@ function buildCspHeader(nonce: string): string {
     `style-src 'self' 'unsafe-inline'`,
     "font-src 'self' https://fonts.gstatic.com",
     "img-src 'self' blob: data: https://api.dicebear.com https://*.supabase.co https://maps.gstatic.com https://maps.googleapis.com https://*.ggpht.com",
-    `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.dicebear.com https://maps.googleapis.com https://routes.googleapis.com${isDev ? " ws://127.0.0.1:* http://127.0.0.1:*" : ""}`,
+    // https://*.sentry.io allows the Sentry browser SDK to send events (ingest
+    // host is o<org>.ingest.<region>.sentry.io). For an EU project this also
+    // needs to match; *.sentry.io covers the region subdomains.
+    `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.dicebear.com https://maps.googleapis.com https://routes.googleapis.com https://*.sentry.io${isDev ? " ws://127.0.0.1:* http://127.0.0.1:*" : ""}`,
     "frame-src 'none'",
     "frame-ancestors 'none'",
     "object-src 'none'",

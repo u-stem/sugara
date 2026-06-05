@@ -135,6 +135,9 @@ Vercel `Settings → Environment Variables` で設定、**全て "Sensitive" フ
 | `ADMIN_USER_ID` | 本番の管理者 user ID (ADMIN_USERNAME は非推奨) |
 | `FRONTEND_URL` / `BETTER_AUTH_BASE_URL` | CORS / redirect 設定用 |
 | `UPSTASH_REDIS_KV_REST_API_URL` / `UPSTASH_REDIS_KV_REST_API_TOKEN` | rate limit の共有ストア (Vercel Marketplace の Upstash integration が `UPSTASH_REDIS` prefix で自動 inject。READ_ONLY ではなく read-write token を使用)。未設定時は per-instance memory にフォールバック |
+| `NEXT_PUBLIC_SENTRY_DSN` / `SENTRY_DSN` | Sentry エラー監視の DSN (Web/Server 共通。未設定なら init スキップ) |
+| `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | Sentry source map アップロード用 (ビルド時のみ。`SENTRY_AUTH_TOKEN` 未設定時はアップロード no-op) |
+| `SENTRY_ENVIRONMENT` / `NEXT_PUBLIC_SENTRY_ENVIRONMENT` | Sentry の環境名 (Server は `SENTRY_ENVIRONMENT`→`VERCEL_ENV`→`NODE_ENV`、Client は `NEXT_PUBLIC_SENTRY_ENVIRONMENT`→`NODE_ENV` をフォールバック) |
 | `NODE_ENV` | production |
 
 ### GitHub Actions (production environment)

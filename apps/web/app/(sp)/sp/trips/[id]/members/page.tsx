@@ -36,6 +36,8 @@ import { ROLE_COLORS } from "@/lib/colors";
 import { pageTitle } from "@/lib/constants";
 import { QUERY_CONFIG } from "@/lib/query-config";
 import { queryKeys } from "@/lib/query-keys";
+import { reportError } from "@/lib/report-error";
+import { isExpectedClientError } from "@/lib/sentry-options";
 
 export default function SpTripMembersPage() {
   const { id: tripId } = useParams<{ id: string }>();
@@ -107,11 +109,14 @@ export default function SpTripMembersPage() {
         body: JSON.stringify({ userId: trimmed, role: "editor" }),
       });
       toast.success(tm("memberAdded"));
-      // Already-friends or duplicate request are expected — ignore errors
+      // Already-friends / duplicate request are expected (4xx) and ignored;
+      // report anything unexpected to monitoring.
       api("/api/friends/requests", {
         method: "POST",
         body: JSON.stringify({ addresseeId: trimmed }),
-      }).catch(() => {});
+      }).catch((err) => {
+        if (!isExpectedClientError(err)) reportError(err);
+      });
       setUserId("");
       invalidateMembers();
     } catch (err) {
