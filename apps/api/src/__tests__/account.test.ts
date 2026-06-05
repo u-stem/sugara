@@ -1,3 +1,4 @@
+import { ERROR_CODE } from "@sugara/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "./test-helpers";
 
@@ -64,6 +65,7 @@ describe("Account routes", () => {
       body: JSON.stringify({ password: "" }),
     });
     expect(res.status).toBe(400);
+    expect((await res.json()).code).toBe(ERROR_CODE.VALIDATION);
   });
 
   it("returns 404 when credential account not found", async () => {

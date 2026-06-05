@@ -1,8 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { ERROR_MSG } from "./lib/constants";
 import { env } from "./lib/env";
-import { logger } from "./lib/logger";
+import { handleError } from "./lib/error-handler";
 import { requestLogger } from "./middleware/request-logger";
 import { accountRoutes } from "./routes/account";
 import { activityLogRoutes } from "./routes/activity-logs";
@@ -52,16 +51,7 @@ app.use(
 
 app.use("*", requestLogger());
 
-app.onError((err, c) => {
-  if (err instanceof SyntaxError) {
-    return c.json({ error: ERROR_MSG.INVALID_JSON }, 400);
-  }
-  if (err.message?.includes("invalid input syntax for type uuid")) {
-    return c.json({ error: ERROR_MSG.INVALID_ID_FORMAT }, 400);
-  }
-  logger.error({ err, requestId: c.get("requestId") }, "Unhandled error");
-  return c.json({ error: ERROR_MSG.INTERNAL_ERROR }, 500);
-});
+app.onError(handleError);
 
 // Hono is mounted at /api/[[...route]] and sees the full path including /api, so this needs
 // the /api prefix to be reachable externally (e.g. post-deploy smoke checks).
