@@ -113,18 +113,18 @@ bun run --filter @sugara/shared check-types
 ```
 1. feature branch を切る (例: `chore/desktop-v0.2.0`)
 2. apps/desktop/src-tauri/tauri.conf.json の version を更新 (例: "0.1.0" → "0.2.0")
-3. apps/desktop/src-tauri/tauri.conf.json の userAgent も同じバージョンに更新
-4. apps/desktop/src-tauri/Cargo.toml の version も同じ値に更新
-5. コミット & push → PR 作成 → CI green → squash merge [skip deploy]
-6. desktop-tag.yml が自動で desktop-v<version> タグを作成
-7. desktop-build.yml がタグをトリガーにビルド・リリース
-8. バイナリが u-stem/sugara-releases に公開される
+3. コミット & push → PR 作成 → CI green → squash merge [skip deploy]
+4. desktop-tag.yml が自動で desktop-v<version> タグを作成
+5. desktop-build.yml がタグをトリガーにビルド・リリース
+6. バイナリが u-stem/sugara-releases に公開される
 ```
 
+- **version の単一ソースは `tauri.conf.json` の `version` の 1 箇所だけ**。Tauri はこれを優先してバイナリ/インストーラに焼き、`tauri-action` の `__VERSION__` も同じ値を使う
+  - `Cargo.toml` / `Cargo.lock` の `sugara-desktop` version は `0.0.0` 固定（cargo build ログにしか出ず、アプリ版とは無関係）。リリース時に触らない
+  - `userAgent` は version を含まない固定値 `sugara-desktop`（デスクトップ判定は接頭辞一致のみ。`apps/web/lib/hooks/use-desktop-download.ts`）。version 同期は不要
 - バージョンが既にタグ済みの場合は何もしない（冪等）
 - `apps/desktop/` のみの変更は Vercel の `turbo-ignore` がスキップするため Web ビルドは不要
 - バージョン方針: patch（0.1.x）= バグ修正・軽微な改善、minor（0.x.0）= 新機能、major（x.0.0）= 破壊的変更
-- **3 ファイルの version 同期は自動検証なし**。手動で一致させる
 - 必要な GitHub Secrets:
   - `GH_RELEASES_TOKEN`: `u-stem/sugara-releases` repo への write 権限を持つ PAT (公開リポジトリへのリリース転送用)
   - `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: 自動更新用の署名鍵
