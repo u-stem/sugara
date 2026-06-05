@@ -19,6 +19,10 @@ export const ERROR_CODE = {
 
 export type ErrorCode = (typeof ERROR_CODE)[keyof typeof ERROR_CODE];
 
+// Fixed set of HTTP statuses an AppError can carry. Kept as a literal union so it
+// can be passed directly to Hono's c.json(body, status) without a cast.
+export type HttpErrorStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500;
+
 // ─── Standardized error response body ─────────────────────────────────────────
 
 export const ErrorResponseSchema = z.object({
@@ -35,10 +39,10 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
 export class AppError extends Error {
   readonly code: ErrorCode;
-  readonly httpStatus: number;
+  readonly httpStatus: HttpErrorStatus;
   readonly details?: unknown;
 
-  constructor(message: string, code: ErrorCode, httpStatus: number, details?: unknown) {
+  constructor(message: string, code: ErrorCode, httpStatus: HttpErrorStatus, details?: unknown) {
     super(message);
     this.name = "AppError";
     this.code = code;

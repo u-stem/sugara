@@ -1,4 +1,4 @@
-import { deleteAccountSchema } from "@sugara/shared";
+import { deleteAccountSchema, ValidationError } from "@sugara/shared";
 import { verifyPassword } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
@@ -17,7 +17,7 @@ accountRoutes.delete("/account", deleteRateLimit, requireAuth, async (c) => {
   const json = await c.req.json();
   const parsed = deleteAccountSchema.safeParse(json);
   if (!parsed.success) {
-    return c.json({ error: parsed.error.issues[0].message }, 400);
+    throw new ValidationError(parsed.error.issues[0].message);
   }
 
   const user = c.get("user");
