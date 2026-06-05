@@ -15,5 +15,6 @@ if (dsn) {
   });
 }
 
-// Instruments client-side navigations for tracing (Next.js 16 hook).
+// Required by @sentry/nextjs to suppress a build-time warning. With
+// removeTracing enabled this is a no-op (no BrowserTracing integration).
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
