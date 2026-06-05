@@ -1,10 +1,5 @@
 import * as Sentry from "@sentry/nextjs";
-import {
-  IGNORE_ERRORS,
-  beforeBreadcrumb,
-  beforeSend,
-  getTracesSampleRate,
-} from "./lib/sentry-options";
+import { IGNORE_ERRORS, beforeBreadcrumb, beforeSend } from "./lib/sentry-options";
 
 // Browser Sentry init (Next.js 16 client instrumentation). Skipped when no DSN is
 // set so local dev / tests do not send events.
@@ -13,7 +8,6 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? process.env.NODE_ENV,
-    tracesSampleRate: getTracesSampleRate(),
     sendDefaultPii: false,
     ignoreErrors: IGNORE_ERRORS,
     beforeSend,
