@@ -45,4 +45,13 @@ export const env = {
   get GMAIL_APP_PASSWORD() {
     return required("GMAIL_APP_PASSWORD");
   },
+  // Vercel's Upstash Marketplace integration injects KV-style names
+  // (`UPSTASH_REDIS_KV_REST_API_*`) rather than the `@upstash/redis` defaults.
+  // Use the read-write token, not the READ_ONLY one — rate limiting does INCR.
+  get UPSTASH_REDIS_REST_URL() {
+    return process.env.UPSTASH_REDIS_KV_REST_API_URL;
+  },
+  get UPSTASH_REDIS_REST_TOKEN() {
+    return process.env.UPSTASH_REDIS_KV_REST_API_TOKEN;
+  },
 };

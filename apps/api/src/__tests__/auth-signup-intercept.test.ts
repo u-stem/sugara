@@ -33,14 +33,22 @@ describe("POST /api/auth/sign-up/* (signup interceptor)", () => {
     vi.resetAllMocks();
   });
 
+  // Each test uses a unique IP so the per-IP rate limit middleware (mounted in
+  // routes/auth.ts) does not bleed counts across cases.
   it("passes through when signup is enabled", async () => {
-    const res = await app.request("/api/auth/sign-up/email", { method: "POST" });
+    const res = await app.request("/api/auth/sign-up/email", {
+      method: "POST",
+      headers: { "x-forwarded-for": "10.0.0.1" },
+    });
     expect(res.status).toBe(200);
   });
 
   it("returns 403 when signup is disabled", async () => {
     mockGetAppSettings.mockResolvedValue({ signupEnabled: false });
-    const res = await app.request("/api/auth/sign-up/email", { method: "POST" });
+    const res = await app.request("/api/auth/sign-up/email", {
+      method: "POST",
+      headers: { "x-forwarded-for": "10.0.0.2" },
+    });
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBe("新規利用の受付を停止しています");
@@ -48,14 +56,20 @@ describe("POST /api/auth/sign-up/* (signup interceptor)", () => {
 
   it("does not block sign-in routes when signup is disabled", async () => {
     mockGetAppSettings.mockResolvedValue({ signupEnabled: false });
-    const res = await app.request("/api/auth/sign-in/anonymous", { method: "POST" });
+    const res = await app.request("/api/auth/sign-in/anonymous", {
+      method: "POST",
+      headers: { "x-forwarded-for": "10.0.0.3" },
+    });
     // Not intercepted, reaches Better Auth mock
     expect(res.status).toBe(200);
   });
 
   it("returns 403 when DB error occurs (fail-closed)", async () => {
     mockGetAppSettings.mockRejectedValue(new Error("DB connection failed"));
-    const res = await app.request("/api/auth/sign-up/email", { method: "POST" });
+    const res = await app.request("/api/auth/sign-up/email", {
+      method: "POST",
+      headers: { "x-forwarded-for": "10.0.0.4" },
+    });
     expect(res.status).toBe(403);
   });
 });

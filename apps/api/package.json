@@ -29,6 +29,7 @@
   "dependencies": {
     "@sugara/shared": "workspace:*",
     "@supabase/supabase-js": "^2.106.2",
+    "@upstash/redis": "^1.37.0",
     "@vercel/edge-config": "^1.4.0",
     "better-auth": "^1.6.11",
     "drizzle-orm": "^0.45.2",

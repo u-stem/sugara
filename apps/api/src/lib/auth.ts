@@ -15,8 +15,6 @@ import {
 } from "./constants";
 import { env } from "./env";
 
-const isProduction = process.env.NODE_ENV === "production";
-
 // Lazily created so tests that don't use email can import auth without GMAIL_USER set
 function getTransporter() {
   return nodemailer.createTransport({
@@ -30,19 +28,12 @@ function getTransporter() {
 
 export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_BASE_URL,
-  rateLimit: {
-    enabled: isProduction,
-    window: 60,
-    max: 30,
-    // In-memory storage is per-instance and not shared across function invocations.
-    storage: "memory",
-    customRules: {
-      "/api/auth/sign-in/anonymous": { window: 60, max: 3 },
-      "/api/auth/sign-in/*": { window: 60, max: 5 },
-      "/api/auth/sign-up/*": { window: 60, max: 3 },
-      "/api/auth/change-password": { window: 60, max: 3 },
-    },
-  },
+  // Rate limiting is delegated to the Hono `rateLimitByIp` middleware in
+  // routes/auth.ts so it can use the shared Upstash Redis store. Better Auth's
+  // built-in rate limiter only supports per-instance memory or pulling its
+  // entire `secondaryStorage` (which would also intercept session caching and
+  // verification token storage, adding network round-trips to every request).
+  rateLimit: { enabled: false },
   advanced: {
     database: {
       generateId: "uuid",

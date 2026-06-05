@@ -134,6 +134,7 @@ Vercel `Settings → Environment Variables` で設定、**全て "Sensitive" フ
 | `EDGE_CONFIG_ID` / `EDGE_CONFIG` | 管理者告知用 Edge Config |
 | `ADMIN_USER_ID` | 本番の管理者 user ID (ADMIN_USERNAME は非推奨) |
 | `FRONTEND_URL` / `BETTER_AUTH_BASE_URL` | CORS / redirect 設定用 |
+| `UPSTASH_REDIS_KV_REST_API_URL` / `UPSTASH_REDIS_KV_REST_API_TOKEN` | rate limit の共有ストア (Vercel Marketplace の Upstash integration が `UPSTASH_REDIS` prefix で自動 inject。READ_ONLY ではなく read-write token を使用)。未設定時は per-instance memory にフォールバック |
 | `NODE_ENV` | production |
 
 ### GitHub Actions (production environment)
