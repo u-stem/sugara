@@ -1,4 +1,9 @@
-import type { ScheduleCategory, ScheduleColor, TransportMethod } from "@sugara/shared";
+import {
+  SCHEDULE_MAX_COST,
+  type ScheduleCategory,
+  type ScheduleColor,
+  type TransportMethod,
+} from "@sugara/shared";
 
 type ScheduleFormState = {
   category: ScheduleCategory;
@@ -26,6 +31,9 @@ function parseCost(value: string | null): number | null {
   if (!value || value.trim() === "") return null;
   const n = Number(value);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) return null;
+  // Defensively clamp to the same upper bound the API enforces, so an oversized
+  // input fails fast on the client rather than triggering a server rejection.
+  if (n > SCHEDULE_MAX_COST) return null;
   return n;
 }
 

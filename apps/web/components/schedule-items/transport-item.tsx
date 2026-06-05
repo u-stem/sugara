@@ -1,7 +1,7 @@
 "use client";
 
 import type { TransportMethod } from "@sugara/shared";
-import { formatCurrency, toCurrencyCode } from "@sugara/shared";
+import { formatWholeUnits, toCurrencyCode } from "@sugara/shared";
 import { Route, Wallet } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { memo, useState } from "react";
@@ -95,11 +95,14 @@ export const TransportItem = memo(function TransportItem({
 
   const methodLabel = transportMethod ? tLabel(transportMethod as TransportMethod) : "";
 
-  // cost is a plain integer in the trip currency's units (no minor-unit scaling),
-  // so format it directly. Hidden on the cross-day continuation view to avoid
-  // repeating the fare on each spanned day.
+  // cost is a whole-unit fare estimate in the trip currency (e.g. 580 = ¥580 / $580),
+  // a separate unit system from expenses.amount (minor units). formatWholeUnits skips
+  // minor-unit scaling so non-JPY currencies aren't mis-rendered as cents (e.g. $5.80).
+  // Hidden on the cross-day continuation view to avoid repeating the fare on each spanned day.
   const costStr =
-    !crossDayDisplay && cost != null ? formatCurrency(cost, toCurrencyCode(currency), locale) : "";
+    !crossDayDisplay && cost != null
+      ? formatWholeUnits(cost, toCurrencyCode(currency), locale)
+      : "";
 
   const timeStr = crossDayDisplay
     ? endTime

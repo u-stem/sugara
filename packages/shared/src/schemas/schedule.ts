@@ -37,7 +37,8 @@ export const transportMethodSchema = z.enum([
 export type TransportMethod = z.infer<typeof transportMethodSchema>;
 
 // Upper bound guards against typos / overflow; transit fares never reach this.
-// Integer in the trip currency's units, matching expenses.amount.
+// cost is a whole-unit planning fare estimate in the trip currency (e.g. 580 = ¥580 / $580),
+// a separate unit system from expenses.amount (minor units, scaled by 10^decimals).
 export const SCHEDULE_MAX_COST = 99_999_999;
 
 const timeRegex = /^\d{2}:\d{2}(:\d{2})?$/;

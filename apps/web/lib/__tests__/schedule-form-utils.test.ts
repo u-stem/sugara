@@ -1,3 +1,4 @@
+import { SCHEDULE_MAX_COST } from "@sugara/shared";
 import { describe, expect, it } from "vitest";
 import { buildSchedulePayload } from "../schedule-form-utils";
 
@@ -107,6 +108,26 @@ describe("buildSchedulePayload", () => {
     });
 
     expect(result.cost).toBeNull();
+  });
+
+  it("sends null cost when input exceeds SCHEDULE_MAX_COST", () => {
+    const fd = makeFormData({ name: "Move", cost: String(SCHEDULE_MAX_COST + 1) });
+    const result = buildSchedulePayload(fd, {
+      ...baseState,
+      category: "transport",
+    });
+
+    expect(result.cost).toBeNull();
+  });
+
+  it("accepts cost exactly at SCHEDULE_MAX_COST", () => {
+    const fd = makeFormData({ name: "Move", cost: String(SCHEDULE_MAX_COST) });
+    const result = buildSchedulePayload(fd, {
+      ...baseState,
+      category: "transport",
+    });
+
+    expect(result.cost).toBe(SCHEDULE_MAX_COST);
   });
 
   it("excludes cost when category is not transport", () => {

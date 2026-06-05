@@ -92,3 +92,17 @@ export function formatCurrency(
     maximumFractionDigits: CURRENCIES[currency].decimals,
   }).format(displayAmount);
 }
+
+// Format a whole-unit amount (e.g. schedules.cost, a planning-only fare estimate
+// expressed directly in the trip currency's major units) without minor-unit
+// scaling. Unlike formatCurrency, the input is NOT divided by 10^decimals, and
+// fractional digits are dropped so 580 renders as "¥580" / "$580" rather than
+// "$5.80". This unit system is distinct from expenses.amount (minor units).
+export function formatWholeUnits(amount: number, currency: CurrencyCode, locale: string): string {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
