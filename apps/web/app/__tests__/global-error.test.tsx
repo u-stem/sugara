@@ -1,10 +1,21 @@
+import { captureException } from "@sentry/nextjs";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@sentry/nextjs", () => ({ captureException: vi.fn() }));
+
 import GlobalError from "../global-error";
 
 describe("GlobalError", () => {
   afterEach(() => {
     cleanup();
+    vi.mocked(captureException).mockClear();
+  });
+
+  it("reports the error to Sentry on mount", () => {
+    const error = new Error("boom");
+    render(<GlobalError error={error} reset={vi.fn()} />);
+    expect(captureException).toHaveBeenCalledWith(error, undefined);
   });
 
   it("renders a fallback message and a retry button", () => {

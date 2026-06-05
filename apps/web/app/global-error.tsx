@@ -1,16 +1,22 @@
 "use client";
 
+import { useEffect } from "react";
+import { reportError } from "@/lib/report-error";
+
 // global-error.tsx replaces the root layout when an error is thrown during
 // rendering of the layout itself, so next-intl's provider is unavailable here.
 // Text is therefore fixed (Japanese primary + English) and styling is inline so
 // the fallback renders even if the app stylesheet failed to load.
-// Sentry capture is wired in a later change.
 export default function GlobalError({
+  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    reportError(error);
+  }, [error]);
   return (
     <html lang="ja">
       <body

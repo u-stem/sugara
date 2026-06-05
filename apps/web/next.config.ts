@@ -1,3 +1,4 @@
+import { withSentryConfig } from "@sentry/nextjs";
 import withSerwistInit from "@serwist/next";
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
@@ -69,7 +70,7 @@ const nextConfig: NextConfig = {
 
 const withNextIntl = createNextIntlPlugin();
 
-export default withNextIntl(
+const config = withNextIntl(
   withSerwistInit({
     swSrc: "app/sw.ts",
     swDest: "public/sw.js",
@@ -77,3 +78,16 @@ export default withNextIntl(
     additionalPrecacheEntries: [{ url: "/offline", revision: "1" }],
   })(nextConfig),
 );
+
+// withSentryConfig must wrap the outermost config so source-map upload and the
+// Sentry webpack plugin see the final build. Source maps are uploaded only when
+// SENTRY_AUTH_TOKEN is present (build-time only); otherwise the plugin no-ops.
+export default withSentryConfig(config, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  disableLogger: true,
+  automaticVercelMonitors: false,
+});

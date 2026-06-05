@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/app.ts",
     "./lib/app-settings": "./src/lib/app-settings.ts",
+    "./lib/error-reporter": "./src/lib/error-reporter.ts",
     "./lib/faqs": "./src/lib/faqs.ts"
   },
   "scripts": {
