@@ -71,6 +71,8 @@ type DayTimelineProps = {
   onSaveToBookmark?: (scheduleIds: string[]) => void;
   onReorderSchedule?: (id: string, direction: "up" | "down") => void;
   mapsEnabled?: boolean;
+  /** Trip currency for formatting transport cost. Defaults to JPY. */
+  currency?: string;
 };
 
 export function DayTimeline({
@@ -94,6 +96,7 @@ export function DayTimeline({
   onSaveToBookmark,
   onReorderSchedule,
   mapsEnabled = false,
+  currency = "JPY",
 }: DayTimelineProps) {
   const locale = useLocale();
   const tm = useTranslations("messages");
@@ -240,6 +243,7 @@ export function DayTimeline({
             crossDayDisplay
             crossDaySourceDayNumber={sourceDayNumber}
             crossDayPosition={crossDayPosition}
+            currency={currency}
           />
         </div>
       );
@@ -282,6 +286,7 @@ export function DayTimeline({
           onMoveUp={isReorderable ? () => onReorderSchedule?.(schedule.id, "up") : undefined}
           onMoveDown={isReorderable ? () => onReorderSchedule?.(schedule.id, "down") : undefined}
           mapsEnabled={mapsEnabled}
+          currency={currency}
         />
       </div>
     );

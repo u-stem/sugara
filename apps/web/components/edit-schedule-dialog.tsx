@@ -229,6 +229,7 @@ export function EditScheduleDialog({
               departurePlace: schedule.departurePlace ?? "",
               arrivalPlace: schedule.arrivalPlace ?? "",
               memo: schedule.memo ?? "",
+              cost: schedule.cost ?? null,
             }}
             idPrefix="edit-"
             mapsEnabled={mapsEnabled}

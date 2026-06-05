@@ -468,7 +468,8 @@
       "taxi": "タクシー",
       "walk": "徒歩",
       "car": "車",
-      "airplane": "飛行機"
+      "airplane": "飛行機",
+      "bicycle": "自転車"
     },
     "status": {
       "scheduling": "日程調整中",
@@ -1327,6 +1328,8 @@
     "arrivalPlace": "到着地",
     "transportMethod": "交通手段",
     "transportPlaceholder": "選択してください",
+    "cost": "交通費",
+    "costPlaceholder": "例: 580",
     "url": "URL",
     "removeUrl": "URL を削除",
     "addUrl": "URL を追加",

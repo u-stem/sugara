@@ -1,6 +1,7 @@
 import type { ScheduleCategory, TransportMethod } from "@sugara/shared";
 import {
   Bed,
+  Bike,
   Bus,
   Camera,
   Car,
@@ -30,4 +31,5 @@ export const TRANSPORT_ICONS: Record<TransportMethod, typeof Train> = {
   walk: Footprints,
   car: Car,
   airplane: Plane,
+  bicycle: Bike,
 };

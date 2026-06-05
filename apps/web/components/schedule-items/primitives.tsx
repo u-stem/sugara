@@ -62,6 +62,7 @@ export type ScheduleItemProps = {
   departurePlace?: string | null;
   arrivalPlace?: string | null;
   transportMethod?: string | null;
+  cost?: number | null;
   color?: ScheduleColor;
   updatedAt: string;
   tripId: string;
@@ -95,6 +96,8 @@ export type ScheduleItemProps = {
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   mapsEnabled?: boolean;
+  /** Trip currency for formatting transport cost. Defaults to JPY. */
+  currency?: string;
 };
 
 export function ScheduleMenu({
@@ -343,6 +346,7 @@ export function ScheduleItemDialogs({
     departurePlace?: string | null;
     arrivalPlace?: string | null;
     transportMethod?: string | null;
+    cost?: number | null;
     color?: ScheduleColor;
     updatedAt: string;
   };

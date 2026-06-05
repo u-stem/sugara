@@ -18,6 +18,13 @@ const CURRENCY_CODES = [
 export const currencyCodeSchema = z.enum(CURRENCY_CODES);
 export type CurrencyCode = z.infer<typeof currencyCodeSchema>;
 
+// Parse an arbitrary string (e.g. a trip's stored currency) into a CurrencyCode,
+// falling back to JPY for unknown values. Avoids `as` casts at call sites.
+export function toCurrencyCode(value: string | null | undefined): CurrencyCode {
+  const parsed = currencyCodeSchema.safeParse(value);
+  return parsed.success ? parsed.data : "JPY";
+}
+
 type CurrencyDef = {
   code: CurrencyCode;
   name: string;

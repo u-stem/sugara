@@ -513,6 +513,7 @@ export const TRANSPORT_METHOD_LABELS: Record<TransportMethod, string> = {
   walk: "徒歩",
   car: "車",
   airplane: "飛行機",
+  bicycle: "自転車",
 };
 
 export const STATUS_LABELS: Record<TripStatus, string> = {

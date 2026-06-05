@@ -163,6 +163,7 @@ describe("transportMethodSchema", () => {
     "walk",
     "car",
     "airplane",
+    "bicycle",
   ])("accepts '%s'", (method) => {
     expect(transportMethodSchema.safeParse(method).success).toBe(true);
   });
@@ -190,6 +191,62 @@ describe("createScheduleSchema transport fields", () => {
       category: "transport",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("accepts bicycle transportMethod", () => {
+    const result = createScheduleSchema.safeParse({
+      name: "Riverside ride",
+      category: "transport",
+      transportMethod: "bicycle",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a non-negative integer cost", () => {
+    const result = createScheduleSchema.safeParse({
+      name: "Tokyo to Osaka",
+      category: "transport",
+      transportMethod: "train",
+      cost: 580,
+    });
+    expect(result.success).toBe(true);
+    expect(result.data?.cost).toBe(580);
+  });
+
+  it("accepts zero cost", () => {
+    const result = createScheduleSchema.safeParse({
+      name: "Walk",
+      category: "transport",
+      cost: 0,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts null cost", () => {
+    const result = createScheduleSchema.safeParse({
+      name: "Walk",
+      category: "transport",
+      cost: null,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects negative cost", () => {
+    const result = createScheduleSchema.safeParse({
+      name: "Tokyo to Osaka",
+      category: "transport",
+      cost: -1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-integer cost", () => {
+    const result = createScheduleSchema.safeParse({
+      name: "Tokyo to Osaka",
+      category: "transport",
+      cost: 12.5,
+    });
+    expect(result.success).toBe(false);
   });
 
   it("rejects invalid transportMethod", () => {

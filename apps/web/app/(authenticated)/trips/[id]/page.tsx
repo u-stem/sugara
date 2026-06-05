@@ -750,6 +750,7 @@ export default function TripDetailPage() {
                   onSaveToBookmark={canEdit && online ? handleSaveToBookmark : undefined}
                   onReorderSchedule={dnd.reorderSchedule}
                   mapsEnabled={tripData.mapsEnabled}
+                  currency={tripData.currency}
                   headerContent={
                     <PatternTabs
                       patterns={currentDay.patterns}
@@ -982,6 +983,7 @@ export default function TripDetailPage() {
                           onSaveToBookmark={canEdit && online ? handleSaveToBookmark : undefined}
                           onReorderSchedule={dnd.reorderSchedule}
                           mapsEnabled={trip.mapsEnabled}
+                          currency={trip.currency}
                           headerContent={
                             <PatternTabs
                               patterns={currentDay.patterns}

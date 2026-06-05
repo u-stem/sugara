@@ -93,3 +93,46 @@ describe("ScheduleFormFields - address フィールド", () => {
     );
   });
 });
+
+describe("ScheduleFormFields - transport の交通費フィールド", () => {
+  const transportProps = {
+    category: "transport" as const,
+    onCategoryChange: vi.fn(),
+    color: "blue" as const,
+    onColorChange: vi.fn(),
+    transportMethod: "" as const,
+    onTransportMethodChange: vi.fn(),
+    startTime: undefined,
+    onStartTimeChange: vi.fn(),
+    endTime: undefined,
+    onEndTimeChange: vi.fn(),
+    endDayOffset: 0,
+    onEndDayOffsetChange: vi.fn(),
+    maxEndDayOffset: 0,
+    timeError: null,
+    urls: [],
+    onUrlsChange: vi.fn(),
+  };
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("transport カテゴリで交通費入力欄が表示される", () => {
+    renderWithIntl(<ScheduleFormFields {...transportProps} />);
+    const input = screen.getByRole("spinbutton", { name: /交通費/ });
+    expect(input.tagName).toBe("INPUT");
+    expect(input.getAttribute("name")).toBe("cost");
+  });
+
+  it("transport 以外のカテゴリでは交通費入力欄が表示されない", () => {
+    renderWithIntl(<ScheduleFormFields {...transportProps} category="sightseeing" />);
+    expect(screen.queryByRole("spinbutton", { name: /交通費/ })).toBeNull();
+  });
+
+  it("defaultValues.cost が初期値として入る", () => {
+    renderWithIntl(<ScheduleFormFields {...transportProps} defaultValues={{ cost: 580 }} />);
+    const input = screen.getByRole("spinbutton", { name: /交通費/ });
+    expect((input as HTMLInputElement).value).toBe("580");
+  });
+});

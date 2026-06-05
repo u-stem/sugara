@@ -37,6 +37,9 @@ export const transportMethodEnum = pgEnum("transport_method", [
   "walk",
   "car",
   "airplane",
+  // Appended at the end so the migration is a plain ADD VALUE (Postgres cannot
+  // reorder enum values). UI display order is controlled separately.
+  "bicycle",
 ]);
 
 export const friendStatusEnum = pgEnum("friend_status", ["pending", "accepted"]);
@@ -259,6 +262,9 @@ export const schedules = pgTable(
     departurePlace: varchar("departure_place", { length: 200 }),
     arrivalPlace: varchar("arrival_place", { length: 200 }),
     transportMethod: transportMethodEnum("transport_method"),
+    // Lightweight planning field for transport schedules: transit fare in the trip
+    // currency's integer units. Not linked to expenses/settlement (no FK).
+    cost: integer("cost"),
     color: scheduleColorEnum("color").notNull().default("blue"),
     endDayOffset: integer("end_day_offset"),
     crossDayAnchor: text("cross_day_anchor", { enum: ["before", "after"] }),

@@ -15,6 +15,7 @@ const _fieldCheck: Record<keyof ScheduleResponse, true> = {
   departurePlace: true,
   arrivalPlace: true,
   transportMethod: true,
+  cost: true,
   color: true,
   endDayOffset: true,
   crossDayAnchor: true,

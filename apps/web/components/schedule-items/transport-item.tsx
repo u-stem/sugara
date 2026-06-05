@@ -1,8 +1,9 @@
 "use client";
 
 import type { TransportMethod } from "@sugara/shared";
-import { Route } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { formatCurrency, toCurrencyCode } from "@sugara/shared";
+import { Route, Wallet } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { memo, useState } from "react";
 import { SelectionIndicator } from "@/components/ui/selection-indicator";
 import { SCHEDULE_COLOR_CLASSES, SELECTED_RING } from "@/lib/colors";
@@ -38,6 +39,8 @@ export const TransportItem = memo(function TransportItem({
   departurePlace,
   arrivalPlace,
   transportMethod,
+  cost,
+  currency = "JPY",
   color = "blue",
   updatedAt,
   tripId,
@@ -70,6 +73,7 @@ export const TransportItem = memo(function TransportItem({
   const shift = useShiftProposal(siblingSchedules);
   const tc = useTranslations("crossDay");
   const tLabel = useTranslations("labels.transportMethod");
+  const locale = useLocale();
   const crossDayT = {
     hotelCheckin: tc("hotelCheckin"),
     hotelStaying: tc("hotelStaying"),
@@ -90,6 +94,12 @@ export const TransportItem = memo(function TransportItem({
       : departurePlace || arrivalPlace || "";
 
   const methodLabel = transportMethod ? tLabel(transportMethod as TransportMethod) : "";
+
+  // cost is a plain integer in the trip currency's units (no minor-unit scaling),
+  // so format it directly. Hidden on the cross-day continuation view to avoid
+  // repeating the fare on each spanned day.
+  const costStr =
+    !crossDayDisplay && cost != null ? formatCurrency(cost, toCurrencyCode(currency), locale) : "";
 
   const timeStr = crossDayDisplay
     ? endTime
@@ -161,7 +171,7 @@ export const TransportItem = memo(function TransportItem({
             category={category}
             timeStr={timeStr}
           />
-          {(routeStr || urls.length > 0 || memo) && (
+          {(routeStr || costStr || urls.length > 0 || memo) && (
             <div className={cn("mt-1 space-y-1", selectable && "pointer-events-none")}>
               {routeStr && (
                 <span
@@ -183,6 +193,12 @@ export const TransportItem = memo(function TransportItem({
                     <span>{crossDayDisplay && arrivalPlace ? `→ ${routeStr}` : routeStr}</span>
                   )}
                   {methodLabel && <span className="shrink-0">({methodLabel})</span>}
+                </span>
+              )}
+              {costStr && (
+                <span className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground">
+                  <Wallet className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+                  {costStr}
                 </span>
               )}
               <ScheduleLinks urls={urls} memo={memo} />
@@ -240,6 +256,7 @@ export const TransportItem = memo(function TransportItem({
           departurePlace,
           arrivalPlace,
           transportMethod,
+          cost,
           color,
           updatedAt,
         }}

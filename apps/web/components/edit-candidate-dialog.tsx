@@ -175,6 +175,7 @@ export function EditCandidateDialog({
               departurePlace: schedule.departurePlace ?? "",
               arrivalPlace: schedule.arrivalPlace ?? "",
               memo: schedule.memo ?? "",
+              cost: schedule.cost ?? null,
             }}
             idPrefix="edit-candidate-"
           />

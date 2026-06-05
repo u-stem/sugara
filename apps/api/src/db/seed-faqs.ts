@@ -140,6 +140,12 @@ const JA_FAQS = [
       "予定を開始時刻の昇順に並べ替えます。日をまたぐ予定（チェックアウトなど）の前後にドラッグで固定した予定があれば、その手動配置もまとめて解除されます。手動配置がある間は、時刻が既に昇順でも時刻順ボタンは有効のままなので、いつでもリセットできます。",
     sortOrder: 28,
   },
+  {
+    question: "移動の予定に交通費を記録できますか？",
+    answer:
+      "はい。カテゴリが「移動」の予定で、出発地・到着地・交通手段と一緒に交通費を入力できます。金額は旅行の通貨建ての整数で、タイムラインの移動カードに表示されます。これは計画用の軽量な項目で、費用タブの精算とは連携しません（精算に含めたい場合は費用タブで別途登録してください）。交通手段には電車・新幹線・バス・タクシー・徒歩・車・自転車・飛行機を選べます。",
+    sortOrder: 29,
+  },
   // ---- Scheduling ----
   {
     question: "「日程調整」とは何ですか？",
@@ -518,6 +524,12 @@ const EN_FAQS = [
       "It reorders schedules by start time ascending. Any schedules you manually pinned around a multi-day entry (such as a checkout) are unpinned at the same time. The button stays active while any manual pin exists, so you can reset at any time.",
     sortOrder: 28,
   },
+  {
+    question: "Can I record the transit fare for a transport schedule?",
+    answer:
+      "Yes. On a schedule with the 'Transport' category, you can enter a transit fare alongside the departure, arrival, and transport method. The amount is an integer in the trip's currency and appears on the transport card in the timeline. It is a lightweight planning field and is not linked to the settlement on the Expenses tab (add it as an expense separately if you want it settled). Transport methods include train, shinkansen, bus, taxi, walk, car, bicycle, and airplane.",
+    sortOrder: 29,
+  },
   // ---- Scheduling ----
   {
     question: "What is 'Schedule Coordination'?",
@@ -775,7 +787,7 @@ function resolveCategory(sortOrder: number): string {
   if (sortOrder === 0) return "overview";
   if (sortOrder >= 10 && sortOrder <= 18) return "account";
   if (sortOrder >= 19 && sortOrder <= 20) return "profile";
-  if (sortOrder >= 21 && sortOrder <= 28) return "trips";
+  if (sortOrder >= 21 && sortOrder <= 29) return "trips";
   if (sortOrder >= 30 && sortOrder <= 31) return "scheduling";
   if (sortOrder >= 40 && sortOrder <= 43) return "members";
   if (sortOrder >= 50 && sortOrder <= 52) return "friends";
