@@ -2,5 +2,5 @@
   "buildCommand": "sh -c 'cd ../.. && bun run db:migrate' && next build --webpack",
   "framework": "nextjs",
   "fluid": true,
-  "ignoreCommand": "git log -1 --pretty=%B | grep -qE '\\[skip (ci|deploy)\\]' && exit 0; [[ \"$VERCEL_GIT_COMMIT_REF\" == dependabot/* ]] && exit 0; npx --yes turbo-ignore"
+  "ignoreCommand": "git log -1 --pretty=%B | grep -qE '\\[skip (ci|deploy)\\]' && exit 0; [[ \"$VERCEL_GIT_COMMIT_REF\" == dependabot/* ]] && exit 0; exit 1"
 }

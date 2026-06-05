@@ -80,7 +80,8 @@ gh pr create --title "<type>: <日本語タイトル>" --body "<本文>"
 ### Vercel 自動デプロイ
 
 - `main` への merge をトリガーに Vercel が web アプリをデプロイ
-- `turbo-ignore` で `@sugara/web` / `@sugara/api` / `@sugara/shared` に変更がない場合はスキップ
+- Vercel native skipping (Settings → Build and Deployment → Skip deployment) で `@sugara/web` / `@sugara/api` / `@sugara/shared` に変更がない場合はスキップ (workspace 依存グラフを Vercel が解析)
+- `apps/web/vercel.json` の `ignoreCommand` は `[skip ci]` / `[skip deploy]` コミットと `dependabot/*` ブランチのスキップを担う (native skipping では代替されない独自ガード)
 - `[skip ci]` `[skip deploy]` コミットメッセージでスキップ可能 (本番 deploy を意図的に止めたい場合のみ)
 
 ### DB migration
@@ -98,7 +99,7 @@ Vercel `buildCommand` が `next build` の前に `bun run db:migrate` を実行�
 - `apps/desktop/src-tauri/tauri.conf.json` の `version` 変更を `desktop-tag.yml` が検知
 - 自動で `desktop-v<version>` タグを作成
 - タグ push を `desktop-build.yml` が検知してビルド → `sugara-releases` repo に公開
-- **バージョンは 3 箇所で手動同期**: `apps/desktop/src-tauri/tauri.conf.json` の `version` と `userAgent`、`apps/desktop/src-tauri/Cargo.toml` の `version` を同じ値にする (自動検証なし)
+- **バージョンの単一ソースは `apps/desktop/src-tauri/tauri.conf.json` の `version` 1 箇所のみ** (Tauri がバイナリ/インストーラに焼き、`tauri-action` の `__VERSION__` も同じ値を使う)。`Cargo.toml` / `Cargo.lock` の version は `0.0.0` 固定でリリース時に触らない。`userAgent` は version を含まない固定値 `sugara-desktop` で同期不要 (詳細は CLAUDE.md「デスクトップアプリのリリース」)
 - 必要な GitHub Secrets:
   - `GH_RELEASES_TOKEN` — `u-stem/sugara-releases` 公開 repo への write 権限を持つ PAT
   - `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` — Tauri 自動更新の署名鍵

@@ -96,7 +96,7 @@ bun run --filter @sugara/shared check-types
 
 - `main` は Branch Protection で保護 → 直 push 不可、PR + CI green で squash merge
 - feature branch: `<type>/<topic>` (例: `fix/cover-upload`, `feat/expense-category`)
-- PR merge → Vercel が自動デプロイ（`turbo-ignore` で web 非依存の変更はスキップ）
+- PR merge → Vercel が自動デプロイ（Vercel native skipping で web 非依存の変更はスキップ）
 - DB migration は独立した `.github/workflows/db-migrate.yml` で実行（`[skip deploy]` でも migration は走る）
 
 コミットメッセージでのスキップ:
@@ -123,7 +123,7 @@ bun run --filter @sugara/shared check-types
   - `Cargo.toml` / `Cargo.lock` の `sugara-desktop` version は `0.0.0` 固定（cargo build ログにしか出ず、アプリ版とは無関係）。リリース時に触らない
   - `userAgent` は version を含まない固定値 `sugara-desktop`（デスクトップ判定は接頭辞一致のみ。`apps/web/lib/hooks/use-desktop-download.ts`）。version 同期は不要
 - バージョンが既にタグ済みの場合は何もしない（冪等）
-- `apps/desktop/` のみの変更は Vercel の `turbo-ignore` がスキップするため Web ビルドは不要
+- `apps/desktop/` のみの変更は Vercel native skipping がスキップするため Web ビルドは不要
 - バージョン方針: patch（0.1.x）= バグ修正・軽微な改善、minor（0.x.0）= 新機能、major（x.0.0）= 破壊的変更
 - 必要な GitHub Secrets:
   - `GH_RELEASES_TOKEN`: `u-stem/sugara-releases` repo への write 権限を持つ PAT (公開リポジトリへのリリース転送用)
