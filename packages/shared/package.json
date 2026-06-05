@@ -14,10 +14,10 @@
     "check-types": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^6",
-    "vitest": "^4.0.18"
+    "typescript": "6.0.2",
+    "vitest": "4.1.7"
   },
   "dependencies": {
-    "zod": "^4.3.6"
+    "zod": "4.4.1"
   }
 }

@@ -137,6 +137,7 @@ bun run --filter @sugara/shared check-types
 - デッドコード禁止、TODO は Issue 化する
 - `biome-ignore` による lint 抑制禁止。根本的に修正する
 - Git フック (lefthook): `bun install` で自動セットアップ。`--no-verify` でのスキップ禁止
+- 依存バージョンは **exact pin**(`^` / `~` 禁止)。サプライチェーン対策で、lockfile 再生成・非 frozen install でも patch を勝手に引かないようにする。`bunfig.toml` の `[install] exact = true` で新規 `bun add` も自動 pin。`overrides` も直接依存と spec を一致させる(npm の EOVERRIDE 回避)
 
 ## Supabase Realtime
 
