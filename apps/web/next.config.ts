@@ -91,7 +91,8 @@ export default withSentryConfig(config, {
   webpack: {
     // We have no Vercel Cron Jobs; keep auto-monitor instrumentation off.
     automaticVercelMonitors: false,
-    // Strip Sentry SDK debug logging from the client bundle.
-    treeshake: { removeDebugLogging: true },
+    // Strip Sentry SDK debug logging and performance tracing from the client
+    // bundle; we only use Sentry for error monitoring, not tracing.
+    treeshake: { removeDebugLogging: true, removeTracing: true },
   },
 });

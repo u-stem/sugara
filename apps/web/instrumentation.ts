@@ -1,11 +1,6 @@
 import { setErrorReporter } from "@sugara/api/lib/error-reporter";
 import * as Sentry from "@sentry/nextjs";
-import {
-  IGNORE_ERRORS,
-  beforeBreadcrumb,
-  beforeSend,
-  getTracesSampleRate,
-} from "./lib/sentry-options";
+import { IGNORE_ERRORS, beforeBreadcrumb, beforeSend } from "./lib/sentry-options";
 
 // Server/edge Sentry init. The Hono API runs as a Next.js route handler in the
 // same Node runtime, so this init also covers API errors. The API stays free of
@@ -20,7 +15,6 @@ export async function register() {
   Sentry.init({
     dsn,
     environment: process.env.SENTRY_ENVIRONMENT ?? process.env.VERCEL_ENV ?? process.env.NODE_ENV,
-    tracesSampleRate: getTracesSampleRate(),
     sendDefaultPii: false,
     ignoreErrors: IGNORE_ERRORS,
     beforeSend,

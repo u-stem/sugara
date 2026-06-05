@@ -125,8 +125,3 @@ export function beforeSend<T extends ScrubbableEvent>(
   scrubEvent(event);
   return event;
 }
-
-// Production keeps tracing low to stay within the free Sentry quota; off in dev.
-export function getTracesSampleRate(): number {
-  return process.env.NODE_ENV === "production" ? 0.1 : 0;
-}
