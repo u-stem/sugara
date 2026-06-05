@@ -94,7 +94,7 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
   const { tripCurrency, expenses, settlement, settlementPayments, categoryTotals } = data ?? {
     tripCurrency: "JPY" as CurrencyCode,
     expenses: [],
-    settlement: { totalAmount: 0, balances: [], transfers: [] },
+    settlement: { totalAmount: 0, balances: [], transfers: [], directTransfers: [] },
     settlementPayments: [],
     categoryTotals: [],
   };
@@ -132,40 +132,13 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
                 {formatCurrency(settlement.totalAmount, tripCurrency, locale)}
               </span>
             </div>
-            {settlement.transfers.length > 0 && (
+            {(settlement.transfers.length > 0 || settlement.directTransfers.length > 0) && (
               <>
                 <CollapsiblePrimitive.Trigger className="flex w-full items-center gap-1 border-t px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/80 transition-colors [&[data-state=open]>svg]:rotate-180">
                   <ChevronDown className="h-3 w-3 transition-transform duration-200" />
                   {te("showDetails")}
                 </CollapsiblePrimitive.Trigger>
                 <CollapsiblePrimitive.Content className="data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down overflow-hidden">
-                  <div className="space-y-1 border-t px-3 pt-2 pb-3">
-                    <p className="text-xs text-muted-foreground">{te("advanceStatus")}</p>
-                    {[...settlement.balances]
-                      .filter((b) => b.net !== 0)
-                      .sort((a, b) => b.net - a.net)
-                      .map((b) => (
-                        <div
-                          key={b.userId}
-                          className="flex items-center justify-between pl-2 text-sm"
-                        >
-                          <span className="flex items-center gap-1.5">
-                            <span className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
-                            <span translate="yes">{b.name}</span>
-                          </span>
-                          <span
-                            className={
-                              b.net > 0
-                                ? "font-medium text-emerald-600 dark:text-emerald-400"
-                                : "font-medium text-destructive"
-                            }
-                          >
-                            {b.net > 0 ? "+" : ""}
-                            {formatCurrency(b.net, tripCurrency, locale)}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
                   {categoryTotals.length > 0 && (
                     <div className="space-y-1 border-t px-3 pt-2 pb-3">
                       <p className="text-xs text-muted-foreground">{te("byCategory")}</p>
@@ -199,7 +172,7 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
           </CollapsiblePrimitive.Root>
 
           {/* Settlement section */}
-          {settlement.transfers.length > 0 && (
+          {(settlement.transfers.length > 0 || settlement.directTransfers.length > 0) && (
             <SettlementSection
               tripId={tripId}
               settlement={settlement}

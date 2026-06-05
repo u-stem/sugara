@@ -5,10 +5,14 @@ import { formatCurrency } from "@sugara/shared";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { api, apiVoid, getApiErrorMessage } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
+
+type SettlementMode = "minimal" | "direct";
+const SETTLEMENT_MODE_KEY = "sugara:settlement-mode";
 
 type SettlementSectionProps = {
   tripId: string;
@@ -40,7 +44,19 @@ export function SettlementSection({
   const te = useTranslations("expense");
   const locale = useLocale();
   const queryClient = useQueryClient();
-  const transfers = [...settlement.transfers].sort((a, b) => b.amount - a.amount);
+
+  const [mode, setMode] = useState<SettlementMode>("minimal");
+  useEffect(() => {
+    const saved = localStorage.getItem(SETTLEMENT_MODE_KEY);
+    if (saved === "minimal" || saved === "direct") setMode(saved);
+  }, []);
+  const changeMode = (next: SettlementMode) => {
+    setMode(next);
+    localStorage.setItem(SETTLEMENT_MODE_KEY, next);
+  };
+
+  const source = mode === "minimal" ? settlement.transfers : settlement.directTransfers;
+  const transfers = [...source].sort((a, b) => b.amount - a.amount);
   const checkedCount = transfers.filter((t) =>
     findPayment(settlementPayments, t.from.id, t.to.id, t.amount),
   ).length;
@@ -177,61 +193,97 @@ export function SettlementSection({
     <div className="space-y-2 rounded-md border bg-muted/50 px-3 pt-2 pb-3">
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">{te("settlement")}</span>
-        <span
-          className={`text-xs ${allChecked ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
-        >
-          {allChecked
-            ? te("settlementComplete")
-            : te("settlementProgress", { checked: checkedCount, total: transfers.length })}
-        </span>
+        {mode === "minimal" && (
+          <span
+            className={`text-xs ${allChecked ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}
+          >
+            {allChecked
+              ? te("settlementComplete")
+              : te("settlementProgress", { checked: checkedCount, total: transfers.length })}
+          </span>
+        )}
       </div>
-      {transfers.map((t) => {
-        const payment = findPayment(settlementPayments, t.from.id, t.to.id, t.amount);
-        const isChecked = !!payment;
-        const canToggle = currentUserId === t.from.id || currentUserId === t.to.id;
-        // Only disable the specific item being mutated, not all checkboxes
-        const isPending =
-          (checkMutation.isPending &&
-            checkMutation.variables?.fromUserId === t.from.id &&
-            checkMutation.variables?.toUserId === t.to.id &&
-            checkMutation.variables?.amount === t.amount) ||
-          (uncheckMutation.isPending &&
-            uncheckMutation.variables?.fromUserId === t.from.id &&
-            uncheckMutation.variables?.toUserId === t.to.id &&
-            uncheckMutation.variables?.amount === t.amount);
-
-        return (
-          <div
-            key={`${t.from.id}-${t.to.id}-${t.amount}`}
-            className={`relative flex items-center gap-2 rounded-sm px-1 py-1.5 text-sm select-none ${
-              canToggle
-                ? "has-[:enabled]:hover:bg-muted/80 has-[:enabled]:active:bg-muted transition-colors"
-                : ""
+      <div className="inline-flex rounded-md border bg-background/60 p-0.5 text-xs">
+        {(["direct", "minimal"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => changeMode(m)}
+            aria-pressed={mode === m}
+            className={`rounded-sm px-2 py-1 transition-colors ${
+              mode === m
+                ? "bg-background font-medium shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            <Checkbox
-              checked={isChecked}
-              onCheckedChange={() => handleToggle(t.from.id, t.to.id, t.amount)}
-              disabled={!canToggle || !!isPending}
-              className="h-4 w-4 before:absolute before:inset-0 before:content-['']"
-            />
-            <span className={isChecked ? "line-through text-muted-foreground" : ""}>
-              {t.from.name}
-            </span>
-            <ArrowRight
-              className={`h-3 w-3 shrink-0 ${isChecked ? "text-muted-foreground/50" : "text-muted-foreground"}`}
-            />
-            <span className={isChecked ? "line-through text-muted-foreground" : ""}>
-              {t.to.name}
-            </span>
-            <span
-              className={`ml-auto font-medium ${isChecked ? "line-through text-muted-foreground" : ""}`}
+            {m === "direct" ? te("settlementModeDirect") : te("settlementModeMinimal")}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        {mode === "direct" ? te("settlementHintDirect") : te("settlementHintMinimal")}
+      </p>
+      {mode === "direct"
+        ? transfers.map((t) => (
+            <div
+              key={`${t.from.id}-${t.to.id}-${t.amount}`}
+              className="flex items-center gap-2 px-1 py-1.5 text-sm"
             >
-              {formatCurrency(t.amount, tripCurrency, locale)}
-            </span>
-          </div>
-        );
-      })}
+              <span>{t.from.name}</span>
+              <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+              <span>{t.to.name}</span>
+              <span className="ml-auto font-medium">
+                {formatCurrency(t.amount, tripCurrency, locale)}
+              </span>
+            </div>
+          ))
+        : transfers.map((t) => {
+            const payment = findPayment(settlementPayments, t.from.id, t.to.id, t.amount);
+            const isChecked = !!payment;
+            const canToggle = currentUserId === t.from.id || currentUserId === t.to.id;
+            // Only disable the specific item being mutated, not all checkboxes
+            const isPending =
+              (checkMutation.isPending &&
+                checkMutation.variables?.fromUserId === t.from.id &&
+                checkMutation.variables?.toUserId === t.to.id &&
+                checkMutation.variables?.amount === t.amount) ||
+              (uncheckMutation.isPending &&
+                uncheckMutation.variables?.fromUserId === t.from.id &&
+                uncheckMutation.variables?.toUserId === t.to.id &&
+                uncheckMutation.variables?.amount === t.amount);
+
+            return (
+              <div
+                key={`${t.from.id}-${t.to.id}-${t.amount}`}
+                className={`relative flex items-center gap-2 rounded-sm px-1 py-1.5 text-sm select-none ${
+                  canToggle
+                    ? "has-[:enabled]:hover:bg-muted/80 has-[:enabled]:active:bg-muted transition-colors"
+                    : ""
+                }`}
+              >
+                <Checkbox
+                  checked={isChecked}
+                  onCheckedChange={() => handleToggle(t.from.id, t.to.id, t.amount)}
+                  disabled={!canToggle || !!isPending}
+                  className="h-4 w-4 before:absolute before:inset-0 before:content-['']"
+                />
+                <span className={isChecked ? "line-through text-muted-foreground" : ""}>
+                  {t.from.name}
+                </span>
+                <ArrowRight
+                  className={`h-3 w-3 shrink-0 ${isChecked ? "text-muted-foreground/50" : "text-muted-foreground"}`}
+                />
+                <span className={isChecked ? "line-through text-muted-foreground" : ""}>
+                  {t.to.name}
+                </span>
+                <span
+                  className={`ml-auto font-medium ${isChecked ? "line-through text-muted-foreground" : ""}`}
+                >
+                  {formatCurrency(t.amount, tripCurrency, locale)}
+                </span>
+              </div>
+            );
+          })}
     </div>
   );
 }

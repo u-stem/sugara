@@ -9,8 +9,14 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "declaration": true,
-    "declarationMap": true,
+    // No package emits .d.ts: every workspace package is consumed as source via
+    // its exports (./src/*.ts) + Next transpilePackages, and every build/check is
+    // `tsc --noEmit` or `next build`. Declaration emission was therefore vestigial
+    // and only triggered TS2883 portability checks on better-auth's inferred types
+    // (auth / authClient), which leak internal zod (`$strip`) and better-auth
+    // (`InferSignUpEmailCtx`) symbols that cannot be named in a portable .d.ts.
+    "declaration": false,
+    "declarationMap": false,
     "sourceMap": true
   },
   "exclude": ["node_modules", "dist"]

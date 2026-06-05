@@ -266,6 +266,12 @@ const JA_FAQS = [
       "費用の登録時にECB（欧州中央銀行）のデータを基にしたレートが自動入力されます。実際の両替レートに合わせて手動で変更できます。",
     sortOrder: 77,
   },
+  {
+    question: "精算の「立替ごと」と「最小送金」の違いは何ですか？",
+    answer:
+      "精算一覧は2つの表示方式を切り替えられます。「最小送金」は送金回数が最小になるよう計算した金額で、実際に振り込む手間が最も少なくなります。「立替ごと」は各支出を立て替えた人へ、その負担者が直接返す金額で、同じ相手との貸し借りは相殺されます。どちらの方式でも各メンバーの最終的な収支は同じです。精算チェック（完了記録）は「最小送金」でのみ行えます。",
+    sortOrder: 78,
+  },
   // ---- Souvenirs ----
   {
     question: "「お土産」リストとは何ですか？",
@@ -637,6 +643,12 @@ const EN_FAQS = [
     answer:
       "Rates are auto-filled based on ECB (European Central Bank) data when adding an expense. You can manually adjust them to match your actual exchange rate.",
     sortOrder: 77,
+  },
+  {
+    question: 'What is the difference between "By payer" and "Minimal" settlement?',
+    answer:
+      'The settlement list can be switched between two display modes. "Minimal" shows amounts calculated to minimize the number of transfers, so you make the fewest payments. "By payer" shows amounts repaid directly to whoever paid for each expense, with debts between the same pair offset against each other. Both modes produce the exact same net balance for every member. Settlement checks (completion records) can only be made in "Minimal" mode.',
+    sortOrder: 78,
   },
   // ---- Souvenirs ----
   {
