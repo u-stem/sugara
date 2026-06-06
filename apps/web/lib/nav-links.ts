@@ -1,8 +1,9 @@
-import { Bookmark, Home, Users } from "lucide-react";
+import { Bookmark, FileText, Home, Users } from "lucide-react";
 
 const NAV_LINK_DEFS = [
   { path: "/home", labelKey: "home", icon: Home },
   { path: "/bookmarks", labelKey: "bookmarks", icon: Bookmark },
+  { path: "/articles", labelKey: "articles", icon: FileText },
   { path: "/friends", labelKey: "friends", icon: Users },
 ] as const;
 

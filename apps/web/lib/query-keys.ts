@@ -23,6 +23,12 @@ export const queryKeys = {
     lists: () => [...queryKeys.bookmarks.all, "lists"] as const,
     list: (listId: string) => [...queryKeys.bookmarks.all, "list", listId] as const,
   },
+  articles: {
+    all: ["articles"] as const,
+    list: () => [...queryKeys.articles.all, "list"] as const,
+    detail: (articleId: string) => [...queryKeys.articles.all, articleId] as const,
+    byTrip: (tripId: string) => [...queryKeys.articles.all, "trip", tripId] as const,
+  },
   users: {
     all: ["users"] as const,
     profile: (userId: string) => ["users", "profile", userId] as const,
@@ -31,6 +37,7 @@ export const queryKeys = {
     bookmarkLists: (userId: string) => ["profile", userId, "bookmark-lists"] as const,
     bookmarkList: (userId: string, listId: string) =>
       ["profile", userId, "bookmark-lists", listId] as const,
+    articles: (userId: string) => ["profile", userId, "articles"] as const,
   },
   polls: {
     all: ["polls"] as const,

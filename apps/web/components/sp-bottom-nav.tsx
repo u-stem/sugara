@@ -96,8 +96,11 @@ export function SpBottomNav() {
 
   const friendHref = "/sp/friends";
   const bookmarkHref = "/sp/bookmarks";
+  const articleHref = "/sp/articles";
   const visibleLinks = SP_NAV_LINKS.filter(
-    (link) => !isGuest || (link.href !== bookmarkHref && link.href !== friendHref),
+    (link) =>
+      !isGuest ||
+      (link.href !== bookmarkHref && link.href !== articleHref && link.href !== friendHref),
   );
 
   return (
