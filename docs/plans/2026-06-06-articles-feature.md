@@ -88,8 +88,9 @@ MVP は `tags text[]`(ブックマークの `urls text[]` と同じ最小構成)
 
 ## Markdown レンダリング
 
-依存追加(exact pin、`dependency-review` skill を通す):
-- `react-markdown`(v10 系)/ `remark-gfm` / `rehype-sanitize` / `rehype-external-links` / `@tailwindcss/typography`
+依存追加(exact pin、サプライチェーン確認済み): `react-markdown@10.1.0`(既存) に加え `remark-gfm@4.0.1` / `rehype-sanitize@6.0.0` / `rehype-external-links@3.0.0` を追加。
+- `@tailwindcss/typography` は**不採用**(安全性に寄与せず prose の広域スタイルが波及するため)。スタイルは既存 news と同様 Tailwind ユーティリティで対応
+- `rehype-sanitize` の `defaultSchema` は `img` を許可するため、カスタムスキーマで `img`/`picture`/`source`/`input` を除外
 
 `apps/web/lib/markdown.tsx`:
 - `MarkdownRenderer`(Server Component 可)
@@ -121,7 +122,7 @@ MVP は `tags text[]`(ブックマークの `urls text[]` と同じ最小構成)
 
 1. [x] スキーマ(articles / article_trips / article_likes / enum)+ migration + 型 + Zod(`schemas/article.ts`)+ 上限定数
 2. [x] API(CRUD + タグ + いいね + 旅行紐づけ + プロフィール公開取得 + 旅行別取得)+ 可視性ロジック
-3. Markdown レンダラ + 依存追加(dependency-review)
+3. [x] Markdown レンダラ + 依存追加(dependency-review)
 4. フロント(一覧 / 作成 / 編集 / 詳細、PC/SP、タグ・いいね・紐づけ UI)
 5. プロフィール公開表示 + 旅行詳細の関連記事
 6. FAQ + お知らせ(ja/en)+ ドキュメント追従
