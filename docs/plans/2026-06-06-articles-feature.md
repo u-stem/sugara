@@ -137,8 +137,8 @@ MVP は `tags text[]`(ブックマークの `urls text[]` と同じ最小構成)
 1. [x] スキーマ(articles / article_trips / article_likes / enum)+ migration + 型 + Zod(`schemas/article.ts`)+ 上限定数
 2. [x] API(CRUD + タグ + いいね + 旅行紐づけ + プロフィール公開取得 + 旅行別取得)+ 可視性ロジック
 3. [x] Markdown レンダラ + 依存追加(dependency-review)
-4. フロント(一覧 / 作成 / 編集 / 詳細、PC/SP、タグ・いいね・紐づけ UI)
-5. プロフィール公開表示 + 旅行詳細の関連記事
+4. [x] フロント(一覧 / 作成 / 編集 / 詳細、PC/SP、タグ・いいね・紐づけ UI)
+5. [x] プロフィール公開表示 + 旅行詳細の関連記事(埋め込み表示)
 6. FAQ + お知らせ(ja/en)+ ドキュメント追従
 
 ## 対象外(MVP)
