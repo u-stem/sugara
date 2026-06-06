@@ -952,6 +952,7 @@
     "monthsAgo": "{count}ヶ月前"
   },
   "export": {
+    "icsPreviewSummary": "{count} 件の予定をカレンダーに出力します",
     "separateSheets": "パターンごとにシート分け",
     "sheetItinerary": "旅程",
     "sheetCandidates": "候補",
@@ -1556,6 +1557,7 @@
     "csvExpensesSeparator": "--- 費用 ---"
   },
   "exportPage": {
+    "icsDescription": "各日のメインプランの予定をカレンダー形式 (.ics) で書き出します。Google カレンダーや Apple カレンダーに取り込めます。",
     "formatLabel": "フォーマット",
     "columnsLabel": "出力する列",
     "selectAll": "全選択",
