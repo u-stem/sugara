@@ -1,5 +1,4 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { z } from "zod";
 
 // Sentry signs Internal Integration webhook requests with an HMAC-SHA256 of the
 // raw request body, keyed by the integration's client secret, sent in the
@@ -18,34 +17,6 @@ export function verifySentrySignature(
   return timingSafeEqual(a, b);
 }
 
-// Sentry's alert-rule webhook payload varies by resource. We read loosely and
-// tolerate either an `event` (event_alert) or an `issue` (issue) shape, plus the
-// snake_case field aliases Sentry uses.
-const sentryPayloadSchema = z.object({
-  data: z.object({
-    event: z
-      .object({
-        issue_id: z.union([z.string(), z.number()]).optional(),
-        title: z.string().optional(),
-        culprit: z.string().optional(),
-        level: z.string().optional(),
-        environment: z.string().optional(),
-        web_url: z.string().optional(),
-        url: z.string().optional(),
-      })
-      .optional(),
-    issue: z
-      .object({
-        id: z.union([z.string(), z.number()]).optional(),
-        title: z.string().optional(),
-        culprit: z.string().optional(),
-        level: z.string().optional(),
-        permalink: z.string().optional(),
-      })
-      .optional(),
-  }),
-});
-
 export type SentryIssue = {
   issueId: string;
   title: string;
@@ -55,26 +26,46 @@ export type SentryIssue = {
   webUrl: string | null;
 };
 
-// Extracts the fields we need from a parsed Sentry payload. Returns null when the
-// payload does not carry an identifiable issue (nothing to file).
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+// Sentry's id can arrive as a string or a number depending on the resource.
+function asId(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  return null;
+}
+
+// Sentry's alert-rule webhook payload varies by resource. We read loosely and
+// tolerate either an `event` (event_alert) or an `issue` (issue) shape, plus the
+// snake_case field aliases Sentry uses. Returns null when the payload does not
+// carry an identifiable issue (nothing to file).
 export function parseSentryPayload(json: unknown): SentryIssue | null {
-  const parsed = sentryPayloadSchema.safeParse(json);
-  if (!parsed.success) return null;
+  if (!isRecord(json)) return null;
+  const data = json.data;
+  if (!isRecord(data)) return null;
 
-  const { event, issue } = parsed.data.data;
-  const rawId = event?.issue_id ?? issue?.id;
-  if (rawId === undefined) return null;
+  const event = isRecord(data.event) ? data.event : null;
+  const issue = isRecord(data.issue) ? data.issue : null;
 
-  const title = event?.title ?? issue?.title;
-  if (!title) return null;
+  const issueId = asId(event?.issue_id) ?? asId(issue?.id);
+  if (issueId === null) return null;
+
+  const title = asString(event?.title) ?? asString(issue?.title);
+  if (title === null) return null;
 
   return {
-    issueId: String(rawId),
+    issueId,
     title,
-    culprit: event?.culprit ?? issue?.culprit ?? null,
-    level: event?.level ?? issue?.level ?? null,
-    environment: event?.environment ?? null,
-    webUrl: event?.web_url ?? event?.url ?? issue?.permalink ?? null,
+    culprit: asString(event?.culprit) ?? asString(issue?.culprit),
+    level: asString(event?.level) ?? asString(issue?.level),
+    environment: asString(event?.environment),
+    webUrl: asString(event?.web_url) ?? asString(event?.url) ?? asString(issue?.permalink),
   };
 }
 
