@@ -30,6 +30,14 @@ export const env = {
   get GITHUB_FEEDBACK_REPO() {
     return process.env.GITHUB_FEEDBACK_REPO;
   },
+  // Sentry-originated issues land in the same private repo by default; override
+  // GITHUB_SENTRY_REPO only if they should be split out from user feedback.
+  get GITHUB_SENTRY_REPO() {
+    return process.env.GITHUB_SENTRY_REPO ?? process.env.GITHUB_FEEDBACK_REPO;
+  },
+  get SENTRY_WEBHOOK_SECRET() {
+    return process.env.SENTRY_WEBHOOK_SECRET;
+  },
   get VAPID_PUBLIC_KEY() {
     return withDefault("VAPID_PUBLIC_KEY", "");
   },
