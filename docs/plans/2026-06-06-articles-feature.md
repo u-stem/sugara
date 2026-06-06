@@ -119,8 +119,8 @@ MVP は `tags text[]`(ブックマークの `urls text[]` と同じ最小構成)
 
 ## 段階実装フェーズ(フェーズ分割 PR を推奨)
 
-1. スキーマ(articles / article_trips / article_likes / enum)+ migration + 型 + Zod(`schemas/article.ts`)+ 上限定数
-2. API(CRUD + タグ + いいね + 旅行紐づけ + プロフィール公開取得 + 旅行別取得)+ 可視性ロジック
+1. [x] スキーマ(articles / article_trips / article_likes / enum)+ migration + 型 + Zod(`schemas/article.ts`)+ 上限定数
+2. [x] API(CRUD + タグ + いいね + 旅行紐づけ + プロフィール公開取得 + 旅行別取得)+ 可視性ロジック
 3. Markdown レンダラ + 依存追加(dependency-review)
 4. フロント(一覧 / 作成 / 編集 / 詳細、PC/SP、タグ・いいね・紐づけ UI)
 5. プロフィール公開表示 + 旅行詳細の関連記事

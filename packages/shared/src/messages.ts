@@ -1,4 +1,5 @@
 import {
+  MAX_ARTICLES_PER_USER,
   MAX_BOOKMARK_LISTS_PER_USER,
   MAX_BOOKMARKS_PER_LIST,
   MAX_FRIENDS_PER_USER,
@@ -61,6 +62,9 @@ export const ERROR_MSG = {
   LIMIT_BOOKMARK_LISTS: "Bookmark list limit reached",
   LIMIT_BOOKMARKS: "Bookmark limit reached",
   BOOKMARK_OWNER_MISMATCH: "Some bookmarks do not belong to user",
+  ARTICLE_NOT_FOUND: "Article not found",
+  LIMIT_ARTICLES: "Article limit reached",
+  ARTICLE_TRIP_FORBIDDEN: "Some trips are not accessible",
   SCHEDULE_TRIP_MISMATCH: "Some schedules do not belong to trip",
   GROUP_NOT_FOUND: "Group not found",
   LIMIT_GROUPS: "Group limit reached",
@@ -369,6 +373,7 @@ export const MSG = {
   // Limits
   LIMIT_BOOKMARK_LISTS: `リストは最大${MAX_BOOKMARK_LISTS_PER_USER}件まで作成できます`,
   LIMIT_BOOKMARKS: `ブックマークは1リストあたり最大${MAX_BOOKMARKS_PER_LIST}件まで追加できます`,
+  LIMIT_ARTICLES: `記事は最大${MAX_ARTICLES_PER_USER}件まで作成できます`,
   LIMIT_TRIPS: "旅行の作成上限に達しました",
   LIMIT_SCHEDULES: `予定と候補は1旅行あたり合計${MAX_SCHEDULES_PER_TRIP}件まで追加できます`,
   LIMIT_PATTERNS: `パターンは各日程に最大${MAX_PATTERNS_PER_DAY}件まで追加できます`,

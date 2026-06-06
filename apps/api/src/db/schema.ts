@@ -722,6 +722,22 @@ export const bookmarksRelations = relations(bookmarks, ({ one }) => ({
   list: one(bookmarkLists, { fields: [bookmarks.listId], references: [bookmarkLists.id] }),
 }));
 
+export const articlesRelations = relations(articles, ({ one, many }) => ({
+  owner: one(users, { fields: [articles.ownerId], references: [users.id] }),
+  articleTrips: many(articleTrips),
+  likes: many(articleLikes),
+}));
+
+export const articleTripsRelations = relations(articleTrips, ({ one }) => ({
+  article: one(articles, { fields: [articleTrips.articleId], references: [articles.id] }),
+  trip: one(trips, { fields: [articleTrips.tripId], references: [trips.id] }),
+}));
+
+export const articleLikesRelations = relations(articleLikes, ({ one }) => ({
+  article: one(articles, { fields: [articleLikes.articleId], references: [articles.id] }),
+  user: one(users, { fields: [articleLikes.userId], references: [users.id] }),
+}));
+
 export const schedulePollsRelations = relations(schedulePolls, ({ one, many }) => ({
   trip: one(trips, { fields: [schedulePolls.tripId], references: [trips.id] }),
   options: many(schedulePollOptions),
