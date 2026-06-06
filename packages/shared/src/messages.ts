@@ -41,6 +41,8 @@ export const ERROR_MSG = {
   DAY_NOT_FOUND: "Day not found",
   GITHUB_API_FAILED: "Failed to create feedback issue",
   GITHUB_NOT_CONFIGURED: "Feedback is not configured",
+  SENTRY_INVALID_SIGNATURE: "Invalid signature",
+  SENTRY_NOT_CONFIGURED: "Sentry webhook is not configured",
   LIMIT_TRIPS: "Trip limit reached",
   LIMIT_SCHEDULES: "Schedule limit reached",
   LIMIT_PATTERNS: "Pattern limit reached",

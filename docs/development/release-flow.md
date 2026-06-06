@@ -129,8 +129,10 @@ Vercel `Settings → Environment Variables` で設定、**全て "Sensitive" フ
 | `GMAIL_USER` / `GMAIL_APP_PASSWORD` | メール送信 |
 | `VAPID_PUBLIC_KEY` / `NEXT_PUBLIC_VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push |
 | `VAPID_SUBJECT` | Web Push mailto: URL |
-| `GITHUB_TOKEN` | フィードバック issue 作成 |
+| `GITHUB_TOKEN` | フィードバック / Sentry issue 作成 |
 | `GITHUB_FEEDBACK_REPO` | 送信先 repo |
+| `GITHUB_SENTRY_REPO` | Sentry issue の送信先 repo (未設定なら `GITHUB_FEEDBACK_REPO` を流用) |
+| `SENTRY_WEBHOOK_SECRET` | Sentry Internal Integration の client secret (`/api/sentry-webhook` の署名検証用)。詳細は [sentry-github-issues.md](sentry-github-issues.md) |
 | `VERCEL_API_TOKEN` | Edge Config 更新 (admin announcement 機能) |
 | `EDGE_CONFIG_ID` / `EDGE_CONFIG` | 管理者告知用 Edge Config |
 | `ADMIN_USER_ID` | 本番の管理者 user ID (ADMIN_USERNAME は非推奨) |
