@@ -554,6 +554,7 @@
     "map": "地図 β",
     "bookmarks": "ブックマーク",
     "history": "履歴",
+    "articles": "関連記事",
     "status": "ステータス",
     "coverAlt": "{title}のカバー画像",
     "dayCount": "{count}日間",
@@ -630,6 +631,7 @@
     "map": "地図",
     "history": "履歴",
     "bookmarks": "ブックマーク",
+    "articles": "記事",
     "sortByTime": "時刻順",
     "moveToCandidate": "候補に戻す",
     "saveToBookmark": "ブックマークに保存",
@@ -1024,7 +1026,9 @@
     "notFound": "記事が見つかりません",
     "empty": "まだ記事がありません",
     "emptyFilter": "条件に一致する記事がありません",
-    "limitReached": "記事は最大{max}件まで作成できます"
+    "limitReached": "記事は最大{max}件まで作成できます",
+    "relatedTitle": "関連記事",
+    "tripEmpty": "この旅行に紐づく記事はありません"
   },
   "bookmark": {
     "pageTitle": "ブックマーク",

@@ -10,6 +10,7 @@ import {
   Check,
   CheckCircle,
   FileDown,
+  FileText,
   History,
   Link,
   Map as MapIcon,
@@ -95,6 +96,7 @@ type TripActionsProps = {
   compact?: boolean;
   onOpenBookmarks?: () => void;
   onOpenActivity?: () => void;
+  onOpenArticles?: () => void;
   onOpenMap?: () => void;
 };
 
@@ -120,6 +122,7 @@ export function TripActions({
   compact,
   onOpenBookmarks,
   onOpenActivity,
+  onOpenArticles,
   onOpenMap,
 }: TripActionsProps) {
   const locale = useLocale();
@@ -272,6 +275,15 @@ export function TripActions({
             label: tt("history"),
             icon: <History className="h-4 w-4" />,
             onClick: onOpenActivity,
+          },
+        ]
+      : []),
+    ...(onOpenArticles
+      ? [
+          {
+            label: tt("articles"),
+            icon: <FileText className="h-4 w-4" />,
+            onClick: onOpenArticles,
           },
         ]
       : []),
@@ -467,6 +479,12 @@ export function TripActions({
                   <DropdownMenuItem onClick={onOpenActivity}>
                     <History />
                     {tt("history")}
+                  </DropdownMenuItem>
+                )}
+                {onOpenArticles && (
+                  <DropdownMenuItem onClick={onOpenArticles}>
+                    <FileText />
+                    {tt("articles")}
                   </DropdownMenuItem>
                 )}
                 {canEditRole && status !== "scheduling" ? (

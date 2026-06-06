@@ -554,6 +554,7 @@
     "map": "Map β",
     "bookmarks": "Bookmarks",
     "history": "History",
+    "articles": "Related articles",
     "status": "Status",
     "coverAlt": "Cover image for {title}",
     "dayCount": "{count} days",
@@ -630,6 +631,7 @@
     "map": "Map",
     "history": "History",
     "bookmarks": "Bookmarks",
+    "articles": "Articles",
     "sortByTime": "By Time",
     "moveToCandidate": "Move to Candidates",
     "saveToBookmark": "Save to Bookmarks",
@@ -1024,7 +1026,9 @@
     "notFound": "Article not found",
     "empty": "No articles yet",
     "emptyFilter": "No articles match the filter",
-    "limitReached": "You can create up to {max} articles"
+    "limitReached": "You can create up to {max} articles",
+    "relatedTitle": "Related articles",
+    "tripEmpty": "No articles linked to this trip"
   },
   "bookmark": {
     "pageTitle": "Bookmarks",
