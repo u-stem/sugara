@@ -50,6 +50,12 @@ export const bookmarkListVisibilityEnum = pgEnum("bookmark_list_visibility", [
   "public",
 ]);
 
+export const articleVisibilityEnum = pgEnum("article_visibility", [
+  "private",
+  "friends_only",
+  "public",
+]);
+
 export const scheduleCategoryEnum = pgEnum("schedule_category", [
   "sightseeing",
   "restaurant",
@@ -400,6 +406,60 @@ export const bookmarks = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("bookmarks_list_sort_idx").on(table.listId, table.sortOrder)],
+).enableRLS();
+
+// Articles: standalone Markdown posts, on par with bookmark lists. Visibility
+// follows the same three tiers; context-sharing (members of a linked trip can
+// see even a private article) is enforced in the API layer, not here.
+export const articles = pgTable(
+  "articles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 100 }).notNull(),
+    content: text("content").notNull().default(""),
+    tags: text("tags").array().notNull().default([]),
+    visibility: articleVisibilityEnum("visibility").notNull().default("private"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("articles_owner_sort_idx").on(table.ownerId, table.sortOrder)],
+).enableRLS();
+
+// Many-to-many link between articles and trips. Cascade on both sides keeps the
+// join consistent: deleting an article or a trip drops the link, never dangling.
+export const articleTrips = pgTable(
+  "article_trips",
+  {
+    articleId: uuid("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.articleId, table.tripId] }),
+    index("article_trips_trip_id_idx").on(table.tripId),
+  ],
+).enableRLS();
+
+export const articleLikes = pgTable(
+  "article_likes",
+  {
+    articleId: uuid("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.articleId, table.userId] })],
 ).enableRLS();
 
 export const groups = pgTable(
