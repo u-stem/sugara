@@ -1329,7 +1329,7 @@
     "transportMethod": "Transport Method",
     "transportPlaceholder": "Select",
     "cost": "Transit fare",
-    "costPlaceholder": "e.g. 580",
+    "costPlaceholder": "580",
     "url": "URL",
     "removeUrl": "Remove URL",
     "addUrl": "Add URL",
