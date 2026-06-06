@@ -10,7 +10,6 @@ import {
   MAX_PATTERNS_PER_DAY,
   MAX_QUICK_POLLS_PER_USER,
   MAX_SCHEDULES_PER_TRIP,
-  MAX_TRIPS_PER_USER,
 } from "./limits";
 import type { ExpenseCategory, ExpenseSplitType } from "./schemas/expense";
 import type { MemberRole } from "./schemas/member";
@@ -370,7 +369,7 @@ export const MSG = {
   // Limits
   LIMIT_BOOKMARK_LISTS: `リストは最大${MAX_BOOKMARK_LISTS_PER_USER}件まで作成できます`,
   LIMIT_BOOKMARKS: `ブックマークは1リストあたり最大${MAX_BOOKMARKS_PER_LIST}件まで追加できます`,
-  LIMIT_TRIPS: `旅行は最大${MAX_TRIPS_PER_USER}件まで作成できます`,
+  LIMIT_TRIPS: "旅行の作成上限に達しました",
   LIMIT_SCHEDULES: `予定と候補は1旅行あたり合計${MAX_SCHEDULES_PER_TRIP}件まで追加できます`,
   LIMIT_PATTERNS: `パターンは各日程に最大${MAX_PATTERNS_PER_DAY}件まで追加できます`,
   LIMIT_MEMBERS: `メンバーは1旅行あたり最大${MAX_MEMBERS_PER_TRIP}名まで招待できます`,

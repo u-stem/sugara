@@ -116,6 +116,8 @@ export const users = pgTable("users", {
   username: varchar("username", { length: 30 }).unique(),
   displayUsername: varchar("display_username", { length: 30 }),
   isAnonymous: boolean("is_anonymous").notNull().default(false),
+  // Per-user override for the trip creation cap. NULL falls back to MAX_TRIPS_PER_USER.
+  tripLimit: integer("trip_limit"),
   guestExpiresAt: timestamp("guest_expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

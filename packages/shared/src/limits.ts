@@ -1,4 +1,6 @@
 export const MAX_TRIPS_PER_USER = 10;
+// Upper bound an admin may raise a single user's trip cap to.
+export const MAX_TRIP_LIMIT = 1000;
 export const MAX_SCHEDULES_PER_TRIP = 300;
 export const MAX_PATTERNS_PER_DAY = 3;
 export const MAX_MEMBERS_PER_TRIP = 20;
