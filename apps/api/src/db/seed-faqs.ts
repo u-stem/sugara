@@ -113,7 +113,7 @@ const JA_FAQS = [
   {
     question: "旅行の計画を書き出せますか？",
     answer:
-      "Excel (.xlsx) または CSV 形式でエクスポートできます。Excelではパターンごとにシートが分かれて出力されます。CSVは区切り文字や改行コードをカスタマイズ可能です。また、印刷用レイアウトでブラウザから印刷・PDF保存もできます。",
+      "Excel (.xlsx)、CSV、または iCal (.ics) 形式でエクスポートできます。Excelではパターンごとにシートが分かれて出力されます。CSVは区切り文字や改行コードをカスタマイズ可能です。iCal は各日のメインプランの予定を Google カレンダーや Apple カレンダーに取り込める形式で書き出します。また、印刷用レイアウトでブラウザから印刷・PDF保存もできます。",
     sortOrder: 24,
   },
   {
@@ -496,7 +496,7 @@ const EN_FAQS = [
   {
     question: "Can I export my travel plan?",
     answer:
-      "Yes, export in Excel (.xlsx) or CSV format. Excel exports create separate sheets per pattern. CSV supports customizable delimiters and line endings. You can also print or save as PDF using the print layout.",
+      "Yes, export in Excel (.xlsx), CSV, or iCal (.ics) format. Excel exports create separate sheets per pattern. CSV supports customizable delimiters and line endings. iCal exports each day's main-plan schedules so you can import them into Google Calendar or Apple Calendar. You can also print or save as PDF using the print layout.",
     sortOrder: 24,
   },
   {

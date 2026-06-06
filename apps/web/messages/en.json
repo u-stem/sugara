@@ -952,6 +952,7 @@
     "monthsAgo": "{count} months ago"
   },
   "export": {
+    "icsPreviewSummary": "{count} schedule(s) will be exported to your calendar",
     "separateSheets": "Separate sheets by pattern",
     "sheetItinerary": "Itinerary",
     "sheetCandidates": "Candidates",
@@ -1556,6 +1557,7 @@
     "csvExpensesSeparator": "--- Expenses ---"
   },
   "exportPage": {
+    "icsDescription": "Export each day's main-plan schedules as a calendar file (.ics). Import it into Google Calendar or Apple Calendar.",
     "formatLabel": "Format",
     "columnsLabel": "Columns",
     "selectAll": "Select All",

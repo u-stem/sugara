@@ -69,7 +69,7 @@ export const DEFAULT_SELECTED_FIELDS: ExportField[] = [
   "urls",
 ];
 
-export type ExportFormat = "xlsx" | "csv";
+export type ExportFormat = "xlsx" | "csv" | "ics";
 
 export type PatternMode = "separateSheets" | "patternColumn";
 
@@ -611,7 +611,136 @@ export async function exportTripToCSV(trip: TripResponse, options: ExportOptions
   downloadDelimitedText(csv, `${name}.${ext}`, bom, delimiter);
 }
 
+// --- iCal (.ics) ---
+
+/** Escape a text value per RFC 5545 (backslash, semicolon, comma, newline). */
+export function escapeIcsText(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r\n|\n|\r/g, "\\n");
+}
+
+// JST(+09:00) is the fixed app timezone. Converting to UTC lets us emit "...Z"
+// timestamps with no VTIMEZONE block, which Google/Apple Calendar interpret
+// correctly. Schedule times have no stored timezone, so JST is assumed.
+const JST_OFFSET_HOURS = 9;
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function formatUtcStamp(dt: Date): string {
+  return (
+    `${dt.getUTCFullYear()}${pad2(dt.getUTCMonth() + 1)}${pad2(dt.getUTCDate())}` +
+    `T${pad2(dt.getUTCHours())}${pad2(dt.getUTCMinutes())}${pad2(dt.getUTCSeconds())}Z`
+  );
+}
+
+/** "2025-04-01" + "09:00" (JST) -> "20250401T000000Z" (UTC basic format). */
+function toIcsUtcStamp(date: string, time: string): string {
+  const [y, mo, d] = date.split("-").map(Number);
+  // time may be "HH:MM" or "HH:MM:SS" (PostgreSQL time type); keep seconds.
+  const [h, mi, s = 0] = time.split(":").map(Number);
+  return formatUtcStamp(new Date(Date.UTC(y, mo - 1, d, h - JST_OFFSET_HOURS, mi, s)));
+}
+
+/** "2025-04-01" + offsetDays -> "20250402" (date-only, for all-day events). */
+function toIcsDate(date: string, offsetDays = 0): string {
+  const [y, mo, d] = date.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d + offsetDays));
+  return `${dt.getUTCFullYear()}${pad2(dt.getUTCMonth() + 1)}${pad2(dt.getUTCDate())}`;
+}
+
+/** Shift a "YYYY-MM-DD" string by whole days, keeping the same format. */
+function shiftDateString(date: string, offsetDays: number): string {
+  const [y, mo, d] = date.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d + offsetDays));
+  return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+}
+
+/** The default pattern of a day (isDefault, else the lowest sortOrder). */
+function pickDefaultPattern(day: DayResponse): DayPatternResponse | undefined {
+  return (
+    day.patterns.find((p) => p.isDefault) ??
+    [...day.patterns].sort((a, b) => a.sortOrder - b.sortOrder)[0]
+  );
+}
+
+function scheduleToVevent(schedule: ScheduleResponse, day: DayResponse, stamp: string): string[] {
+  const lines = ["BEGIN:VEVENT", `UID:${schedule.id}@sugara`, `DTSTAMP:${stamp}`];
+  const offset = schedule.endDayOffset ?? 0;
+
+  if (!schedule.startTime && !schedule.endTime) {
+    // All-day event. DTEND is exclusive: the day after the last covered day.
+    lines.push(`DTSTART;VALUE=DATE:${toIcsDate(day.date)}`);
+    lines.push(`DTEND;VALUE=DATE:${toIcsDate(day.date, offset + 1)}`);
+  } else {
+    const start = schedule.startTime ?? schedule.endTime;
+    if (!start) return [];
+    lines.push(`DTSTART:${toIcsUtcStamp(day.date, start)}`);
+    const end = schedule.endTime
+      ? toIcsUtcStamp(shiftDateString(day.date, offset), schedule.endTime)
+      : toIcsUtcStamp(day.date, start);
+    lines.push(`DTEND:${end}`);
+  }
+
+  lines.push(`SUMMARY:${escapeIcsText(schedule.name)}`);
+  if (schedule.address) lines.push(`LOCATION:${escapeIcsText(schedule.address)}`);
+  const descParts = [schedule.memo, ...schedule.urls].filter(
+    (v): v is string => typeof v === "string" && v.length > 0,
+  );
+  if (descParts.length > 0) {
+    lines.push(`DESCRIPTION:${escapeIcsText(descParts.join("\n"))}`);
+  }
+  lines.push("END:VEVENT");
+  return lines;
+}
+
+/**
+ * Build an iCalendar (.ics) document for a trip's default-pattern schedules.
+ * Only the default pattern of each day is emitted; mixing alternate patterns
+ * into one calendar would surface duplicate, overlapping events.
+ */
+export function buildIcsContent(trip: TripResponse, now: Date = new Date()): string {
+  const stamp = formatUtcStamp(now);
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//sugara//Trip Export//EN",
+    "CALSCALE:GREGORIAN",
+  ];
+  for (const day of trip.days) {
+    const pattern = pickDefaultPattern(day);
+    if (!pattern) continue;
+    const sorted = [...pattern.schedules].sort((a, b) => a.sortOrder - b.sortOrder);
+    for (const schedule of sorted) {
+      lines.push(...scheduleToVevent(schedule, day, stamp));
+    }
+  }
+  lines.push("END:VCALENDAR");
+  // Trailing CRLF is required by RFC 5545 §3.4; strict parsers (Apple Calendar)
+  // reject content without it.
+  return `${lines.join("\r\n")}\r\n`;
+}
+
+export async function exportTripToIcal(trip: TripResponse, options: ExportOptions): Promise<void> {
+  const content = buildIcsContent(trip);
+  const name = options.fileName || `${trip.title}_${toDateString(new Date())}`;
+  const blob = new Blob([content], { type: "text/calendar;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${name}.ics`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function exportTrip(trip: TripResponse, options: ExportOptions): Promise<void> {
+  if (options.format === "ics") {
+    return exportTripToIcal(trip, options);
+  }
   if (options.format === "csv") {
     return exportTripToCSV(trip, options);
   }
