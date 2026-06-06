@@ -794,6 +794,7 @@ export default function TripDetailPage() {
               maxEndDayOffset={Math.max(0, tripData.days.length - 1)}
               onSaveToBookmark={canEdit && online ? handleSaveToBookmark : undefined}
               onReorderCandidate={dnd.reorderCandidate}
+              currency={tripData.currency}
             />
           </div>
         ) : (
@@ -1035,6 +1036,7 @@ export default function TripDetailPage() {
                     mapsEnabled={trip.mapsEnabled}
                     allSchedules={allSchedules}
                     currentDaySchedules={currentPattern?.schedules ?? []}
+                    currency={trip.currency}
                   />
                 </div>
                 {mounted &&

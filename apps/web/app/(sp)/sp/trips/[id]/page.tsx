@@ -420,6 +420,7 @@ export default function SpTripDetailPage() {
               onSaveToBookmark={canEdit && online ? handleSaveToBookmark : undefined}
               onReorderCandidate={dnd.reorderCandidate}
               days={trip.days}
+              currency={trip.currency}
             />
           </div>
         );

@@ -1,10 +1,12 @@
 import type {
   CandidateResponse,
+  CurrencyCode,
   DayPatternResponse,
   DayResponse,
   ScheduleResponse,
   TripResponse,
 } from "@sugara/shared";
+import { formatWholeUnits, toCurrencyCode } from "@sugara/shared";
 import { formatDate, formatTime, toDateString } from "@/lib/format";
 
 // Ordered by: When → What → Where → How → Extra → Meta
@@ -19,6 +21,7 @@ export const EXPORT_FIELDS = [
   "departurePlace",
   "arrivalPlace",
   "transportMethod",
+  "cost",
   "urls",
   "memo",
   "pattern",
@@ -48,6 +51,7 @@ const DEFAULT_EXPORT_FIELD_LABELS: ExportFieldLabels = {
   departurePlace: "Departure",
   arrivalPlace: "Arrival",
   transportMethod: "Transport",
+  cost: "Fare",
   urls: "URL",
   memo: "Memo",
   pattern: "Pattern",
@@ -166,6 +170,7 @@ export function scheduleToRow(
   fieldLabels?: ExportFieldLabels,
   locale?: string,
   valueLabels?: ValueLabels,
+  currency?: CurrencyCode,
 ): Record<string, string | number> {
   const labels = fieldLabels ?? DEFAULT_EXPORT_FIELD_LABELS;
   const row: Record<string, string | number> = {};
@@ -197,6 +202,16 @@ export function scheduleToRow(
             : schedule.transportMethod
           : "";
         break;
+      case "cost":
+        // cost is a whole-unit fare estimate meaningful only for transport rows
+        // (matches candidate-item's guard). Other categories leave it blank.
+        // formatWholeUnits skips minor-unit scaling so non-JPY trip currencies
+        // render correctly (e.g. 580 -> $580, not $5.80).
+        row[label] =
+          schedule.category === "transport" && schedule.cost != null
+            ? formatWholeUnits(schedule.cost, currency ?? "JPY", locale ?? "en")
+            : "";
+        break;
       case "urls":
         row[label] = schedule.urls.join("\n");
         break;
@@ -215,13 +230,23 @@ export function buildScheduleRows(
   fieldLabels?: ExportFieldLabels,
   locale?: string,
   valueLabels?: ValueLabels,
+  currency?: CurrencyCode,
 ): Record<string, string | number>[] {
   const rows: Record<string, string | number>[] = [];
   for (const pattern of patterns) {
     const sorted = [...pattern.schedules].sort((a, b) => a.sortOrder - b.sortOrder);
     for (const schedule of sorted) {
       rows.push(
-        scheduleToRow(schedule, day, pattern.label, fields, fieldLabels, locale, valueLabels),
+        scheduleToRow(
+          schedule,
+          day,
+          pattern.label,
+          fields,
+          fieldLabels,
+          locale,
+          valueLabels,
+          currency,
+        ),
       );
     }
   }
@@ -234,6 +259,7 @@ export function buildCandidateRows(
   fieldLabels?: ExportFieldLabels,
   locale?: string,
   valueLabels?: ValueLabels,
+  currency?: CurrencyCode,
 ): Record<string, string | number>[] {
   const candidateFields = filterCandidateFields(fields);
   const stubDay: DayResponse = {
@@ -245,7 +271,16 @@ export function buildCandidateRows(
   };
 
   return candidates.map((candidate) =>
-    scheduleToRow(candidate, stubDay, null, candidateFields, fieldLabels, locale, valueLabels),
+    scheduleToRow(
+      candidate,
+      stubDay,
+      null,
+      candidateFields,
+      fieldLabels,
+      locale,
+      valueLabels,
+      currency,
+    ),
   );
 }
 
@@ -259,6 +294,7 @@ export function buildPreviewRows(
   locale?: string,
   valueLabels?: ValueLabels,
 ): Record<string, string | number>[] {
+  const currency = toCurrencyCode(trip.currency);
   const rows: Record<string, string | number>[] = [];
   for (const day of trip.days) {
     if (rows.length >= maxRows) break;
@@ -268,7 +304,16 @@ export function buildPreviewRows(
       for (const schedule of sorted) {
         if (rows.length >= maxRows) break;
         rows.push(
-          scheduleToRow(schedule, day, pattern.label, fields, undefined, locale, valueLabels),
+          scheduleToRow(
+            schedule,
+            day,
+            pattern.label,
+            fields,
+            undefined,
+            locale,
+            valueLabels,
+            currency,
+          ),
         );
       }
     }
@@ -419,6 +464,7 @@ export async function exportTripToExcel(trip: TripResponse, options: ExportOptio
   const fl = options.fieldLabels;
   const loc = options.locale;
   const vl = options.valueLabels;
+  const cur = toCurrencyCode(trip.currency);
 
   switch (options.patternMode) {
     case "separateSheets": {
@@ -427,7 +473,7 @@ export async function exportTripToExcel(trip: TripResponse, options: ExportOptio
       for (const day of trip.days) {
         for (const pattern of day.patterns) {
           const existing = labelMap.get(pattern.label) ?? [];
-          existing.push(...buildScheduleRows(day, [pattern], fields, fl, loc, vl));
+          existing.push(...buildScheduleRows(day, [pattern], fields, fl, loc, vl, cur));
           labelMap.set(pattern.label, existing);
         }
       }
@@ -438,7 +484,7 @@ export async function exportTripToExcel(trip: TripResponse, options: ExportOptio
     }
     case "patternColumn": {
       const rows = trip.days.flatMap((day) =>
-        buildScheduleRows(day, day.patterns, fields, fl, loc, vl),
+        buildScheduleRows(day, day.patterns, fields, fl, loc, vl, cur),
       );
       addRowsToWorksheet(wb, sn.itinerary, rows);
       break;
@@ -446,7 +492,7 @@ export async function exportTripToExcel(trip: TripResponse, options: ExportOptio
   }
 
   if (options.includeCandidates && trip.candidates.length > 0) {
-    const candidateRows = buildCandidateRows(trip.candidates, fields, fl, loc, vl);
+    const candidateRows = buildCandidateRows(trip.candidates, fields, fl, loc, vl, cur);
     addRowsToWorksheet(wb, sn.candidates, candidateRows);
   }
 
@@ -527,6 +573,7 @@ export async function exportTripToCSV(trip: TripResponse, options: ExportOptions
   const fl = options.fieldLabels ?? DEFAULT_EXPORT_FIELD_LABELS;
   const loc = options.locale;
   const vl = options.valueLabels;
+  const cur = toCurrencyCode(trip.currency);
   const sn = options.sheetNames ?? {
     itinerary: "Itinerary",
     candidates: "Candidates",
@@ -537,7 +584,7 @@ export async function exportTripToCSV(trip: TripResponse, options: ExportOptions
 
   const headers = fields.map((f) => fl[f]);
   const rows = trip.days.flatMap((day) =>
-    buildScheduleRows(day, day.patterns, fields, fl, loc, vl),
+    buildScheduleRows(day, day.patterns, fields, fl, loc, vl, cur),
   );
   let csv = rowsToCSV(headers, rows, delimiter, lineEnding);
 
@@ -546,7 +593,7 @@ export async function exportTripToCSV(trip: TripResponse, options: ExportOptions
   if (options.includeCandidates && trip.candidates.length > 0) {
     const candidateFields = filterCandidateFields(fields);
     const candidateHeaders = candidateFields.map((f) => fl[f]);
-    const candidateRows = buildCandidateRows(trip.candidates, fields, fl, loc, vl);
+    const candidateRows = buildCandidateRows(trip.candidates, fields, fl, loc, vl, cur);
     csv += `${eol}${eol}${sn.csvCandidatesSeparator}${eol}${rowsToCSV(candidateHeaders, candidateRows, delimiter, lineEnding)}`;
   }
 

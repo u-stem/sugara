@@ -1527,6 +1527,7 @@
     "departurePlace": "出発地",
     "arrivalPlace": "到着地",
     "transportMethod": "移動手段",
+    "cost": "交通費",
     "urls": "URL",
     "memo": "メモ",
     "pattern": "パターン",

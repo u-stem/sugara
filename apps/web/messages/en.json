@@ -1527,6 +1527,7 @@
     "departurePlace": "Departure",
     "arrivalPlace": "Arrival",
     "transportMethod": "Transport",
+    "cost": "Fare",
     "urls": "URL",
     "memo": "Memo",
     "pattern": "Pattern",

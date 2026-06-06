@@ -68,6 +68,8 @@ type CandidatePanelProps = {
   onSaveToBookmark?: (scheduleIds: string[]) => void;
   onReorderCandidate?: (id: string, direction: "up" | "down") => void;
   days?: DayResponse[];
+  // Trip currency (whole-unit) for formatting transport candidate fares.
+  currency?: string;
 };
 
 export function CandidatePanel({
@@ -87,6 +89,7 @@ export function CandidatePanel({
   onSaveToBookmark,
   onReorderCandidate,
   days,
+  currency,
 }: CandidatePanelProps) {
   const tm = useTranslations("messages");
   const tc = useTranslations("common");
@@ -390,6 +393,7 @@ export function CandidatePanel({
 
       <CandidateList
         candidates={sortedCandidates}
+        currency={currency}
         draggable={draggable}
         droppableRef={setDroppableRef}
         isOverCandidates={isOverCandidates}
