@@ -32,8 +32,14 @@ export const transportMethodSchema = z.enum([
   "walk",
   "car",
   "airplane",
+  "bicycle",
 ]);
 export type TransportMethod = z.infer<typeof transportMethodSchema>;
+
+// Upper bound guards against typos / overflow; transit fares never reach this.
+// cost is a whole-unit planning fare estimate in the trip currency (e.g. 580 = ¥580 / $580),
+// a separate unit system from expenses.amount (minor units, scaled by 10^decimals).
+export const SCHEDULE_MAX_COST = 99_999_999;
 
 const timeRegex = /^\d{2}:\d{2}(:\d{2})?$/;
 function isValidTime(val: string): boolean {
@@ -75,6 +81,7 @@ export const createScheduleSchema = z.object({
   departurePlace: z.string().max(SCHEDULE_PLACE_MAX_LENGTH).nullish(),
   arrivalPlace: z.string().max(SCHEDULE_PLACE_MAX_LENGTH).nullish(),
   transportMethod: transportMethodSchema.nullish(),
+  cost: z.number().int().nonnegative().max(SCHEDULE_MAX_COST).nullish(),
   color: scheduleColorSchema.default("blue"),
   endDayOffset: z.number().int().min(1).max(MAX_END_DAY_OFFSET).nullish(),
   crossDayAnchor: z.enum(["before", "after"]).nullable().optional(),

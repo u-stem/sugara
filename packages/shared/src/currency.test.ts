@@ -4,6 +4,7 @@ import {
   convertToBase,
   currencyCodeSchema,
   formatCurrency,
+  formatWholeUnits,
   fromMinorUnits,
   toMinorUnits,
 } from "./currency";
@@ -67,6 +68,22 @@ describe("formatCurrency", () => {
 
   it("formats USD in English locale", () => {
     expect(formatCurrency(1250, "USD", "en")).toContain("12.50");
+  });
+});
+
+describe("formatWholeUnits", () => {
+  it("formats a JPY whole-unit fare without scaling", () => {
+    // 580 stays 580, not divided by any minor-unit factor
+    expect(formatWholeUnits(580, "JPY", "ja")).toBe("￥580");
+  });
+
+  it("formats a non-JPY whole-unit fare without minor-unit scaling", () => {
+    // 580 must render as $580, NOT $5.80 (the bug formatCurrency caused)
+    expect(formatWholeUnits(580, "USD", "en")).toBe("$580");
+  });
+
+  it("drops fractional digits for currencies with decimals", () => {
+    expect(formatWholeUnits(580, "USD", "en")).not.toContain(".");
   });
 });
 

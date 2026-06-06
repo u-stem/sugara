@@ -132,8 +132,8 @@ function makeValueLabels(): ValueLabels {
 }
 
 describe("EXPORT_FIELDS / EXPORT_FIELD_LABELS", () => {
-  it("has 13 fields defined", () => {
-    expect(EXPORT_FIELDS).toHaveLength(13);
+  it("has 14 fields defined", () => {
+    expect(EXPORT_FIELDS).toHaveLength(14);
   });
 
   it("has a Japanese label for every field", () => {
@@ -245,6 +245,40 @@ describe("scheduleToRow", () => {
     const row = scheduleToRow(schedule, day, null, ["urls"]);
 
     expect(row[EXPORT_FIELD_LABELS.urls]).toBe("https://example.com\nhttps://maps.google.com");
+  });
+
+  it("formats transport cost in the trip currency (whole units, no minor scaling)", () => {
+    const schedule = makeSchedule({ category: "transport", cost: 580 });
+    const day = makeDay();
+    const row = scheduleToRow(schedule, day, null, ["cost"], undefined, "ja", undefined, "JPY");
+
+    // Whole-unit: 580 -> ¥580, not ¥5.80. The yen sign may be half-width (¥) or
+    // full-width (￥) depending on the ICU/Node version, so match either.
+    expect(row[EXPORT_FIELD_LABELS.cost]).toMatch(/^[¥￥]580$/);
+  });
+
+  it("formats transport cost for non-JPY currency without cent scaling", () => {
+    const schedule = makeSchedule({ category: "transport", cost: 580 });
+    const day = makeDay();
+    const row = scheduleToRow(schedule, day, null, ["cost"], undefined, "en", undefined, "USD");
+
+    expect(row[EXPORT_FIELD_LABELS.cost]).toBe("$580");
+  });
+
+  it("leaves cost blank for non-transport rows even when cost is set", () => {
+    const schedule = makeSchedule({ category: "sightseeing", cost: 580 });
+    const day = makeDay();
+    const row = scheduleToRow(schedule, day, null, ["cost"], undefined, "ja", undefined, "JPY");
+
+    expect(row[EXPORT_FIELD_LABELS.cost]).toBe("");
+  });
+
+  it("leaves cost blank when cost is null", () => {
+    const schedule = makeSchedule({ category: "transport", cost: null });
+    const day = makeDay();
+    const row = scheduleToRow(schedule, day, null, ["cost"], undefined, "ja", undefined, "JPY");
+
+    expect(row[EXPORT_FIELD_LABELS.cost]).toBe("");
   });
 
   it("includes dayNumber", () => {

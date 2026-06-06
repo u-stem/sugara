@@ -375,6 +375,7 @@ export default function SpTripDetailPage() {
                   onSaveToBookmark={canEdit && online ? handleSaveToBookmark : undefined}
                   onReorderSchedule={dnd.reorderSchedule}
                   mapsEnabled={trip.mapsEnabled}
+                  currency={trip.currency}
                   headerContent={
                     <PatternTabs
                       patterns={currentDay.patterns}
@@ -419,6 +420,7 @@ export default function SpTripDetailPage() {
               onSaveToBookmark={canEdit && online ? handleSaveToBookmark : undefined}
               onReorderCandidate={dnd.reorderCandidate}
               days={trip.days}
+              currency={trip.currency}
             />
           </div>
         );

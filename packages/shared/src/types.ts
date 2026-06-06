@@ -20,6 +20,7 @@ export type ScheduleResponse = {
   departurePlace?: string | null;
   arrivalPlace?: string | null;
   transportMethod?: string | null;
+  cost?: number | null;
   color: ScheduleColor;
   endDayOffset?: number | null;
   crossDayAnchor?: "before" | "after" | null;

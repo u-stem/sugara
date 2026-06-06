@@ -12,6 +12,8 @@ import { DndInsertIndicator } from "./dnd-insert-indicator";
 
 type CandidateListProps = {
   candidates: CandidateResponse[];
+  // Trip currency (whole-unit) passed down to format transport candidate fares.
+  currency?: string;
   draggable?: boolean;
   droppableRef: (node: HTMLElement | null) => void;
   isOverCandidates: boolean;
@@ -33,6 +35,7 @@ type CandidateListProps = {
 
 export const CandidateList = memo(function CandidateList({
   candidates,
+  currency,
   draggable,
   droppableRef,
   isOverCandidates,
@@ -72,6 +75,7 @@ export const CandidateList = memo(function CandidateList({
               {withDndIndicators && overCandidateId === spot.id && overlayIndicator}
               <CandidateItem
                 spot={spot}
+                currency={currency}
                 onEdit={() => onEdit(spot)}
                 onDelete={() => onDelete(spot.id)}
                 onAssign={onAssign ? () => onAssign(spot.id) : undefined}

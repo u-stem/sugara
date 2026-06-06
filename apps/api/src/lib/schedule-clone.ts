@@ -15,6 +15,7 @@ const CLONE_FIELDS = [
   "departurePlace",
   "arrivalPlace",
   "transportMethod",
+  "cost",
   "color",
   "latitude",
   "longitude",

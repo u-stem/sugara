@@ -17,6 +17,7 @@ describe("buildScheduleCloneValues", () => {
     departurePlace: "Station A",
     arrivalPlace: "Station B",
     transportMethod: "train" as const,
+    cost: 580,
     color: "red" as const,
     latitude: 35.6586,
     longitude: 139.7454,
@@ -41,6 +42,7 @@ describe("buildScheduleCloneValues", () => {
       departurePlace: "Station A",
       arrivalPlace: "Station B",
       transportMethod: "train",
+      cost: 580,
       color: "red",
       latitude: 35.6586,
       longitude: 139.7454,
@@ -76,6 +78,7 @@ describe("buildScheduleCloneValues", () => {
       departurePlace: null,
       arrivalPlace: null,
       transportMethod: null,
+      cost: null,
       latitude: null,
       longitude: null,
       placeId: null,
@@ -90,6 +93,7 @@ describe("buildScheduleCloneValues", () => {
     expect(result.departurePlace).toBeNull();
     expect(result.arrivalPlace).toBeNull();
     expect(result.transportMethod).toBeNull();
+    expect(result.cost).toBeNull();
     expect(result.latitude).toBeNull();
     expect(result.longitude).toBeNull();
     expect(result.placeId).toBeNull();

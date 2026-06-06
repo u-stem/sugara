@@ -468,7 +468,8 @@
       "taxi": "Taxi",
       "walk": "Walk",
       "car": "Car",
-      "airplane": "Airplane"
+      "airplane": "Airplane",
+      "bicycle": "Bicycle"
     },
     "status": {
       "scheduling": "Coordinating",
@@ -1327,6 +1328,8 @@
     "arrivalPlace": "Arrival",
     "transportMethod": "Transport Method",
     "transportPlaceholder": "Select",
+    "cost": "Transit fare",
+    "costPlaceholder": "580",
     "url": "URL",
     "removeUrl": "Remove URL",
     "addUrl": "Add URL",
@@ -1524,6 +1527,7 @@
     "departurePlace": "Departure",
     "arrivalPlace": "Arrival",
     "transportMethod": "Transport",
+    "cost": "Fare",
     "urls": "URL",
     "memo": "Memo",
     "pattern": "Pattern",

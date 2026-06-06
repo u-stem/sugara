@@ -36,6 +36,7 @@ export function RightPanel({
   mapsEnabled,
   allSchedules,
   currentDaySchedules,
+  currency,
 }: {
   tripId: string;
   rightPanelTab: RightPanelTab;
@@ -60,6 +61,7 @@ export function RightPanel({
   mapsEnabled: boolean;
   allSchedules: ScheduleWithDayIndex[];
   currentDaySchedules: ScheduleResponse[];
+  currency?: string;
 }) {
   const tsch = useTranslations("schedule");
   return (
@@ -101,6 +103,7 @@ export function RightPanel({
             overCandidateId={overCandidateId}
             maxEndDayOffset={maxEndDayOffset}
             onSaveToBookmark={onSaveToBookmark}
+            currency={currency}
           />
         ) : rightPanelTab === "bookmarks" ? (
           hasDays ? (

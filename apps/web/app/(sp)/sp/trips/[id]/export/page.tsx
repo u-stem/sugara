@@ -1,6 +1,7 @@
 "use client";
 
 import type { ExpensesResponse, TripResponse } from "@sugara/shared";
+import { toCurrencyCode } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, CheckCheck, Download, X } from "lucide-react";
 import Link from "next/link";
@@ -128,6 +129,7 @@ export default function SpTripExportPage() {
     departurePlace: tel("departurePlace"),
     arrivalPlace: tel("arrivalPlace"),
     transportMethod: tel("transportMethod"),
+    cost: tel("cost"),
     urls: tel("urls"),
     memo: tel("memo"),
     pattern: tel("pattern"),
@@ -250,6 +252,7 @@ export default function SpTripExportPage() {
     if (!trip || effectiveFields.length === 0) return new Map<string, SheetData>();
 
     const sheets = new Map<string, SheetData>();
+    const currency = toCurrencyCode(trip.currency);
 
     if (effectivePatternMode === "separateSheets") {
       for (const day of trip.days) {
@@ -264,6 +267,7 @@ export default function SpTripExportPage() {
                 fieldLabels,
                 locale,
                 valueLabels,
+                currency,
               ),
             );
           } else {
@@ -276,6 +280,7 @@ export default function SpTripExportPage() {
                 fieldLabels,
                 locale,
                 valueLabels,
+                currency,
               ),
             });
           }
@@ -283,7 +288,15 @@ export default function SpTripExportPage() {
       }
     } else {
       const rows = trip.days.flatMap((day) =>
-        buildScheduleRows(day, day.patterns, effectiveFields, fieldLabels, locale, valueLabels),
+        buildScheduleRows(
+          day,
+          day.patterns,
+          effectiveFields,
+          fieldLabels,
+          locale,
+          valueLabels,
+          currency,
+        ),
       );
       sheets.set(exportSheetNames.itinerary, { fields: effectiveFields, rows });
     }
@@ -298,6 +311,7 @@ export default function SpTripExportPage() {
           fieldLabels,
           locale,
           valueLabels,
+          currency,
         ),
       });
     }

@@ -5,6 +5,7 @@ import {
   MAX_URLS_PER_SCHEDULE,
   SCHEDULE_ADDRESS_MAX_LENGTH,
   SCHEDULE_COLORS,
+  SCHEDULE_MAX_COST,
   SCHEDULE_MEMO_MAX_LENGTH,
   SCHEDULE_NAME_MAX_LENGTH,
   SCHEDULE_PLACE_MAX_LENGTH,
@@ -61,6 +62,7 @@ type ScheduleFormFieldsProps = {
     departurePlace?: string;
     arrivalPlace?: string;
     memo?: string;
+    cost?: number | null;
   };
   idPrefix?: string;
   mapsEnabled?: boolean;
@@ -98,7 +100,7 @@ export function ScheduleFormFields({
     ["sightseeing", "restaurant", "hotel", "transport", "activity", "other"] as const
   ).map((v) => ({ value: v, label: tlCat(v) }));
   const transportMethodOptions = (
-    ["train", "shinkansen", "bus", "taxi", "walk", "car", "airplane"] as const
+    ["train", "shinkansen", "bus", "taxi", "walk", "car", "bicycle", "airplane"] as const
   ).map((v) => ({ value: v, label: tlTransport(v) }));
   // Controlled state for text fields (Dialog unmounts on close, so these re-init correctly)
   const [name, setName] = useState(defaultValues?.name ?? "");
@@ -119,6 +121,7 @@ export function ScheduleFormFields({
   const [address, setAddress] = useState(defaultValues?.address ?? "");
   const [departurePlace, setDeparturePlace] = useState(defaultValues?.departurePlace ?? "");
   const [arrivalPlace, setArrivalPlace] = useState(defaultValues?.arrivalPlace ?? "");
+  const [cost, setCost] = useState(defaultValues?.cost != null ? String(defaultValues.cost) : "");
   const [memo, setMemo] = useState(defaultValues?.memo ?? "");
 
   // Always show at least one URL input
@@ -303,6 +306,21 @@ export function ScheduleFormFields({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`${idPrefix}cost`}>{tsf("cost")}</Label>
+            <Input
+              id={`${idPrefix}cost`}
+              name="cost"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={SCHEDULE_MAX_COST}
+              step={1}
+              value={cost}
+              onChange={(e) => setCost(e.target.value)}
+              placeholder={tsf("costPlaceholder")}
+            />
           </div>
         </>
       )}

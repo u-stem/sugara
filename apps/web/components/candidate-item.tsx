@@ -3,6 +3,7 @@
 import { defaultAnimateLayoutChanges, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CandidateResponse, TransportMethod } from "@sugara/shared";
+import { formatWholeUnits, toCurrencyCode } from "@sugara/shared";
 import {
   ArrowLeft,
   Bookmark,
@@ -13,9 +14,10 @@ import {
   Route,
   StickyNote,
   Trash2,
+  Wallet,
   X,
 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import type { CSSProperties } from "react";
 import { memo, useState } from "react";
 import {
@@ -47,6 +49,8 @@ import { ReorderControls } from "./reorder-controls";
 
 type CandidateItemProps = {
   spot: CandidateResponse;
+  // Trip currency (whole-unit) used to format a transport candidate's fare estimate.
+  currency?: string;
   onEdit: () => void;
   onDelete: () => void;
   onAssign?: () => void;
@@ -67,6 +71,7 @@ type CandidateItemProps = {
 
 export const CandidateItem = memo(function CandidateItem({
   spot,
+  currency = "JPY",
   onEdit,
   onDelete,
   onAssign,
@@ -85,6 +90,7 @@ export const CandidateItem = memo(function CandidateItem({
   isLast,
 }: CandidateItemProps) {
   const isMobile = useMobile();
+  const locale = useLocale();
   const tlCat = useTranslations("labels.category");
   const tlTransport = useTranslations("labels.transportMethod");
   const tci = useTranslations("candidateItem");
@@ -107,6 +113,13 @@ export const CandidateItem = memo(function CandidateItem({
   const transportLabel = spot.transportMethod
     ? tlTransport(spot.transportMethod as TransportMethod)
     : null;
+  // cost is a whole-unit fare estimate in the trip currency, meaningful only for
+  // transport candidates. formatWholeUnits skips minor-unit scaling so non-JPY
+  // currencies aren't mis-rendered as cents (matches TransportItem's display).
+  const costStr =
+    spot.category === "transport" && spot.cost != null
+      ? formatWholeUnits(spot.cost, toCurrencyCode(currency), locale)
+      : null;
   const CardWrapper = selectable ? "button" : "div";
   const cardElement = (
     <CardWrapper
@@ -205,6 +218,12 @@ export const CandidateItem = memo(function CandidateItem({
               </span>
             );
           })()}
+        {costStr && (
+          <span className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground">
+            <Wallet className="h-3 w-3 shrink-0 text-muted-foreground/70" />
+            {costStr}
+          </span>
+        )}
         {spot.urls.filter(isSafeUrl).map((u) => (
           <a
             key={u}
