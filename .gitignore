@@ -6,6 +6,11 @@ dist/
 .next/
 out/
 
+# Next.js auto-generates next-env.d.ts and flips its referenced path between
+# `next dev` and `next build`, causing constant churn. Next regenerates it on
+# every build, so it does not need to be tracked.
+apps/web/next-env.d.ts
+
 # Turborepo
 .turbo/
 
