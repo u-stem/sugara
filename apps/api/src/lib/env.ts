@@ -38,6 +38,11 @@ export const env = {
   get SENTRY_WEBHOOK_SECRET() {
     return process.env.SENTRY_WEBHOOK_SECRET;
   },
+  // Shared secret for Vercel Cron invocations. Vercel sends it as
+  // `Authorization: Bearer <CRON_SECRET>` when the env var is set.
+  get CRON_SECRET() {
+    return process.env.CRON_SECRET;
+  },
   get VAPID_PUBLIC_KEY() {
     return withDefault("VAPID_PUBLIC_KEY", "");
   },
