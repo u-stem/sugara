@@ -47,6 +47,7 @@ export default async function PrivacyPage() {
               <li>{t("privacy.section3Item3")}</li>
               <li>{t("privacy.section3Item4")}</li>
               <li>{t("privacy.section3Item5")}</li>
+              <li>{t("privacy.section3Item6")}</li>
             </ul>
           </div>
 
@@ -61,6 +62,7 @@ export default async function PrivacyPage() {
               <li>{t("privacy.section4Item3")}</li>
               <li>{t("privacy.section4Item4")}</li>
               <li>{t("privacy.section4Item5")}</li>
+              <li>{t("privacy.section4Item6")}</li>
             </ul>
           </div>
 
@@ -74,6 +76,10 @@ export default async function PrivacyPage() {
               <li>{t("privacy.section5Item2")}</li>
               <li>{t("privacy.section5Item3")}</li>
               <li>{t("privacy.section5Item4")}</li>
+              <li>{t("privacy.section5Item5")}</li>
+              <li>{t("privacy.section5Item6")}</li>
+              <li>{t("privacy.section5Item7")}</li>
+              <li>{t("privacy.section5Item8")}</li>
             </ul>
           </div>
 
@@ -107,12 +113,21 @@ export default async function PrivacyPage() {
 
           <div>
             <h2 className="text-lg font-semibold">{t("privacy.section10Title")}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {t("privacy.section10Content")}
+            </p>
+          </div>
+
+          <div>
+            <h2 className="text-lg font-semibold">{t("privacy.section11Title")}</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              {t("privacy.section10Date1")}
+              {t("privacy.section11Date1")}
               <br />
-              {t("privacy.section10Date2")}
+              {t("privacy.section11Date2")}
               <br />
-              {t("privacy.section10Date3")}
+              {t("privacy.section11Date3")}
+              <br />
+              {t("privacy.section11Date4")}
             </p>
           </div>
         </section>

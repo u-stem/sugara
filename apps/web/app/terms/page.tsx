@@ -35,6 +35,7 @@ export default async function TermsPage() {
               <li>{t("terms.article2Item1")}</li>
               <li>{t("terms.article2Item2")}</li>
               <li>{t("terms.article2Item3")}</li>
+              <li>{t("terms.article2Item4")}</li>
             </ol>
           </div>
 
@@ -67,6 +68,7 @@ export default async function TermsPage() {
               <li>{t("terms.article5Item1")}</li>
               <li>{t("terms.article5Item2")}</li>
               <li>{t("terms.article5Item3")}</li>
+              <li>{t("terms.article5Item4")}</li>
             </ol>
           </div>
 
@@ -107,6 +109,8 @@ export default async function TermsPage() {
               {t("terms.article10Date2")}
               <br />
               {t("terms.article10Date3")}
+              <br />
+              {t("terms.article10Date4")}
             </p>
           </div>
         </section>
