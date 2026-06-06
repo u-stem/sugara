@@ -234,7 +234,7 @@ describe("Article routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.content).toBe("body");
-      expect(body.tripIds).toBeUndefined(); // not the owner
+      expect(body.tripIds).toEqual([]); // hidden from non-owner
     });
 
     it("returns 404 for a private article seen by a stranger", async () => {

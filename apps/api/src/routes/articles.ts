@@ -35,7 +35,8 @@ type ArticleWithLikes = {
   likes: LikeRow[];
 };
 
-// List/profile cards: omit the (potentially large) Markdown body.
+// List/profile cards: omit the (potentially large) Markdown body. Shape matches
+// ArticleListItem in @sugara/shared.
 function articleSummary(a: ArticleWithLikes, viewerId: string | undefined) {
   return {
     id: a.id,
@@ -45,23 +46,25 @@ function articleSummary(a: ArticleWithLikes, viewerId: string | undefined) {
     visibility: a.visibility,
     sortOrder: a.sortOrder,
     likeCount: a.likes.length,
-    likedByViewer: viewerId ? a.likes.some((l) => l.userId === viewerId) : false,
+    likedByMe: viewerId ? a.likes.some((l) => l.userId === viewerId) : false,
     createdAt: a.createdAt,
     updatedAt: a.updatedAt,
   };
 }
 
-// Detail view: include the body. tripIds are exposed only to the owner so a
-// context-share viewer can't enumerate the author's other linked trips.
+// Detail view: include the body. Shape matches ArticleResponse. tripIds are
+// real only for the owner; others get [] so a context-share viewer can't
+// enumerate the author's other linked trips.
 function articleDetail(
   a: ArticleWithLikes & { articleTrips?: { tripId: string }[] },
   viewerId: string | undefined,
 ) {
-  const base = { ...articleSummary(a, viewerId), content: a.content };
-  if (viewerId && viewerId === a.ownerId) {
-    return { ...base, tripIds: (a.articleTrips ?? []).map((t) => t.tripId) };
-  }
-  return base;
+  const isOwner = !!viewerId && viewerId === a.ownerId;
+  return {
+    ...articleSummary(a, viewerId),
+    content: a.content,
+    tripIds: isOwner ? (a.articleTrips ?? []).map((t) => t.tripId) : [],
+  };
 }
 
 // --- Visibility ---------------------------------------------------------------

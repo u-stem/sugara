@@ -192,10 +192,14 @@ export type ArticleResponse = {
 
 export type ArticleListItem = {
   id: string;
+  ownerId: string;
   title: string;
   tags: string[];
   visibility: ArticleVisibility;
+  sortOrder: number;
   likeCount: number;
+  likedByMe: boolean;
+  createdAt: string;
   updatedAt: string;
 };
 
