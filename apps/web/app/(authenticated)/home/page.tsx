@@ -1,6 +1,5 @@
 "use client";
 
-import { MAX_TRIPS_PER_USER } from "@sugara/shared";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef } from "react";
@@ -15,7 +14,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingBoundary } from "@/components/ui/loading-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useSession } from "@/lib/auth-client";
 import { pageTitle } from "@/lib/constants";
+import { getUserTripLimit } from "@/lib/guest";
 import { type HomeTab, useHomeTrips } from "@/lib/hooks/use-home-trips";
 import { useOnlineStatus } from "@/lib/hooks/use-online-status";
 import { useUnsettledTripIds } from "@/lib/hooks/use-unsettled-trip-ids";
@@ -60,6 +61,8 @@ function HomeSkeleton() {
 }
 
 export default function HomePage() {
+  const { data: session } = useSession();
+  const tripLimit = getUserTripLimit(session);
   const tm = useTranslations("messages");
   const tt = useTranslations("trip");
   const tc = useTranslations("common");
@@ -199,8 +202,8 @@ export default function HomePage() {
           </Button>
         </span>
       </TooltipTrigger>
-      {ownedTrips.length >= MAX_TRIPS_PER_USER && (
-        <TooltipContent>{tm("limitTrips", { max: MAX_TRIPS_PER_USER })}</TooltipContent>
+      {ownedTrips.length >= tripLimit && (
+        <TooltipContent>{tm("limitTrips", { max: tripLimit })}</TooltipContent>
       )}
     </Tooltip>
   );

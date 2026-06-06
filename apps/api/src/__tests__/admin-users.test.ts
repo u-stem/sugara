@@ -74,14 +74,19 @@ describe("GET /api/admin/users", () => {
         displayUsername: "Alice",
         email: "alice@gmail.com",
         emailVerified: true,
-        isAnonymous: false,
+        tripLimit: null,
         createdAt: new Date("2026-01-01"),
+        tripCount: 3,
       },
     ];
     mockDbSelect.mockReturnValue({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          orderBy: vi.fn().mockResolvedValue(mockUsers),
+        leftJoin: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            groupBy: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockResolvedValue(mockUsers),
+            }),
+          }),
         }),
       }),
     });
@@ -93,7 +98,86 @@ describe("GET /api/admin/users", () => {
       id: "user-1",
       username: expect.any(String),
       hasRealEmail: expect.any(Boolean),
+      tripCount: 3,
+      // null override falls back to the global default
+      tripLimit: 10,
     });
+  });
+});
+
+describe("PATCH /api/admin/users/:userId/trip-limit", () => {
+  const app = createApp();
+
+  beforeEach(() => {
+    process.env.ADMIN_USERNAME = "adminuser";
+  });
+
+  it("非管理者なら 403 を返す", async () => {
+    mockGetSession.mockResolvedValue({
+      user: REGULAR_USER,
+      session: { id: "session-1" },
+    });
+    const res = await app.request("/api/admin/users/user-target/trip-limit", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tripLimit: 20 }),
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("不正な値なら 400 を返す", async () => {
+    mockGetSession.mockResolvedValue({
+      user: ADMIN_USER,
+      session: { id: "session-1" },
+    });
+    const res = await app.request("/api/admin/users/user-target/trip-limit", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tripLimit: 0 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("存在しないユーザーなら 404 を返す", async () => {
+    mockGetSession.mockResolvedValue({
+      user: ADMIN_USER,
+      session: { id: "session-1" },
+    });
+    mockDbUpdate.mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    });
+    const res = await app.request("/api/admin/users/non-existent-id/trip-limit", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tripLimit: 20 }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("管理者なら上限を更新する", async () => {
+    mockGetSession.mockResolvedValue({
+      user: ADMIN_USER,
+      session: { id: "session-1" },
+    });
+    mockDbUpdate.mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ id: "user-target", tripLimit: 20 }]),
+        }),
+      }),
+    });
+    const res = await app.request("/api/admin/users/user-target/trip-limit", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tripLimit: 20 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.tripLimit).toBe(20);
   });
 });
 

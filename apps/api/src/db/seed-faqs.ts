@@ -367,7 +367,7 @@ const JA_FAQS = [
   {
     question: "旅行や予定に上限はありますか？",
     answer:
-      "旅行は1ユーザーあたり10件、予定は1旅行あたり300件、メンバーは1旅行あたり20人、パターンは1日あたり3つ、ブックマークリストは5件、フレンドは100人、グループは10件、お土産は1旅行あたり100件、かんたん投票は1ユーザーあたり20件までです。",
+      "旅行は1ユーザーあたり10件（ご要望に応じて個別に引き上げ可能です）、予定は1旅行あたり300件、メンバーは1旅行あたり20人、パターンは1日あたり3つ、ブックマークリストは5件、フレンドは100人、グループは10件、お土産は1旅行あたり100件、かんたん投票は1ユーザーあたり20件までです。",
     sortOrder: 100,
   },
   // ---- Desktop App ----
@@ -751,7 +751,7 @@ const EN_FAQS = [
   {
     question: "Are there limits on trips and schedules?",
     answer:
-      "Trips: 10 per user, Schedules: 300 per trip, Members: 20 per trip, Patterns: 3 per day, Bookmark lists: 5, Friends: 100, Groups: 10, Souvenirs: 100 per trip, Quick Polls: 20 per user.",
+      "Trips: 10 per user (can be raised individually on request), Schedules: 300 per trip, Members: 20 per trip, Patterns: 3 per day, Bookmark lists: 5, Friends: 100, Groups: 10, Souvenirs: 100 per trip, Quick Polls: 20 per user.",
     sortOrder: 100,
   },
   // ---- Desktop App ----

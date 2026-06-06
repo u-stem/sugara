@@ -1,8 +1,8 @@
 "use client";
 
-import type { AdminStatsResponse } from "@sugara/shared";
+import { type AdminStatsResponse, MAX_TRIP_LIMIT } from "@sugara/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, KeyRound, Save, X } from "lucide-react";
+import { ExternalLink, KeyRound, Save, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -11,6 +11,8 @@ import { CopyButton } from "@/components/copy-button";
 import { Logo } from "@/components/logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { LoadingBoundary } from "@/components/ui/loading-boundary";
 import {
   ResponsiveDialog,
@@ -172,6 +174,8 @@ type AdminUser = {
   hasRealEmail: boolean;
   emailVerified: boolean;
   createdAt: string;
+  tripCount: number;
+  tripLimit: number;
 };
 
 type AdminUsersResponse = { users: AdminUser[] };
@@ -223,6 +227,11 @@ export default function AdminPage() {
     username: string;
     tempPassword: string;
   } | null>(null);
+  const [limitEdit, setLimitEdit] = useState<{
+    userId: string;
+    username: string;
+    value: string;
+  } | null>(null);
 
   const { data, isLoading, error, dataUpdatedAt } = useQuery({
     queryKey: queryKeys.admin.stats(),
@@ -273,6 +282,30 @@ export default function AdminPage() {
     },
     onError: () => {
       toast.error("一時パスワードの発行に失敗しました。");
+    },
+  });
+
+  const updateTripLimit = useMutation({
+    mutationFn: (variables: { userId: string; tripLimit: number }) =>
+      api<{ tripLimit: number }>(`/api/admin/users/${variables.userId}/trip-limit`, {
+        method: "PATCH",
+        body: JSON.stringify({ tripLimit: variables.tripLimit }),
+      }),
+    onSuccess: (result, variables) => {
+      queryClient.setQueryData<AdminUsersResponse>(queryKeys.admin.users(), (prev) =>
+        prev
+          ? {
+              users: prev.users.map((u) =>
+                u.id === variables.userId ? { ...u, tripLimit: result.tripLimit } : u,
+              ),
+            }
+          : prev,
+      );
+      setLimitEdit(null);
+      toast.success("旅行作成上限を更新しました");
+    },
+    onError: () => {
+      toast.error("上限の更新に失敗しました。");
     },
   });
 
@@ -399,6 +432,7 @@ export default function AdminPage() {
                         <th className="px-4 py-2 text-left font-medium">ユーザー名</th>
                         <th className="px-4 py-2 text-left font-medium">登録日</th>
                         <th className="px-4 py-2 text-left font-medium">メール</th>
+                        <th className="px-4 py-2 text-left font-medium">旅行数</th>
                         <th className="px-4 py-2 text-left font-medium">操作</th>
                       </tr>
                     </thead>
@@ -418,18 +452,37 @@ export default function AdminPage() {
                                 : "未設定"}
                             </Badge>
                           </td>
+                          <td className="px-4 py-2 tabular-nums text-muted-foreground">
+                            {u.tripCount} / {u.tripLimit}
+                          </td>
                           <td className="px-4 py-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={issueTempPassword.isPending}
-                              onClick={() =>
-                                issueTempPassword.mutate({ userId: u.id, username: u.username })
-                              }
-                            >
-                              <KeyRound className="h-3.5 w-3.5" />
-                              {issueTempPassword.isPending ? "発行中..." : "一時PW発行"}
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={issueTempPassword.isPending}
+                                onClick={() =>
+                                  issueTempPassword.mutate({ userId: u.id, username: u.username })
+                                }
+                              >
+                                <KeyRound className="h-3.5 w-3.5" />
+                                {issueTempPassword.isPending ? "発行中..." : "一時PW発行"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() =>
+                                  setLimitEdit({
+                                    userId: u.id,
+                                    username: u.username,
+                                    value: String(u.tripLimit),
+                                  })
+                                }
+                              >
+                                <SlidersHorizontal className="h-3.5 w-3.5" />
+                                上限変更
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -442,6 +495,7 @@ export default function AdminPage() {
                     <Skeleton className="h-4 w-24" />
                     <Skeleton className="h-4 w-16" />
                     <Skeleton className="h-4 w-12" />
+                    <Skeleton className="h-4 w-12" />
                     <Skeleton className="h-4 w-16 ml-auto" />
                   </div>
                   {[1, 2, 3].map((i) => (
@@ -452,7 +506,8 @@ export default function AdminPage() {
                       <Skeleton className="h-4 w-20" />
                       <Skeleton className="h-4 w-24" />
                       <Skeleton className="h-5 w-14 rounded-full" />
-                      <Skeleton className="h-8 w-24 ml-auto rounded-md" />
+                      <Skeleton className="h-4 w-10" />
+                      <Skeleton className="h-8 w-40 ml-auto rounded-md" />
                     </div>
                   ))}
                 </div>
@@ -543,6 +598,55 @@ export default function AdminPage() {
                 </div>
                 <p className="text-xs text-destructive">このパスワードは一度しか表示されません。</p>
               </div>
+            </ResponsiveDialogContent>
+          </ResponsiveDialog>
+        )}
+
+        {limitEdit && (
+          <ResponsiveDialog
+            open
+            onOpenChange={() => {
+              setLimitEdit(null);
+            }}
+          >
+            <ResponsiveDialogContent className="sm:max-w-md">
+              <ResponsiveDialogHeader>
+                <ResponsiveDialogTitle>旅行作成上限の変更</ResponsiveDialogTitle>
+                <ResponsiveDialogDescription>
+                  {limitEdit.username} さんが作成できる旅行の上限件数を設定します。
+                </ResponsiveDialogDescription>
+              </ResponsiveDialogHeader>
+              <form
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const parsed = Number(limitEdit.value);
+                  if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_TRIP_LIMIT) {
+                    toast.error(`1〜${MAX_TRIP_LIMIT} の整数を入力してください`);
+                    return;
+                  }
+                  updateTripLimit.mutate({ userId: limitEdit.userId, tripLimit: parsed });
+                }}
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="trip-limit">上限件数</Label>
+                  <Input
+                    id="trip-limit"
+                    type="number"
+                    min={1}
+                    max={MAX_TRIP_LIMIT}
+                    value={limitEdit.value}
+                    onChange={(e) => setLimitEdit({ ...limitEdit, value: e.target.value })}
+                    autoFocus
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm" disabled={updateTripLimit.isPending}>
+                    <Save className="h-3.5 w-3.5" />
+                    {updateTripLimit.isPending ? "保存中..." : "保存"}
+                  </Button>
+                </div>
+              </form>
             </ResponsiveDialogContent>
           </ResponsiveDialog>
         )}
