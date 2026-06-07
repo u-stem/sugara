@@ -178,6 +178,10 @@ export async function notifyArticleOwnersOnMemberAdded(params: {
     },
   });
 
+  // One notification per owner: a trip may link several private articles from the
+  // same owner, and without dedup they would receive one push per article.
+  const notifiedOwners = new Set<string>();
+
   for (const { article } of linkedArticleRows) {
     // Public articles are already visible to everyone; no notification needed.
     if (article.visibility === "public") continue;
@@ -186,6 +190,8 @@ export async function notifyArticleOwnersOnMemberAdded(params: {
     // Suppress self-notification for the actor performing a manual member add
     // (e.g. trip owner adding someone to a trip that has their own articles).
     if (excludeOwnerId !== undefined && article.ownerId === excludeOwnerId) continue;
+    if (notifiedOwners.has(article.ownerId)) continue;
+    notifiedOwners.add(article.ownerId);
 
     notifyUsers({
       type: "article_shared_member_added",

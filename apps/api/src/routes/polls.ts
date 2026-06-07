@@ -8,7 +8,7 @@ import {
   submitPollResponsesSchema,
   updatePollSchema,
 } from "@sugara/shared";
-import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
 import {
@@ -692,7 +692,18 @@ pollRoutes.post("/:pollId/confirm", async (c) => {
   // Fire-and-forget after transaction commit; no excludeOwnerId because notifying
   // the poll-confirmer about their own articles becoming visible is meaningful.
   if (autoJoinedUserIds.length > 0) {
-    void notifyArticleOwnersOnMemberAdded({ tripId, addedUserIds: autoJoinedUserIds });
+    // Resolve the joined members' names so the notification body reads correctly
+    // ("X joined") instead of an empty name. Multiple may join from one poll.
+    const joined = await db.query.users.findMany({
+      where: inArray(users.id, autoJoinedUserIds),
+      columns: { name: true },
+    });
+    const memberName = joined.map((u) => u.name).join(", ");
+    void notifyArticleOwnersOnMemberAdded({
+      tripId,
+      addedUserIds: autoJoinedUserIds,
+      memberName,
+    });
   }
 
   logActivity({

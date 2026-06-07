@@ -43,6 +43,7 @@ export function ArticlesPanel({ tripId }: ArticlesPanelProps) {
         </div>
       }
       error={error}
+      errorFallback={<p className="text-sm text-destructive">{ta("fetchFailed")}</p>}
     >
       {articles.length === 0 ? (
         <EmptyState message={ta("tripEmpty")} variant="box" />

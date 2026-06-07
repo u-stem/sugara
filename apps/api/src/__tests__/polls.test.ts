@@ -16,7 +16,7 @@ const {
   mockDbUpdate: vi.fn(),
   mockFindPollAsOwner: vi.fn(),
   mockDbQuery: {
-    users: { findFirst: vi.fn() },
+    users: { findFirst: vi.fn(), findMany: vi.fn() },
     trips: { findFirst: vi.fn() },
     tripMembers: { findFirst: vi.fn(), findMany: vi.fn() },
     schedulePollParticipants: { findFirst: vi.fn(), findMany: vi.fn() },
@@ -292,6 +292,8 @@ describe("Poll routes", () => {
         .mockResolvedValueOnce([{ userId: newParticipantId }]);
       // Inside transaction: existing trip members (only the owner)
       mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: fakeUser.id }]);
+      // After transaction: resolve auto-joined member names for the notification
+      mockDbQuery.users.findMany.mockResolvedValue([{ name: "New Member" }]);
       // Inside transaction: insert new member (no returning needed)
       mockDbInsert.mockReturnValue({
         values: vi.fn().mockResolvedValue(undefined),

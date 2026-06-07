@@ -5,7 +5,7 @@ import { db } from "../db/index";
 import { articles, bookmarkLists, users } from "../db/schema";
 import { ERROR_MSG } from "../lib/constants";
 import { areFriends } from "../lib/friends";
-import { getParam } from "../lib/params";
+import { getParam, isValidUuid } from "../lib/params";
 import { optionalAuth } from "../middleware/optional-auth";
 import type { OptionalAuthEnv } from "../types";
 
@@ -63,6 +63,11 @@ profileRoutes.get("/:userId/bookmark-lists", optionalAuth, async (c) => {
 // detail route, this surfaces only profile-level visibility (no context sharing).
 profileRoutes.get("/:userId/articles", optionalAuth, async (c) => {
   const userId = getParam(c, "userId");
+  // Guard before the UUID column comparison so a non-UUID param 404s instead of
+  // surfacing a Postgres "invalid input syntax" 500 (reachable anonymously).
+  if (!isValidUuid(userId)) {
+    return c.json({ error: ERROR_MSG.USER_NOT_FOUND }, 404);
+  }
 
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),

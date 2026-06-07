@@ -13,7 +13,7 @@ import { articleLikes, articles, articleTrips, tripMembers } from "../db/schema"
 import { ERROR_MSG } from "../lib/constants";
 import { areFriends } from "../lib/friends";
 import { hasChanges } from "../lib/has-changes";
-import { getParam } from "../lib/params";
+import { getParam, isValidUuid } from "../lib/params";
 import { requireAuth } from "../middleware/auth";
 import { optionalAuth } from "../middleware/optional-auth";
 import { requireNonGuest } from "../middleware/require-non-guest";
@@ -90,16 +90,6 @@ async function isArticleVisibleTo(
     columns: { tripId: true },
   });
   return !!membership;
-}
-
-// --- UUID guard ---------------------------------------------------------------
-
-// RFC 4122 UUID — prevents Postgres "invalid input syntax for type uuid" errors
-// on routes that pass the raw param directly into a UUID column comparison.
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-function isValidUuid(id: string): boolean {
-  return UUID_RE.test(id);
 }
 
 // ==============================================================================
@@ -436,6 +426,11 @@ tripArticleRoutes.use("*", requireAuth);
 tripArticleRoutes.get("/:tripId/articles", async (c) => {
   const user = c.get("user");
   const tripId = getParam(c, "tripId");
+  // Guard before the UUID column comparison: a non-UUID param would otherwise
+  // make Postgres throw (invalid input syntax) and surface as a 500.
+  if (!isValidUuid(tripId)) {
+    return c.json({ error: ERROR_MSG.TRIP_NOT_FOUND }, 404);
+  }
 
   const membership = await db.query.tripMembers.findFirst({
     where: and(eq(tripMembers.tripId, tripId), eq(tripMembers.userId, user.id)),

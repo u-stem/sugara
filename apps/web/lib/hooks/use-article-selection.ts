@@ -67,7 +67,8 @@ export function useArticleSelection({ articleIds, invalidateArticles }: UseArtic
         prev.filter((a) => !idSet.has(a.id)),
       );
     }
-    toast.success(ta("bulkDeleted", { count }));
+    // Optimistically clear the selection UI, but defer the success toast until the
+    // request actually succeeds — otherwise a failure shows "deleted" then an error.
     exit();
 
     try {
@@ -76,6 +77,9 @@ export function useArticleSelection({ articleIds, invalidateArticles }: UseArtic
         body: JSON.stringify({ articleIds: ids }),
       });
       invalidateArticles();
+      // Trip-scoped caches (ArticlesPanel) also reference these articles.
+      queryClient.invalidateQueries({ queryKey: [...queryKeys.articles.all, "trip"] });
+      toast.success(ta("bulkDeleted", { count }));
     } catch (err) {
       if (prev) queryClient.setQueryData(cacheKey, prev);
       toast.error(getApiErrorMessage(err, tm("batchDeleteFailed") as string));

@@ -172,7 +172,7 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
                     e.currentTarget.blur();
                     setVisibilitySheetOpen(true);
                   }}
-                  className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 text-xs"
+                  className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {filters.find((f) => f.value === visibilityFilter)?.icon}
                   {filters.find((f) => f.value === visibilityFilter)?.label ?? ta("filterAll")}

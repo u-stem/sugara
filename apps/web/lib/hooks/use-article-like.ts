@@ -1,6 +1,7 @@
 import type { ArticleListItem, ArticleResponse } from "@sugara/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
+import { useRef } from "react";
 import { toast } from "sonner";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
@@ -11,9 +12,14 @@ type LikeResult = { liked: boolean; likeCount: number };
 export function useArticleLike() {
   const queryClient = useQueryClient();
   const ta = useTranslations("article");
+  // Guards against rapid toggling: a second click while a request is in flight
+  // for the same article would race POST/DELETE and desync the UI from the server.
+  const pendingIds = useRef<Set<string>>(new Set());
 
   async function toggleLike(article: { id: string; likedByMe: boolean }) {
     const id = article.id;
+    if (pendingIds.current.has(id)) return;
+    pendingIds.current.add(id);
     const willLike = !article.likedByMe;
 
     const listKey = queryKeys.articles.list();
@@ -76,6 +82,8 @@ export function useArticleLike() {
       if (prevList) queryClient.setQueryData(listKey, prevList);
       if (prevDetail) queryClient.setQueryData(detailKey, prevDetail);
       toast.error(getApiErrorMessage(err, ta("likeFailed")));
+    } finally {
+      pendingIds.current.delete(id);
     }
   }
 

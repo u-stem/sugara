@@ -4,6 +4,7 @@ import type { ArticleResponse } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
 import { Heart } from "lucide-react";
 import { useTranslations } from "next-intl";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,10 +33,18 @@ export function ArticleEmbedDialog({ articleId, open, onOpenChange }: ArticleEmb
   const tlVis = useTranslations("labels.visibility");
   const { toggleLike } = useArticleLike();
 
+  // Hold the last opened article through the dialog's close animation. On close
+  // articleId flips to null, which would swap the title to the "related articles"
+  // placeholder mid-animation and flicker. Keep the previous id until reopened.
+  const [lastArticleId, setLastArticleId] = useState(articleId);
+  if (articleId && articleId !== lastArticleId) {
+    setLastArticleId(articleId);
+  }
+
   const { data: article, isLoading } = useQuery({
-    queryKey: queryKeys.articles.detail(articleId ?? ""),
-    queryFn: () => api<ArticleResponse>(`/api/articles/${articleId}`),
-    enabled: open && !!articleId,
+    queryKey: queryKeys.articles.detail(lastArticleId ?? ""),
+    queryFn: () => api<ArticleResponse>(`/api/articles/${lastArticleId}`),
+    enabled: open && !!lastArticleId,
   });
 
   return (
@@ -83,8 +92,13 @@ export function ArticleEmbedDialog({ articleId, open, onOpenChange }: ArticleEmb
                   variant={article.likedByMe ? "default" : "outline"}
                   size="sm"
                   onClick={() => toggleLike(article)}
+                  aria-pressed={article.likedByMe}
+                  aria-label={ta("likeCount", { count: article.likeCount })}
                 >
-                  <Heart className={article.likedByMe ? "h-4 w-4 fill-current" : "h-4 w-4"} />
+                  <Heart
+                    className={article.likedByMe ? "h-4 w-4 fill-current" : "h-4 w-4"}
+                    aria-hidden
+                  />
                   {ta("like")}
                   <span className="tabular-nums">{article.likeCount}</span>
                 </Button>

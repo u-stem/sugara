@@ -11,7 +11,7 @@ import {
   type TripListItem,
 } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
-import { Bold, Heading2, Italic, Link, List, Plus, Quote, X } from "lucide-react";
+import { Bold, Check, Heading2, Italic, Link, List, Plus, Quote, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -283,7 +283,7 @@ export function ArticleEditorDialog({
             </div>
 
             <div className="space-y-3">
-              <Label>{ta("contentLabel")}</Label>
+              <Label htmlFor="article-content">{ta("contentLabel")}</Label>
               <Tabs defaultValue="write">
                 <TabsList>
                   <TabsTrigger value="write">{ta("write")}</TabsTrigger>
@@ -354,6 +354,7 @@ export function ArticleEditorDialog({
                     </Button>
                   </div>
                   <Textarea
+                    id="article-content"
                     ref={textareaRef}
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
@@ -488,7 +489,7 @@ export function ArticleEditorDialog({
               </Button>
             </ResponsiveDialogClose>
             <Button type="submit" disabled={submitting || !title.trim()}>
-              <Plus className="h-4 w-4" />
+              {isEdit ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               {submitting
                 ? isEdit
                   ? ta("updating")

@@ -82,6 +82,10 @@ export function ArticleDetailView({ articleId, basePath = "/articles" }: Article
     setDeleting(true);
     try {
       await apiVoid(`/api/articles/${article.id}`, { method: "DELETE" });
+      // Invalidate the management list and any trip-scoped caches (ArticlesPanel)
+      // before navigating, so the deleted article does not linger within staleTime.
+      queryClient.invalidateQueries({ queryKey: queryKeys.articles.list() });
+      queryClient.invalidateQueries({ queryKey: [...queryKeys.articles.all, "trip"] });
       toast.success(ta("deleted"));
       router.push(basePath);
     } catch (err) {

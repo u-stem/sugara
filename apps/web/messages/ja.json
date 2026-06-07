@@ -94,6 +94,7 @@
     "bottomNav": "ボトムナビゲーション",
     "myPage": "マイページ",
     "notifications": "通知",
+    "notificationsUnread": "通知（未読{count}件）",
     "profile": "プロフィール",
     "settings": "設定",
     "openMenu": "メニューを開く",

@@ -37,9 +37,11 @@ export function SpNotificationBell() {
   return (
     <Link
       href="/sp/notifications"
-      aria-label={t("notifications")}
+      aria-label={
+        unreadCount > 0 ? t("notificationsUnread", { count: unreadCount }) : t("notifications")
+      }
       className={cn(
-        "relative inline-flex h-9 w-9 items-center justify-center rounded-md outline-none [-webkit-tap-highlight-color:transparent]",
+        "relative inline-flex h-9 w-9 items-center justify-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 [-webkit-tap-highlight-color:transparent]",
         active ? "text-primary" : "text-muted-foreground",
       )}
     >
