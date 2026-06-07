@@ -978,7 +978,7 @@
   },
   "article": {
     "pageTitle": "記事",
-    "new": "記事を書く",
+    "new": "新規作成",
     "createFab": "新規作成",
     "filterByVisibility": "公開状態で絞り込み",
     "filterAll": "すべて",
@@ -1029,7 +1029,7 @@
     "tripsUpdateFailed": "旅行の紐づけに失敗しました",
     "fetchFailed": "記事の取得に失敗しました",
     "notFound": "記事が見つかりません",
-    "empty": "まだ記事がありません",
+    "empty": "記事がありません",
     "emptyFilter": "条件に一致する記事がありません",
     "limitReached": "記事は最大{max}件まで作成できます",
     "relatedTitle": "関連記事",
