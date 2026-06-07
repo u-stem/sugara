@@ -146,23 +146,44 @@ export function ArticleEditorDialog({
     let newStart: number;
     let newEnd: number;
 
-    if (type === "bold") {
-      newContent = `${before}**${selected}**${after}`;
-      // Keep the selection around the wrapped text (shifted by 2 for `**`).
-      newStart = start + 2;
-      newEnd = end + 2;
-    } else if (type === "italic") {
-      newContent = `${before}_${selected}_${after}`;
-      newStart = start + 1;
-      newEnd = end + 1;
+    if (type === "bold" || type === "italic") {
+      const marker = type === "bold" ? "**" : "_";
+      const m = marker.length;
+      if (before.endsWith(marker) && after.startsWith(marker)) {
+        // Toggle off: markers sit just outside the selection (re-click case).
+        newContent = before.slice(0, -m) + selected + after.slice(m);
+        newStart = start - m;
+        newEnd = end - m;
+      } else if (
+        selected.length >= 2 * m &&
+        selected.startsWith(marker) &&
+        selected.endsWith(marker)
+      ) {
+        // Toggle off: markers are inside the selection.
+        newContent = before + selected.slice(m, -m) + after;
+        newStart = start;
+        newEnd = end - 2 * m;
+      } else {
+        newContent = `${before}${marker}${selected}${marker}${after}`;
+        // Keep the selection around the wrapped text (shifted by the marker).
+        newStart = start + m;
+        newEnd = end + m;
+      }
     } else if (type === "heading" || type === "list" || type === "quote") {
       const prefix = type === "heading" ? "## " : type === "list" ? "- " : "> ";
       // Find the start of the line where the selection begins.
       const lineStart = content.lastIndexOf("\n", start - 1) + 1;
-      // All text from that line start up to the end of the selection.
-      const textToModify = content.slice(lineStart, end);
-      // Prepend the prefix to every line in the range.
-      const modified = textToModify.replace(/^/gm, prefix);
+      const block = content.slice(lineStart, end);
+      // Preserve a trailing newline so the empty line after it isn't prefixed.
+      const trailingNewline = block.endsWith("\n") ? "\n" : "";
+      const body = trailingNewline ? block.slice(0, -1) : block;
+      const lines = body.split("\n");
+      // Toggle off when every line in the range already has the prefix.
+      const allPrefixed = lines.every((l) => l.startsWith(prefix));
+      const modifiedLines = allPrefixed
+        ? lines.map((l) => l.slice(prefix.length))
+        : lines.map((l) => prefix + l);
+      const modified = modifiedLines.join("\n") + trailingNewline;
       newContent = content.slice(0, lineStart) + modified + after;
       // Place cursor at the end of the modified block.
       newEnd = lineStart + modified.length;
@@ -182,6 +203,10 @@ export function ArticleEditorDialog({
         newEnd = newStart + url.length;
       }
     }
+
+    // Don't let formatting push the body past the limit (setContent bypasses
+    // the textarea's maxLength). Toggling off only shrinks, so it's never blocked.
+    if (newContent.length > ARTICLE_CONTENT_MAX_LENGTH) return;
 
     setContent(newContent);
     // Restore cursor / selection after React re-renders the textarea.

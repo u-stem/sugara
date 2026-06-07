@@ -172,27 +172,27 @@ describe("ArticleDetailView – new layout (A)", () => {
   it("renders a like button with aria-label in the title area", () => {
     setupQueryMocks();
     renderWithIntl(<ArticleDetailView articleId="a1" />);
-    expect(screen.getByRole("button", { name: "いいね" })).toBeDefined();
+    expect(screen.getByRole("button", { name: /いいね/ })).toBeDefined();
   });
 
   it("like button has aria-pressed=false when article is not liked", () => {
     setupQueryMocks();
     renderWithIntl(<ArticleDetailView articleId="a1" />);
-    const btn = screen.getByRole("button", { name: "いいね" });
+    const btn = screen.getByRole("button", { name: /いいね/ });
     expect(btn.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("like button has aria-pressed=true when article is already liked", () => {
     setupQueryMocks({ likedByMe: true });
     renderWithIntl(<ArticleDetailView articleId="a1" />);
-    const btn = screen.getByRole("button", { name: "いいね" });
+    const btn = screen.getByRole("button", { name: /いいね/ });
     expect(btn.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("clicking the like button calls toggleLike", () => {
     setupQueryMocks();
     renderWithIntl(<ArticleDetailView articleId="a1" />);
-    fireEvent.click(screen.getByRole("button", { name: "いいね" }));
+    fireEvent.click(screen.getByRole("button", { name: /いいね/ }));
     expect(mockToggleLike).toHaveBeenCalledTimes(1);
   });
 

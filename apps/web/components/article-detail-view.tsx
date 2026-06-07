@@ -121,7 +121,7 @@ export function ArticleDetailView({ articleId, basePath = "/articles" }: Article
                 variant="ghost"
                 size="sm"
                 aria-pressed={article.likedByMe}
-                aria-label={ta("like")}
+                aria-label={ta("likeCount", { count: article.likeCount })}
                 onClick={() => toggleLike(article)}
               >
                 <Heart
