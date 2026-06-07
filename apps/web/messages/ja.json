@@ -470,7 +470,10 @@
       "walk": "徒歩",
       "car": "車",
       "airplane": "飛行機",
-      "bicycle": "自転車"
+      "bicycle": "自転車",
+      "ropeway": "ロープウェイ",
+      "cable_car": "ケーブルカー",
+      "ferry": "フェリー"
     },
     "status": {
       "scheduling": "日程調整中",

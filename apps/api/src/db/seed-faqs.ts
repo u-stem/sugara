@@ -143,7 +143,7 @@ const JA_FAQS = [
   {
     question: "移動の予定に交通費を記録できますか？",
     answer:
-      "はい。カテゴリが「移動」の予定で、出発地・到着地・交通手段と一緒に交通費を入力できます。金額は旅行の通貨建ての整数で、タイムラインの移動カードに表示されます。これは計画用の軽量な項目で、費用タブの精算とは連携しません（精算に含めたい場合は費用タブで別途登録してください）。交通手段には電車・新幹線・バス・タクシー・徒歩・車・自転車・飛行機を選べます。",
+      "はい。カテゴリが「移動」の予定で、出発地・到着地・交通手段と一緒に交通費を入力できます。金額は旅行の通貨建ての整数で、タイムラインの移動カードに表示されます。これは計画用の軽量な項目で、費用タブの精算とは連携しません（精算に含めたい場合は費用タブで別途登録してください）。交通手段には電車・新幹線・バス・タクシー・徒歩・車・自転車・飛行機・フェリー・ロープウェイ・ケーブルカーを選べます。",
     sortOrder: 29,
   },
   // ---- Scheduling ----
@@ -540,7 +540,7 @@ const EN_FAQS = [
   {
     question: "Can I record the transit fare for a transport schedule?",
     answer:
-      "Yes. On a schedule with the 'Transport' category, you can enter a transit fare alongside the departure, arrival, and transport method. The amount is an integer in the trip's currency and appears on the transport card in the timeline. It is a lightweight planning field and is not linked to the settlement on the Expenses tab (add it as an expense separately if you want it settled). Transport methods include train, shinkansen, bus, taxi, walk, car, bicycle, and airplane.",
+      "Yes. On a schedule with the 'Transport' category, you can enter a transit fare alongside the departure, arrival, and transport method. The amount is an integer in the trip's currency and appears on the transport card in the timeline. It is a lightweight planning field and is not linked to the settlement on the Expenses tab (add it as an expense separately if you want it settled). Transport methods include train, shinkansen, bus, taxi, walk, car, bicycle, airplane, ferry, ropeway, and cable car.",
     sortOrder: 29,
   },
   // ---- Scheduling ----

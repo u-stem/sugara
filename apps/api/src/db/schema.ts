@@ -40,6 +40,9 @@ export const transportMethodEnum = pgEnum("transport_method", [
   // Appended at the end so the migration is a plain ADD VALUE (Postgres cannot
   // reorder enum values). UI display order is controlled separately.
   "bicycle",
+  "ropeway",
+  "cable_car",
+  "ferry",
 ]);
 
 export const friendStatusEnum = pgEnum("friend_status", ["pending", "accepted"]);

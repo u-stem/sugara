@@ -524,6 +524,9 @@ export const TRANSPORT_METHOD_LABELS: Record<TransportMethod, string> = {
   car: "車",
   airplane: "飛行機",
   bicycle: "自転車",
+  ropeway: "ロープウェイ",
+  cable_car: "ケーブルカー",
+  ferry: "フェリー",
 };
 
 export const STATUS_LABELS: Record<TripStatus, string> = {

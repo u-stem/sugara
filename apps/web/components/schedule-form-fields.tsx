@@ -100,7 +100,19 @@ export function ScheduleFormFields({
     ["sightseeing", "restaurant", "hotel", "transport", "activity", "other"] as const
   ).map((v) => ({ value: v, label: tlCat(v) }));
   const transportMethodOptions = (
-    ["train", "shinkansen", "bus", "taxi", "walk", "car", "bicycle", "airplane"] as const
+    [
+      "train",
+      "shinkansen",
+      "bus",
+      "taxi",
+      "walk",
+      "car",
+      "bicycle",
+      "airplane",
+      "ferry",
+      "ropeway",
+      "cable_car",
+    ] as const
   ).map((v) => ({ value: v, label: tlTransport(v) }));
   // Controlled state for text fields (Dialog unmounts on close, so these re-init correctly)
   const [name, setName] = useState(defaultValues?.name ?? "");

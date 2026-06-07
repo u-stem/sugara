@@ -470,7 +470,10 @@
       "walk": "Walk",
       "car": "Car",
       "airplane": "Airplane",
-      "bicycle": "Bicycle"
+      "bicycle": "Bicycle",
+      "ropeway": "Ropeway",
+      "cable_car": "Cable Car",
+      "ferry": "Ferry"
     },
     "status": {
       "scheduling": "Coordinating",
