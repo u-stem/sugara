@@ -220,7 +220,7 @@ const JA_FAQS = [
   {
     question: "「記事」とは何ですか？",
     answer:
-      "旅行のメモやおすすめ情報を書き残せる機能です。本文は編集画面のツールバーのボタンで太字・見出し・箇条書き・引用・リンクを設定でき、記法を覚える必要はありません。タグ付け・いいね・旅行への紐づけができます。公開範囲は「非公開」「フレンドのみ」「公開」から選べ、画像の挿入には対応していません。記事一覧はヘッダー（スマホはマイページ）からアクセスできます。",
+      "旅行のメモやおすすめ情報を書き残せる機能です。本文は編集画面のツールバーのボタンで太字・見出し・箇条書き・引用・リンクを設定でき、記法を覚える必要はありません。タグ付け・いいね・旅行への紐づけができます。公開範囲は「非公開」「フレンドのみ」「公開」から選べ、画像の挿入には対応していません。記事一覧はヘッダー（スマホは画面下のメニュー）の「記事」からアクセスできます。",
     sortOrder: 62,
   },
   {
@@ -617,7 +617,7 @@ const EN_FAQS = [
   {
     question: "What are 'Articles'?",
     answer:
-      "A feature for writing travel notes and recommendations. Use the toolbar buttons in the editor to apply bold, headings, bullet lists, quotes, and links — no need to learn any markup. You can add tags, likes, and link articles to trips. Visibility can be set to 'Private,' 'Friends Only,' or 'Public.' Images aren't supported. Access your articles from the header (or My Page on mobile).",
+      "A feature for writing travel notes and recommendations. Use the toolbar buttons in the editor to apply bold, headings, bullet lists, quotes, and links — no need to learn any markup. You can add tags, likes, and link articles to trips. Visibility can be set to 'Private,' 'Friends Only,' or 'Public.' Images aren't supported. Access your articles from 'Articles' in the header (or the bottom menu on mobile).",
     sortOrder: 62,
   },
   {
