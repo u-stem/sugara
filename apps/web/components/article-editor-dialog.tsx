@@ -282,7 +282,7 @@ export function ArticleEditorDialog({
               </p>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Label>{ta("contentLabel")}</Label>
               <Tabs defaultValue="write">
                 <TabsList>
