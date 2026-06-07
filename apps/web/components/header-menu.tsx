@@ -89,9 +89,9 @@ export function HeaderMenu() {
   const { open: openShortcutHelp } = useShortcutHelp();
 
   return (
-    <div ref={ref} className="flex items-center">
+    <div ref={ref} className="relative flex items-center">
       {expanded && (
-        <div className="flex items-center gap-1 animate-in fade-in duration-150">
+        <div className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150 md:static md:z-auto md:mt-0 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -160,9 +160,9 @@ export function SpHeaderMenu() {
   const { expanded, toggle, ref } = useMenuState();
 
   return (
-    <div ref={ref} className="flex items-center">
+    <div ref={ref} className="relative flex items-center">
       {expanded && (
-        <div className="flex items-center gap-1 animate-in fade-in duration-150">
+        <div className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150 md:static md:z-auto md:mt-0 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
           <Tooltip>
             <TooltipTrigger asChild>
               <button
