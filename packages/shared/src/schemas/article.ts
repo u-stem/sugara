@@ -32,7 +32,10 @@ export const updateArticleSchema = z.object({
 });
 
 export const reorderArticlesSchema = z.object({
-  orderedIds: z.array(z.string().check(z.guid())).max(MAX_ARTICLES_PER_USER),
+  orderedIds: z
+    .array(z.string().check(z.guid()))
+    .max(MAX_ARTICLES_PER_USER)
+    .refine((arr) => new Set(arr).size === arr.length, "Duplicate article IDs are not allowed"),
 });
 
 // Replace the full set of trips an article is linked to (idempotent PUT).

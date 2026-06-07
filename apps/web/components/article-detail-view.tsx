@@ -1,7 +1,7 @@
 "use client";
 
 import type { ArticleResponse, TripListItem } from "@sugara/shared";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Heart, MoreHorizontal, Pencil, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -49,6 +49,7 @@ export function ArticleDetailView({ articleId, basePath = "/articles" }: Article
   const router = useRouter();
   const { data: session } = useSession();
   const { toggleLike } = useArticleLike();
+  const queryClient = useQueryClient();
 
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -206,7 +207,12 @@ export function ArticleDetailView({ articleId, basePath = "/articles" }: Article
             <ArticleEditorDialog
               open={editOpen}
               onOpenChange={setEditOpen}
-              onSaved={() => refetch()}
+              onSaved={() => {
+                refetch();
+                // Bust the list cache so updated title/visibility is reflected
+                // immediately on the articles list page without a full reload.
+                queryClient.invalidateQueries({ queryKey: queryKeys.articles.list() });
+              }}
               article={article}
             />
           )}

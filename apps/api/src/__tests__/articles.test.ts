@@ -355,5 +355,133 @@ describe("Article routes", () => {
       const res = await app.request(`/api/articles/${articleId}/like`, { method: "POST" });
       expect(res.status).toBe(404);
     });
+
+    // Issue 5: guests must not be able to like
+    it("returns 403 when a guest account tries to like", async () => {
+      mockGetSession.mockResolvedValue({
+        user: { ...fakeUser, isAnonymous: true },
+        session: { id: "s" },
+      });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}/like`, { method: "POST" });
+      expect(res.status).toBe(403);
+    });
+
+    // Issue 6: invalid UUID must not reach Postgres
+    it("returns 404 for a non-UUID articleId on POST like", async () => {
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/not-a-uuid/like", { method: "POST" });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // Issue 5: guest unlike
+  describe("DELETE /api/articles/:articleId/like", () => {
+    it("returns 403 when a guest account tries to unlike", async () => {
+      mockGetSession.mockResolvedValue({
+        user: { ...fakeUser, isAnonymous: true },
+        session: { id: "s" },
+      });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}/like`, { method: "DELETE" });
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // Issue 6: invalid UUID on other routes
+  describe("invalid UUID parameter handling", () => {
+    it("returns 404 for GET /:articleId with non-UUID (anonymous viewer)", async () => {
+      mockGetSession.mockResolvedValue(null);
+
+      // Use articleRoutes which now embeds the detail sub-router.
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/not-a-uuid");
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 for PATCH /:articleId with non-UUID", async () => {
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/not-a-uuid", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Updated" }),
+      });
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 for DELETE /:articleId with non-UUID", async () => {
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/not-a-uuid", { method: "DELETE" });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // Issue 1: routing integration — articleRoutes alone (no separate articleDetailRoutes mount)
+  // must serve both the authenticated list and the public detail.
+  describe("Article routing integration (double-mount regression)", () => {
+    it("returns a public article to an anonymous viewer via articleRoutes", async () => {
+      mockGetSession.mockResolvedValue(null);
+      mockDbQuery.articles.findFirst.mockResolvedValue({
+        id: articleId,
+        ownerId: otherUserId,
+        title: "Public",
+        content: "body",
+        tags: [],
+        visibility: "public",
+        sortOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        likes: [],
+        articleTrips: [],
+      });
+
+      // Only mount articleRoutes — articleDetailRoutes must be embedded inside it.
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}`);
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.content).toBe("body");
+    });
+
+    it("returns 404 for a private article to an anonymous viewer", async () => {
+      mockGetSession.mockResolvedValue(null);
+      mockDbQuery.articles.findFirst.mockResolvedValue({
+        id: articleId,
+        ownerId: otherUserId,
+        title: "Private",
+        content: "secret",
+        tags: [],
+        visibility: "private",
+        sortOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        likes: [],
+        articleTrips: [],
+      });
+      mockDbQuery.tripMembers.findFirst.mockResolvedValue(undefined);
+      mockDbQuery.friends.findFirst.mockResolvedValue(undefined);
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}`);
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 401 for the article list to an anonymous viewer", async () => {
+      mockGetSession.mockResolvedValue(null);
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles");
+      expect(res.status).toBe(401);
+    });
+
+    it("returns 200 for the article list to an authenticated user", async () => {
+      mockDbQuery.articles.findMany.mockResolvedValue([]);
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles");
+      expect(res.status).toBe(200);
+    });
   });
 });

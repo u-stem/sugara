@@ -67,6 +67,11 @@ export function useArticleLike() {
           likeCount: res.likeCount,
         });
       }
+      // Invalidate trip-scoped article caches (used by ArticlesPanel) so the new
+      // like state is reflected without needing per-trip optimistic updates.
+      await queryClient.invalidateQueries({
+        queryKey: [...queryKeys.articles.all, "trip"],
+      });
     } catch (err) {
       if (prevList) queryClient.setQueryData(listKey, prevList);
       if (prevDetail) queryClient.setQueryData(detailKey, prevDetail);

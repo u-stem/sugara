@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { createArticleSchema, setArticleTripsSchema, updateArticleSchema } from "./article";
+import {
+  createArticleSchema,
+  reorderArticlesSchema,
+  setArticleTripsSchema,
+  updateArticleSchema,
+} from "./article";
+
+const guid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
 describe("createArticleSchema", () => {
   it("accepts a minimal valid article with defaults", () => {
@@ -56,9 +63,25 @@ describe("updateArticleSchema", () => {
   });
 });
 
-describe("setArticleTripsSchema", () => {
-  const guid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+describe("reorderArticlesSchema", () => {
+  it("accepts a valid list of unique IDs", () => {
+    expect(reorderArticlesSchema.safeParse({ orderedIds: [guid(1), guid(2)] }).success).toBe(true);
+  });
 
+  it("rejects duplicate article IDs", () => {
+    expect(reorderArticlesSchema.safeParse({ orderedIds: [guid(1), guid(1)] }).success).toBe(false);
+  });
+
+  it("rejects non-guid IDs", () => {
+    expect(reorderArticlesSchema.safeParse({ orderedIds: ["not-a-guid"] }).success).toBe(false);
+  });
+
+  it("accepts an empty list", () => {
+    expect(reorderArticlesSchema.safeParse({ orderedIds: [] }).success).toBe(true);
+  });
+});
+
+describe("setArticleTripsSchema", () => {
   it("defaults to an empty list", () => {
     expect(setArticleTripsSchema.parse({}).tripIds).toEqual([]);
   });

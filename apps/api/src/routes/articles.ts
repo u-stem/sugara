@@ -91,11 +91,60 @@ async function isArticleVisibleTo(
   return !!membership;
 }
 
+// --- UUID guard ---------------------------------------------------------------
+
+// RFC 4122 UUID — prevents Postgres "invalid input syntax for type uuid" errors
+// on routes that pass the raw param directly into a UUID column comparison.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUuid(id: string): boolean {
+  return UUID_RE.test(id);
+}
+
+// ==============================================================================
+// Public detail route (visibility-gated, no auth required)
+// ==============================================================================
+
+// Defined first so it can be embedded in articleRoutes BEFORE use("*", requireAuth).
+// In Hono, use("*") only applies to handlers registered AFTER it, so registering
+// this sub-router first ensures anonymous requests to GET /:articleId are not
+// intercepted by requireAuth.
+const articleDetailRoutes = new Hono<OptionalAuthEnv>();
+
+articleDetailRoutes.get("/:articleId", optionalAuth, async (c) => {
+  const articleId = getParam(c, "articleId");
+  if (!isValidUuid(articleId)) {
+    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
+  }
+
+  const article = await db.query.articles.findFirst({
+    where: eq(articles.id, articleId),
+    with: { likes: { columns: { userId: true } }, articleTrips: { columns: { tripId: true } } },
+  });
+  // 404 (not 403) for hidden articles so existence isn't leaked.
+  if (!article) {
+    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
+  }
+
+  const viewerId = c.get("user")?.id;
+  if (!(await isArticleVisibleTo(article, viewerId))) {
+    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
+  }
+
+  return c.json(articleDetail(article, viewerId));
+});
+
 // ==============================================================================
 // Authenticated routes (own articles + mutations)
 // ==============================================================================
 
 const articleRoutes = new Hono<AppEnv>();
+
+// Embed the public detail sub-router BEFORE the authentication gate so that
+// anonymous requests to GET /:articleId bypass requireAuth entirely.
+// (use("*") in Hono only applies to handlers registered after it.)
+articleRoutes.route("/", articleDetailRoutes);
+
 articleRoutes.use("*", requireAuth);
 
 // List own articles
@@ -188,6 +237,9 @@ articleRoutes.patch("/reorder", requireNonGuest, async (c) => {
 articleRoutes.patch("/:articleId", requireNonGuest, async (c) => {
   const user = c.get("user");
   const articleId = getParam(c, "articleId");
+  if (!isValidUuid(articleId)) {
+    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
+  }
 
   const body = await c.req.json();
   const parsed = updateArticleSchema.safeParse(body);
@@ -225,6 +277,9 @@ articleRoutes.patch("/:articleId", requireNonGuest, async (c) => {
 articleRoutes.delete("/:articleId", requireNonGuest, async (c) => {
   const user = c.get("user");
   const articleId = getParam(c, "articleId");
+  if (!isValidUuid(articleId)) {
+    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
+  }
 
   const existing = await db.query.articles.findFirst({
     where: eq(articles.id, articleId),
@@ -243,6 +298,9 @@ articleRoutes.delete("/:articleId", requireNonGuest, async (c) => {
 articleRoutes.put("/:articleId/trips", requireNonGuest, async (c) => {
   const user = c.get("user");
   const articleId = getParam(c, "articleId");
+  if (!isValidUuid(articleId)) {
+    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
+  }
 
   const body = await c.req.json();
   const parsed = setArticleTripsSchema.safeParse(body);
@@ -282,10 +340,14 @@ articleRoutes.put("/:articleId/trips", requireNonGuest, async (c) => {
   return c.json({ ok: true, tripIds });
 });
 
-// Like a visible article (idempotent)
-articleRoutes.post("/:articleId/like", async (c) => {
+// Like a visible article (idempotent). Guests are excluded for consistency with
+// other mutations — anonymous like counts would be meaningless.
+articleRoutes.post("/:articleId/like", requireNonGuest, async (c) => {
   const user = c.get("user");
   const articleId = getParam(c, "articleId");
+  if (!isValidUuid(articleId)) {
+    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
+  }
 
   const article = await db.query.articles.findFirst({
     where: eq(articles.id, articleId),
@@ -302,10 +364,13 @@ articleRoutes.post("/:articleId/like", async (c) => {
   return c.json({ liked: true, likeCount });
 });
 
-// Remove own like (idempotent)
-articleRoutes.delete("/:articleId/like", async (c) => {
+// Remove own like (idempotent). Guests are excluded for consistency with other mutations.
+articleRoutes.delete("/:articleId/like", requireNonGuest, async (c) => {
   const user = c.get("user");
   const articleId = getParam(c, "articleId");
+  if (!isValidUuid(articleId)) {
+    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
+  }
 
   const article = await db.query.articles.findFirst({
     where: eq(articles.id, articleId),
@@ -322,32 +387,6 @@ articleRoutes.delete("/:articleId/like", async (c) => {
   const liked = article.likes.some((l) => l.userId === user.id);
   const likeCount = liked ? article.likes.length - 1 : article.likes.length;
   return c.json({ liked: false, likeCount });
-});
-
-// ==============================================================================
-// Public detail route (visibility-gated, no auth required)
-// ==============================================================================
-
-const articleDetailRoutes = new Hono<OptionalAuthEnv>();
-
-articleDetailRoutes.get("/:articleId", optionalAuth, async (c) => {
-  const articleId = getParam(c, "articleId");
-
-  const article = await db.query.articles.findFirst({
-    where: eq(articles.id, articleId),
-    with: { likes: { columns: { userId: true } }, articleTrips: { columns: { tripId: true } } },
-  });
-  // 404 (not 403) for hidden articles so existence isn't leaked.
-  if (!article) {
-    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
-  }
-
-  const viewerId = c.get("user")?.id;
-  if (!(await isArticleVisibleTo(article, viewerId))) {
-    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
-  }
-
-  return c.json(articleDetail(article, viewerId));
 });
 
 // ==============================================================================
