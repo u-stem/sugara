@@ -261,6 +261,9 @@ adminRoutes.get("/api/admin/users", requireAuth, requireAdmin, async (c) => {
 // PATCH /api/admin/users/:userId/trip-limit — 旅行作成上限の変更（管理者専用）
 adminRoutes.patch("/api/admin/users/:userId/trip-limit", requireAuth, requireAdmin, async (c) => {
   const userId = getParam(c, "userId");
+  // Hand-rolled validation: apps/api validates request bodies without a direct
+  // zod dependency (schemas live in @sugara/shared). A lone tripLimit field
+  // doesn't justify adding zod to apps/api's package.json.
   const body = await c.req.json<{ tripLimit?: unknown }>();
 
   if (

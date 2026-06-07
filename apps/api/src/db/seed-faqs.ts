@@ -143,7 +143,7 @@ const JA_FAQS = [
   {
     question: "移動の予定に交通費を記録できますか？",
     answer:
-      "はい。カテゴリが「移動」の予定で、出発地・到着地・交通手段と一緒に交通費を入力できます。金額は旅行の通貨建ての整数で、タイムラインの移動カードに表示されます。これは計画用の軽量な項目で、費用タブの精算とは連携しません（精算に含めたい場合は費用タブで別途登録してください）。交通手段には電車・新幹線・バス・タクシー・徒歩・車・自転車・飛行機を選べます。",
+      "はい。カテゴリが「移動」の予定で、出発地・到着地・交通手段と一緒に交通費を入力できます。金額は旅行の通貨建ての整数で、タイムラインの移動カードに表示されます。これは計画用の軽量な項目で、費用タブの精算とは連携しません（精算に含めたい場合は費用タブで別途登録してください）。交通手段には電車・新幹線・バス・タクシー・徒歩・車・自転車・飛行機・フェリー・ロープウェイ・ケーブルカーを選べます。",
     sortOrder: 29,
   },
   // ---- Scheduling ----
@@ -215,6 +215,19 @@ const JA_FAQS = [
     answer:
       "行き先をリストにまとめて保存・共有できる機能です。気になる場所をブックマークに保存しておき、旅行の候補として一括追加できます。リストの公開範囲は「非公開」「フレンドのみ」「公開」から選べます。",
     sortOrder: 60,
+  },
+  // ---- Articles ----
+  {
+    question: "「記事」とは何ですか？",
+    answer:
+      "旅行のメモやおすすめ情報を書き残せる機能です。本文は編集画面のツールバーのボタンで太字・見出し・箇条書き・引用・リンクを設定でき、記法を覚える必要はありません。タグ付け・いいね・旅行への紐づけができます。公開範囲は「非公開」「フレンドのみ」「公開」から選べ、画像の挿入には対応していません。記事一覧はヘッダー（スマホはマイページ）からアクセスできます。",
+    sortOrder: 62,
+  },
+  {
+    question: "記事を旅行のメンバーに見せるには？",
+    answer:
+      "記事を旅行に紐づけると、その旅行のメンバーには「非公開」の記事でも表示されます。旅行に紐づけない「非公開」の記事は自分だけのメモになります。旅行詳細の「記事」（スマホは3点メニューの「関連記事」）から、紐づいた記事をその場で読めます。",
+    sortOrder: 63,
   },
   // ---- Reactions ----
   {
@@ -527,7 +540,7 @@ const EN_FAQS = [
   {
     question: "Can I record the transit fare for a transport schedule?",
     answer:
-      "Yes. On a schedule with the 'Transport' category, you can enter a transit fare alongside the departure, arrival, and transport method. The amount is an integer in the trip's currency and appears on the transport card in the timeline. It is a lightweight planning field and is not linked to the settlement on the Expenses tab (add it as an expense separately if you want it settled). Transport methods include train, shinkansen, bus, taxi, walk, car, bicycle, and airplane.",
+      "Yes. On a schedule with the 'Transport' category, you can enter a transit fare alongside the departure, arrival, and transport method. The amount is an integer in the trip's currency and appears on the transport card in the timeline. It is a lightweight planning field and is not linked to the settlement on the Expenses tab (add it as an expense separately if you want it settled). Transport methods include train, shinkansen, bus, taxi, walk, car, bicycle, airplane, ferry, ropeway, and cable car.",
     sortOrder: 29,
   },
   // ---- Scheduling ----
@@ -599,6 +612,19 @@ const EN_FAQS = [
     answer:
       "A feature for saving and sharing destinations in lists. Save places you're interested in and bulk-add them as trip candidates. List visibility can be set to 'Private,' 'Friends Only,' or 'Public.'",
     sortOrder: 60,
+  },
+  // ---- Articles ----
+  {
+    question: "What are 'Articles'?",
+    answer:
+      "A feature for writing travel notes and recommendations. Use the toolbar buttons in the editor to apply bold, headings, bullet lists, quotes, and links — no need to learn any markup. You can add tags, likes, and link articles to trips. Visibility can be set to 'Private,' 'Friends Only,' or 'Public.' Images aren't supported. Access your articles from the header (or My Page on mobile).",
+    sortOrder: 62,
+  },
+  {
+    question: "How do I share an article with trip members?",
+    answer:
+      "Link the article to a trip, and its members can see it even when it's set to 'Private.' A 'Private' article not linked to any trip stays a personal note. Members read linked articles in place from the trip's 'Articles' tab (or 'Related articles' in the three-dot menu on mobile).",
+    sortOrder: 63,
   },
   // ---- Reactions ----
   {
@@ -792,6 +818,7 @@ function resolveCategory(sortOrder: number): string {
   if (sortOrder >= 40 && sortOrder <= 43) return "members";
   if (sortOrder >= 50 && sortOrder <= 52) return "friends";
   if (sortOrder === 60) return "bookmarks";
+  if (sortOrder >= 62 && sortOrder <= 63) return "articles";
   if (sortOrder === 65) return "reactions";
   if (sortOrder >= 70 && sortOrder <= 77) return "expenses";
   if (sortOrder >= 80 && sortOrder <= 81) return "souvenirs";

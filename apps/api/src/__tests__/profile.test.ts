@@ -5,6 +5,7 @@ const { mockDbQuery, mockAuth } = vi.hoisted(() => ({
   mockDbQuery: {
     users: { findFirst: vi.fn() },
     bookmarkLists: { findMany: vi.fn(), findFirst: vi.fn() },
+    articles: { findMany: vi.fn() },
     friends: { findFirst: vi.fn() },
   },
   mockAuth: {
@@ -41,6 +42,71 @@ describe("Profile routes", () => {
     vi.clearAllMocks();
     mockAuth.api.getSession.mockResolvedValue(null);
     app = createTestApp(profileRoutes, "/api/users");
+  });
+
+  // --- GET /api/users/:userId/articles ---
+  describe("GET /api/users/:userId/articles", () => {
+    function makeArticle(id: string, visibility: "private" | "friends_only" | "public") {
+      return {
+        id,
+        ownerId,
+        title: `Article ${id}`,
+        tags: [],
+        visibility,
+        sortOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        likes: [],
+      };
+    }
+
+    it("returns all articles (private, friends_only, public) to the owner", async () => {
+      mockDbQuery.users.findFirst.mockResolvedValue({ id: ownerId, name: "Alice", image: null });
+      mockDbQuery.articles.findMany.mockResolvedValue([
+        makeArticle("a1", "private"),
+        makeArticle("a2", "friends_only"),
+        makeArticle("a3", "public"),
+      ]);
+
+      const res = await requestWithSession(`/api/users/${ownerId}/articles`, ownerId);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.articles).toHaveLength(3);
+    });
+
+    it("returns friends_only and public articles to a friend", async () => {
+      mockDbQuery.users.findFirst.mockResolvedValue({ id: ownerId, name: "Alice", image: null });
+      mockDbQuery.friends.findFirst.mockResolvedValue({ id: "friend-1" });
+      mockDbQuery.articles.findMany.mockResolvedValue([
+        makeArticle("a2", "friends_only"),
+        makeArticle("a3", "public"),
+      ]);
+
+      const res = await requestWithSession(`/api/users/${ownerId}/articles`, viewerId);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.articles).toHaveLength(2);
+    });
+
+    it("returns only public articles to a non-friend authenticated user", async () => {
+      mockDbQuery.users.findFirst.mockResolvedValue({ id: ownerId, name: "Alice", image: null });
+      mockDbQuery.friends.findFirst.mockResolvedValue(undefined);
+      mockDbQuery.articles.findMany.mockResolvedValue([makeArticle("a3", "public")]);
+
+      const res = await requestWithSession(`/api/users/${ownerId}/articles`, viewerId);
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.articles).toHaveLength(1);
+    });
+
+    it("returns 404 for a non-UUID userId", async () => {
+      const res = await app.request("/api/users/not-a-uuid/articles");
+
+      expect(res.status).toBe(404);
+    });
   });
 
   // --- GET /api/users/:userId/bookmark-lists ---

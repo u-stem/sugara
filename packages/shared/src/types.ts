@@ -1,4 +1,5 @@
 import type { CurrencyCode } from "./currency";
+import type { ArticleVisibility } from "./schemas/article";
 import type { BookmarkListVisibility } from "./schemas/bookmark";
 import type { ExpenseCategory, ExpenseSplitType } from "./schemas/expense";
 import type { MemberRole } from "./schemas/member";
@@ -97,6 +98,7 @@ export type TripListItem = {
   currency: string;
   role: MemberRole;
   totalSchedules: number;
+  memberCount: number;
   updatedAt: string;
 };
 
@@ -172,6 +174,34 @@ export type BookmarkResponse = {
 
 export type BookmarkListDetailResponse = BookmarkListResponse & {
   bookmarks: BookmarkResponse[];
+};
+
+export type ArticleResponse = {
+  id: string;
+  ownerId: string;
+  title: string;
+  content: string;
+  tags: string[];
+  visibility: ArticleVisibility;
+  sortOrder: number;
+  likeCount: number;
+  likedByMe: boolean;
+  tripIds: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ArticleListItem = {
+  id: string;
+  ownerId: string;
+  title: string;
+  tags: string[];
+  visibility: ArticleVisibility;
+  sortOrder: number;
+  likeCount: number;
+  likedByMe: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type GroupResponse = {

@@ -9,6 +9,7 @@ export type RightPanelTab =
   | "candidates"
   | "activity"
   | "bookmarks"
+  | "articles"
   | "expenses"
   | "souvenirs"
   | "map";
@@ -98,6 +99,17 @@ export function RightPanelTabs({
           className={cn(CHIP_BASE, current === "bookmarks" ? CHIP_ACTIVE : CHIP_INACTIVE)}
         >
           {t("bookmarks")}
+        </button>
+      )}
+      {!isGuest && (
+        <button
+          type="button"
+          role="tab"
+          aria-selected={current === "articles"}
+          onClick={() => onChange("articles")}
+          className={cn(CHIP_BASE, current === "articles" ? CHIP_ACTIVE : CHIP_INACTIVE)}
+        >
+          {t("articles")}
         </button>
       )}
     </div>

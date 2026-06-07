@@ -97,8 +97,8 @@ describe("Push subscription routes", () => {
       expect(body.member_added).toBe(false);
       // member_removed not set → falls back to NOTIFICATION_DEFAULTS (true)
       expect(body.member_removed).toBe(true);
-      // All 14 types present (includes candidate_created/deleted/reaction + discord_webhook_disabled)
-      expect(Object.keys(body).length).toBe(14);
+      // All 15 types present (includes candidate_created/deleted/reaction + discord_webhook_disabled + article_shared_member_added)
+      expect(Object.keys(body).length).toBe(15);
     });
 
     it("endpoint が存在しない場合は 404 を返す", async () => {

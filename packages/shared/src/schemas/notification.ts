@@ -15,6 +15,7 @@ export const notificationTypeSchema = z.enum([
   "candidate_deleted",
   "candidate_reaction",
   "discord_webhook_disabled",
+  "article_shared_member_added",
 ]);
 
 export type NotificationType = z.infer<typeof notificationTypeSchema>;
@@ -55,6 +56,7 @@ export const NOTIFICATION_DEFAULTS = {
   candidate_deleted: { inApp: false, push: false },
   candidate_reaction: { inApp: true, push: false },
   discord_webhook_disabled: { inApp: true, push: true },
+  article_shared_member_added: { inApp: true, push: false },
 } satisfies Record<NotificationType, { inApp: boolean; push: boolean }>;
 
 /** Japanese labels for notification types, used in preference settings UI. */
@@ -73,6 +75,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   candidate_deleted: "候補が削除された",
   candidate_reaction: "候補にリアクションがついた",
   discord_webhook_disabled: "Discord通知が無効化された",
+  article_shared_member_added: "記事が共有されているメンバーが追加された",
 };
 
 /**
@@ -109,6 +112,8 @@ export function formatNotificationText(type: string, payload: Record<string, str
       return `${payload.actorName}さんが候補「${payload.entityName}」にリアクションしました`;
     case "discord_webhook_disabled":
       return `「${payload.tripName}」のDiscord通知が無効化されました`;
+    case "article_shared_member_added":
+      return `「${payload.tripName}」に${payload.memberName}さんが参加しました。記事「${payload.articleTitle}」が共有されています`;
     default:
       return "新しい通知があります";
   }

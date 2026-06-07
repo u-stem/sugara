@@ -1,9 +1,12 @@
 import { z } from "zod";
 import { notificationTypeSchema } from "./notification";
 
-// Filter out discord_webhook_disabled to prevent recursive notification loops
+// Filter out types that should never be delivered via Discord:
+// - discord_webhook_disabled: prevents recursive notification loops
+// - article_shared_member_added: article-scoped notice, not relevant at trip level
+const DISCORD_EXCLUDED_TYPES = new Set(["discord_webhook_disabled", "article_shared_member_added"]);
 const discordEnabledTypeValues = notificationTypeSchema.options.filter(
-  (t) => t !== "discord_webhook_disabled",
+  (t) => !DISCORD_EXCLUDED_TYPES.has(t),
 );
 
 export const discordEnabledTypeSchema = z.enum(discordEnabledTypeValues as [string, ...string[]]);

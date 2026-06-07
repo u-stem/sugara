@@ -8,6 +8,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, apiVoid, getApiErrorMessage } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
 
@@ -203,23 +204,22 @@ export function SettlementSection({
           </span>
         )}
       </div>
-      <div className="inline-flex rounded-md border bg-background/60 p-0.5 text-xs">
-        {(["direct", "minimal"] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            onClick={() => changeMode(m)}
-            aria-pressed={mode === m}
-            className={`rounded-sm px-2 py-1 transition-colors ${
-              mode === m
-                ? "bg-background font-medium shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {m === "direct" ? te("settlementModeDirect") : te("settlementModeMinimal")}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        value={mode}
+        onValueChange={(v) => {
+          // Type guard instead of a cast keeps onValueChange's string narrowed.
+          if (v === "direct" || v === "minimal") changeMode(v);
+        }}
+      >
+        <TabsList className="w-full">
+          <TabsTrigger value="direct" className="flex-1">
+            {te("settlementModeDirect")}
+          </TabsTrigger>
+          <TabsTrigger value="minimal" className="flex-1">
+            {te("settlementModeMinimal")}
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
       <p className="text-xs text-muted-foreground">
         {mode === "direct" ? te("settlementHintDirect") : te("settlementHintMinimal")}
       </p>

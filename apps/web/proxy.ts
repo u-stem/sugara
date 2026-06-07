@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { MOBILE_UA_REGEX, SP_ONLY_ROUTES, SP_PREFIX, SP_ROUTES, VIEW_MODE_COOKIE } from "@/lib/view-mode";
 
+// NOTE: /articles is intentionally NOT protected here. The article detail API
+// (GET /api/articles/:id) uses optionalAuth so anonymous visitors can view
+// public articles (e.g. from a public profile). Page access is gated by the
+// API's visibility check, not the proxy. /sp is still protected below.
 const protectedPaths = ["/home", "/trips", "/bookmarks", "/friends", "/settings", "/my", "/tools", "/sp", "/admin"];
 const guestOnlyPaths = ["/", "/auth/login", "/auth/signup"];
 
@@ -89,7 +93,17 @@ export async function proxy(request: NextRequest) {
   }
 
   // ── Auth guard ─────────────────────────────────────────
-  const isProtected = protectedPaths.some((path) => pathname.startsWith(path));
+  // Article pages are anonymously viewable: the article API uses optionalAuth
+  // and gates visibility per-request (public articles render, private/friends
+  // return 404). This must override the blanket /sp protection so a public
+  // article link opened on mobile (redirected to /sp/articles/:id) still loads.
+  const isPublicArticlePath =
+    pathname === "/articles" ||
+    pathname.startsWith("/articles/") ||
+    pathname === "/sp/articles" ||
+    pathname.startsWith("/sp/articles/");
+  const isProtected =
+    !isPublicArticlePath && protectedPaths.some((path) => pathname.startsWith(path));
   const isGuestOnly = guestOnlyPaths.includes(pathname);
 
   if (!isProtected && !isGuestOnly) {

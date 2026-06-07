@@ -3,6 +3,7 @@
 import type { CandidateResponse, ScheduleResponse } from "@sugara/shared";
 import { useTranslations } from "next-intl";
 import { ActivityLog } from "@/components/activity-log";
+import { ArticlesPanel } from "@/components/articles-panel";
 import { BookmarkPanel } from "@/components/bookmark-panel";
 import { CandidatePanel } from "@/components/candidate-panel";
 import { ExpensePanel } from "@/components/expense-panel";
@@ -133,6 +134,8 @@ export function RightPanel({
               {tsch("schedulesNotAvailable", { feature: tsch("souvenirs") })}
             </p>
           )
+        ) : rightPanelTab === "articles" ? (
+          <ArticlesPanel tripId={tripId} />
         ) : (
           <ActivityLog tripId={tripId} />
         )}

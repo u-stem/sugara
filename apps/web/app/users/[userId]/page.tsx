@@ -1,12 +1,18 @@
 "use client";
 
-import type { BookmarkListResponse, BookmarkResponse, PublicProfileResponse } from "@sugara/shared";
+import type {
+  ArticleListItem,
+  BookmarkListResponse,
+  BookmarkResponse,
+  PublicProfileResponse,
+} from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
 import { Bookmark, ChevronRight, ExternalLink, List } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { ArticleCard } from "@/components/article-card";
 import { Logo } from "@/components/logo";
 import { SharedFooter } from "@/components/shared-footer";
 import { Badge } from "@/components/ui/badge";
@@ -143,14 +149,27 @@ export function BookmarkListCard({ list, userId }: { list: BookmarkListResponse;
 export function ProfileContent({
   profile,
   userId,
+  articleHrefPrefix = "/articles",
 }: {
   profile: PublicProfileResponse;
   userId: string;
+  /** Link prefix for article cards. "/articles" (PC) or "/sp/articles" (SP). */
+  articleHrefPrefix?: string;
 }) {
   const tb = useTranslations("bookmark");
   const tm = useTranslations("messages");
+  const ta = useTranslations("article");
   const { data: session } = useSession();
   const isOwnProfile = session?.user?.id === userId;
+
+  // Public articles visible to the viewer (visibility-filtered server-side).
+  const { data: articleData } = useQuery({
+    queryKey: queryKeys.profile.articles(userId),
+    queryFn: () => api<{ articles: ArticleListItem[] }>(`/api/users/${userId}/articles`),
+    enabled: !!userId,
+    ...QUERY_CONFIG.stable,
+  });
+  const articles = articleData?.articles ?? [];
 
   return (
     <>
@@ -178,6 +197,17 @@ export function ProfileContent({
           {profile.bookmarkLists.map((list) => (
             <BookmarkListCard key={list.id} list={list} userId={userId} />
           ))}
+        </div>
+      )}
+
+      {articles.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-3 text-sm font-semibold text-muted-foreground">{ta("pageTitle")}</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {articles.map((article) => (
+              <ArticleCard key={article.id} {...article} hrefPrefix={articleHrefPrefix} />
+            ))}
+          </div>
         </div>
       )}
     </>

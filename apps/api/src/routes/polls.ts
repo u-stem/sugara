@@ -8,7 +8,7 @@ import {
   submitPollResponsesSchema,
   updatePollSchema,
 } from "@sugara/shared";
-import { and, count, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
 import {
@@ -24,7 +24,7 @@ import { formatShortDateRange, logActivity } from "../lib/activity-logger";
 import { ERROR_MSG } from "../lib/constants";
 import { hasChanges } from "../lib/has-changes";
 import { logger } from "../lib/logger";
-import { createNotification } from "../lib/notifications";
+import { createNotification, notifyArticleOwnersOnMemberAdded } from "../lib/notifications";
 import { getParam } from "../lib/params";
 import { findPollAsEditor, findPollAsOwner, findPollAsParticipant } from "../lib/poll-access";
 import { generateShareToken, shareExpiresAt } from "../lib/share-token";
@@ -617,6 +617,10 @@ pollRoutes.post("/:pollId/confirm", async (c) => {
 
   const tripId = poll.tripId;
 
+  // Capture auto-joined user IDs outside the transaction so we can fire C-2
+  // notifications after the transaction commits (fire-and-forget, non-blocking).
+  let autoJoinedUserIds: string[] = [];
+
   const result = await db.transaction(async (tx) => {
     // Re-check status inside transaction to prevent double-confirm
     const currentPoll = await tx.query.schedulePolls.findFirst({
@@ -654,6 +658,7 @@ pollRoutes.post("/:pollId/confirm", async (c) => {
       return null;
     }
     if (newMembers.length > 0) {
+      autoJoinedUserIds = newMembers.map((p) => p.userId);
       await tx.insert(tripMembers).values(
         newMembers.map((p) => ({
           tripId,
@@ -681,6 +686,24 @@ pollRoutes.post("/:pollId/confirm", async (c) => {
   }
   if (!result) {
     return c.json({ error: ERROR_MSG.LIMIT_MEMBERS }, 409);
+  }
+
+  // C-2: notify article owners about members auto-joined via poll confirmation.
+  // Fire-and-forget after transaction commit; no excludeOwnerId because notifying
+  // the poll-confirmer about their own articles becoming visible is meaningful.
+  if (autoJoinedUserIds.length > 0) {
+    // Resolve the joined members' names so the notification body reads correctly
+    // ("X joined") instead of an empty name. Multiple may join from one poll.
+    const joined = await db.query.users.findMany({
+      where: inArray(users.id, autoJoinedUserIds),
+      columns: { name: true },
+    });
+    const memberName = joined.map((u) => u.name).join(", ");
+    void notifyArticleOwnersOnMemberAdded({
+      tripId,
+      addedUserIds: autoJoinedUserIds,
+      memberName,
+    });
   }
 
   logActivity({

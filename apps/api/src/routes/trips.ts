@@ -5,7 +5,7 @@ import {
   STATUS_LABELS,
   updateTripSchema,
 } from "@sugara/shared";
-import { and, count, desc, eq, getTableColumns, ne } from "drizzle-orm";
+import { and, count, desc, eq, getTableColumns, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
 import {
@@ -72,6 +72,7 @@ tripRoutes.get("/", async (c) => {
       ...tripColumns,
       role: tripMembers.role,
       totalSchedules: count(schedules.id),
+      memberCount: sql<number>`(SELECT COUNT(*)::int FROM trip_members WHERE trip_members.trip_id = ${trips.id})`,
     })
     .from(tripMembers)
     .innerJoin(trips, eq(tripMembers.tripId, trips.id))

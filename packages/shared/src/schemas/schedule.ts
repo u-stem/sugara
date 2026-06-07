@@ -33,6 +33,9 @@ export const transportMethodSchema = z.enum([
   "car",
   "airplane",
   "bicycle",
+  "ropeway",
+  "cable_car",
+  "ferry",
 ]);
 export type TransportMethod = z.infer<typeof transportMethodSchema>;
 
