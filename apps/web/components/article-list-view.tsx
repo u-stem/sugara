@@ -4,7 +4,8 @@ import { MAX_ARTICLES_PER_USER } from "@sugara/shared";
 import { Globe, ListFilter, Lock, Plus, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type React from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { ActionSheet } from "@/components/action-sheet";
 import { ArticleCard } from "@/components/article-card";
 import { ArticleEditorDialog } from "@/components/article-editor-dialog";
 import { Fab } from "@/components/fab";
@@ -24,6 +25,7 @@ import { useSession } from "@/lib/auth-client";
 import { pageTitle } from "@/lib/constants";
 import { isGuestUser } from "@/lib/guest";
 import { type ArticleVisibilityFilter, useArticles } from "@/lib/hooks/use-articles";
+import { useMobile } from "@/lib/hooks/use-is-mobile";
 import { useOnlineStatus } from "@/lib/hooks/use-online-status";
 
 function ArticlesSkeleton() {
@@ -51,6 +53,7 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
   const online = useOnlineStatus();
   const { data: session } = useSession();
   const isGuest = isGuestUser(session);
+  const isMobile = useMobile();
 
   const {
     articles,
@@ -63,6 +66,8 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
     setCreateDialogOpen,
     invalidateArticles,
   } = useArticles(isGuest);
+
+  const [visibilitySheetOpen, setVisibilitySheetOpen] = useState(false);
 
   useEffect(() => {
     document.title = pageTitle(ta("pageTitle"));
@@ -103,45 +108,76 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
         }
       >
         <div className="mt-4 flex items-center gap-2">
-          <Select
-            value={visibilityFilter}
-            onValueChange={(v) => setVisibilityFilter(v as ArticleVisibilityFilter)}
-          >
-            <SelectTrigger className="h-8 w-[130px] text-xs" aria-label={ta("filterByVisibility")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {filters.map((f) => (
-                <SelectItem key={f.value} value={f.value}>
-                  <span className="flex items-center gap-2">
-                    {f.icon}
-                    {f.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="ml-auto">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <Button
-                    size="sm"
-                    disabled={!online || atLimit}
-                    onClick={() => setCreateDialogOpen(true)}
-                  >
-                    <Plus className="h-4 w-4" />
-                    {ta("new")}
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              {atLimit && (
-                <TooltipContent>
-                  {ta("limitReached", { max: MAX_ARTICLES_PER_USER })}
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </div>
+          {isMobile ? (
+            <>
+              <button
+                type="button"
+                aria-label={ta("filterByVisibility")}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  setVisibilitySheetOpen(true);
+                }}
+                className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 text-xs"
+              >
+                {filters.find((f) => f.value === visibilityFilter)?.icon}
+                {filters.find((f) => f.value === visibilityFilter)?.label ?? ta("filterAll")}
+              </button>
+              <ActionSheet
+                open={visibilitySheetOpen}
+                onOpenChange={setVisibilitySheetOpen}
+                actions={filters.map((f) => ({
+                  label: f.label,
+                  icon: f.icon,
+                  onClick: () => setVisibilityFilter(f.value),
+                }))}
+              />
+            </>
+          ) : (
+            <>
+              <Select
+                value={visibilityFilter}
+                onValueChange={(v) => setVisibilityFilter(v as ArticleVisibilityFilter)}
+              >
+                <SelectTrigger
+                  className="h-8 w-[130px] text-xs"
+                  aria-label={ta("filterByVisibility")}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {filters.map((f) => (
+                    <SelectItem key={f.value} value={f.value}>
+                      <span className="flex items-center gap-2">
+                        {f.icon}
+                        {f.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="ml-auto">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        size="sm"
+                        disabled={!online || atLimit}
+                        onClick={() => setCreateDialogOpen(true)}
+                      >
+                        <Plus className="h-4 w-4" />
+                        {ta("new")}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {atLimit && (
+                    <TooltipContent>
+                      {ta("limitReached", { max: MAX_ARTICLES_PER_USER })}
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </div>
+            </>
+          )}
         </div>
 
         {articles.length === 0 ? (

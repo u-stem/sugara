@@ -1,18 +1,18 @@
 /**
- * Regression test for Issue 3: editing an article must invalidate the article
- * list cache so the list page reflects the updated title/visibility immediately.
+ * Tests for ArticleDetailView layout changes and cache invalidation behaviour.
  */
 import type { ArticleResponse } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
-import { cleanup } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithIntl } from "@/lib/test-utils";
 
 // --- hoisted mocks (accessible inside vi.mock factories) ---------------------
 
-const { mockRefetch, mockInvalidateQueries } = vi.hoisted(() => ({
+const { mockRefetch, mockInvalidateQueries, mockToggleLike } = vi.hoisted(() => ({
   mockRefetch: vi.fn().mockResolvedValue(undefined),
   mockInvalidateQueries: vi.fn(),
+  mockToggleLike: vi.fn().mockResolvedValue(undefined),
 }));
 
 // --- module mocks ------------------------------------------------------------
@@ -42,6 +42,10 @@ vi.mock("@/lib/markdown", () => ({
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+vi.mock("@/lib/hooks/use-article-like", () => ({
+  useArticleLike: () => ({ toggleLike: mockToggleLike }),
+}));
 
 // Capture onSaved so tests can trigger it and assert side-effects.
 let capturedOnSaved: (() => void) | undefined;
@@ -97,7 +101,7 @@ const articleData: ArticleResponse = {
   tags: [],
   visibility: "private",
   sortOrder: 0,
-  likeCount: 0,
+  likeCount: 5,
   likedByMe: false,
   tripIds: [],
   createdAt: "2026-01-01T00:00:00Z",
@@ -106,10 +110,10 @@ const articleData: ArticleResponse = {
 
 // ArticleDetailView calls useQuery twice:
 //   1st = article detail, 2nd = ownedTrips (enabled=false when tripIds=[])
-function setupQueryMocks() {
+function setupQueryMocks(overrideArticle?: Partial<ArticleResponse>) {
   vi.mocked(useQuery)
     .mockReturnValueOnce({
-      data: articleData,
+      data: { ...articleData, ...overrideArticle },
       isLoading: false,
       error: null,
       refetch: mockRefetch,
@@ -150,5 +154,64 @@ describe("ArticleDetailView – onSaved list-cache invalidation (Issue 3)", () =
     expect(mockInvalidateQueries).toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ["articles", "list"] }),
     );
+  });
+});
+
+describe("ArticleDetailView – new layout (A)", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+  });
+
+  it("does not render a back link to the article list", () => {
+    setupQueryMocks();
+    renderWithIntl(<ArticleDetailView articleId="a1" />);
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
+  it("renders a like button with aria-label in the title area", () => {
+    setupQueryMocks();
+    renderWithIntl(<ArticleDetailView articleId="a1" />);
+    expect(screen.getByRole("button", { name: "いいね" })).toBeDefined();
+  });
+
+  it("like button has aria-pressed=false when article is not liked", () => {
+    setupQueryMocks();
+    renderWithIntl(<ArticleDetailView articleId="a1" />);
+    const btn = screen.getByRole("button", { name: "いいね" });
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("like button has aria-pressed=true when article is already liked", () => {
+    setupQueryMocks({ likedByMe: true });
+    renderWithIntl(<ArticleDetailView articleId="a1" />);
+    const btn = screen.getByRole("button", { name: "いいね" });
+    expect(btn.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("clicking the like button calls toggleLike", () => {
+    setupQueryMocks();
+    renderWithIntl(<ArticleDetailView articleId="a1" />);
+    fireEvent.click(screen.getByRole("button", { name: "いいね" }));
+    expect(mockToggleLike).toHaveBeenCalledTimes(1);
+  });
+
+  it("displays the like count next to the like button", () => {
+    setupQueryMocks();
+    renderWithIntl(<ArticleDetailView articleId="a1" />);
+    expect(screen.getByText("5")).toBeDefined();
+  });
+
+  it("renders tags when the article has tags", () => {
+    setupQueryMocks({ tags: ["kyoto", "coffee"] });
+    renderWithIntl(<ArticleDetailView articleId="a1" />);
+    expect(screen.getByText("kyoto")).toBeDefined();
+  });
+
+  it("does not render the tag row when tags are empty", () => {
+    setupQueryMocks();
+    renderWithIntl(<ArticleDetailView articleId="a1" />);
+    // articleData.tags = [] — no tag badge should appear
+    expect(screen.queryByText("kyoto")).toBeNull();
   });
 });

@@ -2,8 +2,7 @@
 
 import type { ArticleResponse, TripListItem } from "@sugara/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Heart, MoreHorizontal, Pencil, Trash2, X } from "lucide-react";
-import Link from "next/link";
+import { Globe, Heart, Lock, MoreHorizontal, Pencil, Trash2, Users, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
@@ -38,7 +37,7 @@ import { queryKeys } from "@/lib/query-keys";
 
 type ArticleDetailViewProps = {
   articleId: string;
-  /** Route prefix for back link / post-delete navigation. "/articles" or "/sp/articles". */
+  /** Route prefix for post-delete navigation. "/articles" or "/sp/articles". */
   basePath?: string;
 };
 
@@ -115,64 +114,72 @@ export function ArticleDetailView({ articleId, basePath = "/articles" }: Article
     >
       {article && (
         <div className="mt-4">
-          <Link
-            href={basePath}
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            {ta("back")}
-          </Link>
-
-          <div className="mt-4 flex items-start justify-between gap-2">
+          <div className="flex items-start justify-between gap-2">
             <h1 className="text-2xl font-bold">{article.title}</h1>
-            {isOwner && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    aria-label={ta("articleMenu")}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setEditOpen(true)}>
-                    <Pencil className="h-4 w-4" />
-                    {ta("edit")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    {ta("delete")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-pressed={article.likedByMe}
+                aria-label={ta("like")}
+                onClick={() => toggleLike(article)}
+              >
+                <Heart
+                  aria-hidden
+                  className={article.likedByMe ? "h-4 w-4 fill-current text-rose-500" : "h-4 w-4"}
+                />
+                <span className="tabular-nums">{article.likeCount}</span>
+              </Button>
+              {isOwner && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label={ta("articleMenu")}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                      <Pencil className="h-4 w-4" />
+                      {ta("edit")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={() => setDeleteOpen(true)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {ta("delete")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </div>
 
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge
-              variant={
-                article.visibility === "public"
-                  ? "default"
-                  : article.visibility === "friends_only"
-                    ? "secondary"
-                    : "outline"
-              }
-              className="text-xs"
-            >
-              {tlVis(article.visibility)}
-            </Badge>
-            {article.tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-xs">
-                {tag}
-              </Badge>
-            ))}
+          <div className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
+            {article.visibility === "public" ? (
+              <Globe className="h-4 w-4" aria-hidden />
+            ) : article.visibility === "friends_only" ? (
+              <Users className="h-4 w-4" aria-hidden />
+            ) : (
+              <Lock className="h-4 w-4" aria-hidden />
+            )}
+            {tlVis(article.visibility)}
           </div>
+
+          {article.tags.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {article.tags.map((tag) => (
+                <Badge key={tag} variant="outline" className="text-xs">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          )}
 
           <div className="mt-6">
             <MarkdownRenderer content={article.content} />
@@ -190,18 +197,6 @@ export function ArticleDetailView({ articleId, basePath = "/articles" }: Article
               </div>
             </div>
           )}
-
-          <div className="mt-6 flex items-center gap-2 border-t pt-4">
-            <Button
-              variant={article.likedByMe ? "default" : "outline"}
-              size="sm"
-              onClick={() => toggleLike(article)}
-            >
-              <Heart className={article.likedByMe ? "h-4 w-4 fill-current" : "h-4 w-4"} />
-              {ta("like")}
-              <span className="tabular-nums">{article.likeCount}</span>
-            </Button>
-          </div>
 
           {isOwner && (
             <ArticleEditorDialog
