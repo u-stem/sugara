@@ -2,9 +2,10 @@
 
 import type { ArticleResponse, TripListItem } from "@sugara/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Globe, Heart, Lock, MoreHorizontal, Pencil, Trash2, Users, X } from "lucide-react";
+import { Globe, Heart, Lock, MapPin, MoreHorizontal, Pencil, Trash2, Users, X } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ArticleEditorDialog } from "@/components/article-editor-dialog";
@@ -31,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api, apiVoid, getApiErrorMessage } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
 import { pageTitle } from "@/lib/constants";
+import { formatDateRangeShort } from "@/lib/format";
 import { useArticleLike } from "@/lib/hooks/use-article-like";
 import { MarkdownRenderer } from "@/lib/markdown";
 import { queryKeys } from "@/lib/query-keys";
@@ -45,6 +47,7 @@ export function ArticleDetailView({ articleId, basePath = "/articles" }: Article
   const ta = useTranslations("article");
   const tc = useTranslations("common");
   const tlVis = useTranslations("labels.visibility");
+  const locale = useLocale();
   const router = useRouter();
   const { data: session } = useSession();
   const { toggleLike } = useArticleLike();
@@ -117,7 +120,7 @@ export function ArticleDetailView({ articleId, basePath = "/articles" }: Article
       }
     >
       {article && (
-        <div className="mt-4">
+        <div className="mx-auto mt-4 max-w-3xl">
           <div className="flex items-start justify-between gap-2">
             <h1 className="text-2xl font-bold">{article.title}</h1>
             <div className="flex items-center gap-1">
@@ -192,11 +195,21 @@ export function ArticleDetailView({ articleId, basePath = "/articles" }: Article
           {isOwner && linkedTrips.length > 0 && (
             <div className="mt-6 border-t pt-4">
               <p className="text-sm font-medium">{ta("linkedTrips")}</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-col gap-2">
                 {linkedTrips.map((trip) => (
-                  <Badge key={trip.id} variant="secondary" className="text-xs">
-                    {trip.title}
-                  </Badge>
+                  <Link
+                    key={trip.id}
+                    href={`/trips/${trip.id}`}
+                    className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                    <span className="font-medium">{trip.title}</span>
+                    {trip.startDate && trip.endDate && (
+                      <span className="ml-auto shrink-0 text-xs text-muted-foreground">
+                        {formatDateRangeShort(trip.startDate, trip.endDate, undefined, locale)}
+                      </span>
+                    )}
+                  </Link>
                 ))}
               </div>
             </div>
