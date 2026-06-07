@@ -978,7 +978,7 @@
   },
   "article": {
     "pageTitle": "Articles",
-    "new": "Write article",
+    "new": "New article",
     "createFab": "New article",
     "filterByVisibility": "Filter by visibility",
     "filterAll": "All",
@@ -1029,7 +1029,7 @@
     "tripsUpdateFailed": "Failed to update trip links",
     "fetchFailed": "Failed to load articles",
     "notFound": "Article not found",
-    "empty": "No articles yet",
+    "empty": "No articles",
     "emptyFilter": "No articles match the filter",
     "limitReached": "You can create up to {max} articles",
     "relatedTitle": "Related articles",

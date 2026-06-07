@@ -102,7 +102,7 @@ describe("ArticleListView – PC/SP new-button and filter branching (B)", () => 
 
     it("renders the inline new article button", () => {
       renderWithIntl(<ArticleListView />);
-      expect(screen.getByRole("button", { name: "記事を書く" })).toBeDefined();
+      expect(screen.getByRole("button", { name: "新規作成" })).toBeDefined();
     });
 
     it("renders the Select filter (not the ActionSheet trigger button)", () => {
@@ -110,7 +110,7 @@ describe("ArticleListView – PC/SP new-button and filter branching (B)", () => 
       // The Select trigger is a button with the filterByVisibility aria-label in PC mode.
       // The SP full-width <button> uses the same label, so disambiguate by checking
       // that the "new article" button co-exists (PC branch only).
-      expect(screen.getByRole("button", { name: "記事を書く" })).toBeDefined();
+      expect(screen.getByRole("button", { name: "新規作成" })).toBeDefined();
       // No full-width filter <button> should appear; only the Select trigger does.
       // The Select trigger renders with role="combobox", not a plain button.
       expect(screen.queryByRole("combobox")).toBeDefined();
@@ -124,7 +124,7 @@ describe("ArticleListView – PC/SP new-button and filter branching (B)", () => 
 
     it("does not render the inline new article button", () => {
       renderWithIntl(<ArticleListView />);
-      expect(screen.queryByRole("button", { name: "記事を書く" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "新規作成" })).toBeNull();
     });
 
     it("renders the SP filter trigger button", () => {
