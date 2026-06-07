@@ -980,13 +980,13 @@
     "filterAll": "すべて",
     "filterPublic": "公開",
     "createTitle": "記事を作成",
-    "createDescription": "Markdown で記事を書けます。画像は使えません。",
+    "createDescription": "記事を書けます。書式はボタンで設定できます。画像は使えません。",
     "editTitle": "記事を編集",
     "editDescription": "記事の内容を変更します。",
     "titleLabel": "タイトル",
     "titlePlaceholder": "例: 京都のおすすめ喫茶店めぐり",
     "contentLabel": "本文",
-    "contentPlaceholder": "Markdown で本文を入力...",
+    "contentPlaceholder": "本文を入力...",
     "write": "編集",
     "preview": "プレビュー",
     "previewEmpty": "プレビューする内容がありません",
@@ -1029,7 +1029,16 @@
     "emptyFilter": "条件に一致する記事がありません",
     "limitReached": "記事は最大{max}件まで作成できます",
     "relatedTitle": "関連記事",
-    "tripEmpty": "この旅行に紐づく記事はありません"
+    "tripEmpty": "この旅行に紐づく記事はありません",
+    "toolbar": {
+      "bold": "太字",
+      "italic": "斜体",
+      "heading": "見出し",
+      "list": "箇条書き",
+      "quote": "引用",
+      "link": "リンク",
+      "linkText": "リンクテキスト"
+    }
   },
   "bookmark": {
     "pageTitle": "ブックマーク",

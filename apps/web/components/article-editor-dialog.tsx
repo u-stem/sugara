@@ -11,9 +11,9 @@ import {
   type TripListItem,
 } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, X } from "lucide-react";
+import { Bold, Heading2, Italic, Link, List, Plus, Quote, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,8 @@ type ArticleEditorDialogProps = {
   article?: ArticleResponse;
 };
 
+type FormatType = "bold" | "italic" | "heading" | "list" | "quote" | "link";
+
 export function ArticleEditorDialog({
   open,
   onOpenChange,
@@ -68,6 +70,8 @@ export function ArticleEditorDialog({
   const [visibility, setVisibility] = useState<ArticleVisibility>("private");
   const [tripIds, setTripIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Reset/prefill whenever the dialog opens.
   useEffect(() => {
@@ -122,6 +126,68 @@ export function ArticleEditorDialog({
       if (prev.includes(id)) return prev.filter((t) => t !== id);
       if (prev.length >= MAX_TRIPS_PER_ARTICLE) return prev;
       return [...prev, id];
+    });
+  }
+
+  // Apply a Markdown format to the current selection or cursor position.
+  // Inline formats (bold, italic, link) wrap the selection.
+  // Line-start formats (heading, list, quote) prefix each selected line.
+  function applyFormat(type: FormatType) {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const before = content.slice(0, start);
+    const selected = content.slice(start, end);
+    const after = content.slice(end);
+
+    let newContent: string;
+    let newStart: number;
+    let newEnd: number;
+
+    if (type === "bold") {
+      newContent = `${before}**${selected}**${after}`;
+      // Keep the selection around the wrapped text (shifted by 2 for `**`).
+      newStart = start + 2;
+      newEnd = end + 2;
+    } else if (type === "italic") {
+      newContent = `${before}_${selected}_${after}`;
+      newStart = start + 1;
+      newEnd = end + 1;
+    } else if (type === "heading" || type === "list" || type === "quote") {
+      const prefix = type === "heading" ? "## " : type === "list" ? "- " : "> ";
+      // Find the start of the line where the selection begins.
+      const lineStart = content.lastIndexOf("\n", start - 1) + 1;
+      // All text from that line start up to the end of the selection.
+      const textToModify = content.slice(lineStart, end);
+      // Prepend the prefix to every line in the range.
+      const modified = textToModify.replace(/^/gm, prefix);
+      newContent = content.slice(0, lineStart) + modified + after;
+      // Place cursor at the end of the modified block.
+      newEnd = lineStart + modified.length;
+      newStart = newEnd;
+    } else {
+      // link
+      const url = "https://";
+      if (selected) {
+        newContent = `${before}[${selected}](${url})${after}`;
+        // Select the URL placeholder so the user can type the actual URL.
+        newStart = start + 1 + selected.length + 2;
+        newEnd = newStart + url.length;
+      } else {
+        const defaultText = ta("toolbar.linkText");
+        newContent = `${before}[${defaultText}](${url})${after}`;
+        newStart = start + 1 + defaultText.length + 2;
+        newEnd = newStart + url.length;
+      }
+    }
+
+    setContent(newContent);
+    // Restore cursor / selection after React re-renders the textarea.
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(newStart, newEnd);
     });
   }
 
@@ -199,13 +265,77 @@ export function ArticleEditorDialog({
                   <TabsTrigger value="preview">{ta("preview")}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="write">
+                  {/* Format toolbar: lets users apply Markdown without knowing the syntax */}
+                  <div className="flex flex-wrap gap-0.5 rounded-t-md border border-b-0 bg-muted/30 p-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => applyFormat("bold")}
+                      aria-label={ta("toolbar.bold")}
+                    >
+                      <Bold className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => applyFormat("italic")}
+                      aria-label={ta("toolbar.italic")}
+                    >
+                      <Italic className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => applyFormat("heading")}
+                      aria-label={ta("toolbar.heading")}
+                    >
+                      <Heading2 className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => applyFormat("list")}
+                      aria-label={ta("toolbar.list")}
+                    >
+                      <List className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => applyFormat("quote")}
+                      aria-label={ta("toolbar.quote")}
+                    >
+                      <Quote className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0"
+                      onClick={() => applyFormat("link")}
+                      aria-label={ta("toolbar.link")}
+                    >
+                      <Link className="h-3.5 w-3.5" aria-hidden />
+                    </Button>
+                  </div>
                   <Textarea
+                    ref={textareaRef}
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     placeholder={ta("contentPlaceholder")}
                     maxLength={ARTICLE_CONTENT_MAX_LENGTH}
                     rows={10}
-                    className="font-mono text-sm"
+                    className="rounded-t-none font-mono text-sm"
                   />
                   <p className="text-right text-xs text-muted-foreground">
                     {content.length}/{ARTICLE_CONTENT_MAX_LENGTH}

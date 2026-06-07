@@ -980,13 +980,13 @@
     "filterAll": "All",
     "filterPublic": "Public",
     "createTitle": "Create article",
-    "createDescription": "Write your article in Markdown. Images aren't supported.",
+    "createDescription": "Write your article using the toolbar buttons. Images aren't supported.",
     "editTitle": "Edit article",
     "editDescription": "Update the article content.",
     "titleLabel": "Title",
     "titlePlaceholder": "e.g. Best coffee shops in Kyoto",
     "contentLabel": "Body",
-    "contentPlaceholder": "Write the body in Markdown...",
+    "contentPlaceholder": "Write the body...",
     "write": "Write",
     "preview": "Preview",
     "previewEmpty": "Nothing to preview",
@@ -1029,7 +1029,16 @@
     "emptyFilter": "No articles match the filter",
     "limitReached": "You can create up to {max} articles",
     "relatedTitle": "Related articles",
-    "tripEmpty": "No articles linked to this trip"
+    "tripEmpty": "No articles linked to this trip",
+    "toolbar": {
+      "bold": "Bold",
+      "italic": "Italic",
+      "heading": "Heading",
+      "list": "Bullet list",
+      "quote": "Quote",
+      "link": "Link",
+      "linkText": "link text"
+    }
   },
   "bookmark": {
     "pageTitle": "Bookmarks",
