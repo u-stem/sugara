@@ -999,6 +999,7 @@
     "tripsLabel": "旅行に紐づける",
     "tripsHint": "紐づけた旅行のメンバーには、非公開でもこの記事が共有されます。",
     "tripsEmpty": "紐づけできる旅行がありません",
+    "sharedWithNMembers": "{count}人のメンバーに共有されます",
     "noTrips": "紐づけなし",
     "creating": "作成中...",
     "create": "作成",

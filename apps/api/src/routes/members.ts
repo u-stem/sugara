@@ -7,7 +7,7 @@ import {
 import { and, count, eq, inArray, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
-import { expenseSplits, expenses, tripMembers, users } from "../db/schema";
+import { articles, articleTrips, expenseSplits, expenses, tripMembers, users } from "../db/schema";
 import { logActivity } from "../lib/activity-logger";
 import { ERROR_MSG } from "../lib/constants";
 import { notifyUsers } from "../lib/notifications";
@@ -127,6 +127,30 @@ memberRoutes.post("/:tripId/members", requireTripAccess("owner"), async (c) => {
     makePayload: (tripName) => ({ actorName: user.name, tripName }),
   });
 
+  // C-2: notify owners of non-public articles linked to this trip that a new
+  // member can now see their work.  Fire-and-forget; safe to run after commit.
+  const linkedArticleRows = await db.query.articleTrips.findMany({
+    where: eq(articleTrips.tripId, tripId),
+    with: {
+      article: { columns: { id: true, ownerId: true, title: true, visibility: true } },
+    },
+  });
+  for (const { article } of linkedArticleRows) {
+    if (article.visibility !== "public" && article.ownerId !== targetUser.id) {
+      notifyUsers({
+        type: "article_shared_member_added",
+        tripId,
+        userIds: [article.ownerId],
+        makePayload: (tripName) => ({
+          tripName,
+          articleId: article.id,
+          articleTitle: article.title,
+          memberName: targetUser.name,
+        }),
+      });
+    }
+  }
+
   return c.json(
     {
       userId: targetUser.id,
@@ -222,6 +246,21 @@ memberRoutes.delete("/:tripId/members/:userId", requireTripAccess("owner"), asyn
       );
 
     if (expenseCount > 0) return "has_expenses" as const;
+
+    // C-3: remove article_trips links for articles authored by the departing
+    // member so they are no longer visible to remaining trip members.
+    const ownedArticleRows = await tx
+      .select({ id: articles.id })
+      .from(articles)
+      .where(eq(articles.ownerId, targetUserId));
+    const ownedArticleIds = ownedArticleRows.map((r) => r.id);
+    if (ownedArticleIds.length > 0) {
+      await tx
+        .delete(articleTrips)
+        .where(
+          and(eq(articleTrips.tripId, tripId), inArray(articleTrips.articleId, ownedArticleIds)),
+        );
+    }
 
     await tx
       .delete(tripMembers)

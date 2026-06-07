@@ -5,7 +5,7 @@ import {
   setArticleTripsSchema,
   updateArticleSchema,
 } from "@sugara/shared";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
 import { articleLikes, articles, articleTrips, tripMembers } from "../db/schema";
@@ -221,14 +221,17 @@ articleRoutes.patch("/reorder", requireNonGuest, async (c) => {
     return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 400);
   }
 
-  await db.transaction(async (tx) => {
-    for (let i = 0; i < parsed.data.orderedIds.length; i++) {
-      await tx
-        .update(articles)
-        .set({ sortOrder: i })
-        .where(eq(articles.id, parsed.data.orderedIds[i]));
-    }
-  });
+  // Bulk CASE/WHEN update avoids N round-trips to Postgres.
+  const { orderedIds } = parsed.data;
+  await db
+    .update(articles)
+    .set({
+      sortOrder: sql`CASE ${sql.join(
+        orderedIds.map((id, i) => sql`WHEN ${articles.id} = ${id} THEN ${i}::integer`),
+        sql` `,
+      )} END`,
+    })
+    .where(inArray(articles.id, orderedIds));
 
   return c.json({ ok: true });
 });

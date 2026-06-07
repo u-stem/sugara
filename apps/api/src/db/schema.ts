@@ -314,6 +314,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "candidate_deleted",
   "candidate_reaction",
   "discord_webhook_disabled",
+  "article_shared_member_added",
 ]);
 
 export const scheduleReactions = pgTable(
@@ -459,7 +460,10 @@ export const articleLikes = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [primaryKey({ columns: [table.articleId, table.userId] })],
+  (table) => [
+    primaryKey({ columns: [table.articleId, table.userId] }),
+    index("article_likes_user_id_idx").on(table.userId),
+  ],
 ).enableRLS();
 
 export const groups = pgTable(

@@ -13,7 +13,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,6 +85,24 @@ export function ArticleEditorDialog({
     queryFn: () => api<TripListItem[]>("/api/trips?scope=owned"),
     enabled: open,
   });
+
+  // minor-4: in edit mode also fetch shared trips so links created from trip
+  // detail can be removed from the editor (otherwise those trips are invisible).
+  const { data: sharedTrips = [] } = useQuery({
+    queryKey: queryKeys.trips.shared(),
+    queryFn: () => api<TripListItem[]>("/api/trips?scope=shared"),
+    enabled: open && isEdit,
+  });
+
+  // Combine owned trips + any shared-only trip that is already linked, so the
+  // user can uncheck it.  Purely additive; no owned entries are duplicated.
+  const displayTrips = useMemo(() => {
+    if (!isEdit) return ownedTrips;
+    const ownedIds = new Set(ownedTrips.map((t) => t.id));
+    const linkedIds = new Set(article?.tripIds ?? []);
+    const nonOwnedLinked = sharedTrips.filter((t) => !ownedIds.has(t.id) && linkedIds.has(t.id));
+    return [...ownedTrips, ...nonOwnedLinked];
+  }, [ownedTrips, sharedTrips, isEdit, article]);
 
   function addTag() {
     const t = tagDraft.trim();
@@ -275,11 +293,11 @@ export function ArticleEditorDialog({
             <div className="space-y-2">
               <Label>{ta("tripsLabel")}</Label>
               <p className="text-xs text-muted-foreground">{ta("tripsHint")}</p>
-              {ownedTrips.length === 0 ? (
+              {displayTrips.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{ta("tripsEmpty")}</p>
               ) : (
                 <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
-                  {ownedTrips.map((trip) => {
+                  {displayTrips.map((trip) => {
                     const checked = tripIds.includes(trip.id);
                     return (
                       <label
@@ -293,7 +311,12 @@ export function ArticleEditorDialog({
                           onCheckedChange={() => toggleTrip(trip.id)}
                           disabled={!checked && tripIds.length >= MAX_TRIPS_PER_ARTICLE}
                         />
-                        <span className="truncate">{trip.title}</span>
+                        <span className="min-w-0 flex-1 truncate">{trip.title}</span>
+                        {trip.memberCount > 0 && (
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {ta("sharedWithNMembers", { count: trip.memberCount })}
+                          </span>
+                        )}
                       </label>
                     );
                   })}

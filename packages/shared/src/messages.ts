@@ -499,6 +499,9 @@ export const PUSH_MSG: Record<string, (payload: Record<string, string | undefine
   candidate_reaction: (p) => `${p.actorName}さんが候補「${p.entityName}」にリアクションしました`,
   discord_webhook_disabled: (p) =>
     `「${p.tripName}」のDiscord通知が無効化されました。設定を確認してください`,
+  // push: false for this type; entry included for completeness / safety
+  article_shared_member_added: (p) =>
+    `「${p.tripName}」に${p.memberName}さんが参加しました。記事「${p.articleTitle}」が共有されています`,
 };
 
 // ─── UI labels (Japanese, used in dropdowns and badges) ───────────────────────

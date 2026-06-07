@@ -23,6 +23,9 @@ const {
     trips: {
       findFirst: vi.fn(),
     },
+    articleTrips: {
+      findMany: vi.fn(),
+    },
   },
   mockDbInsert: vi.fn(),
   mockDbUpdate: vi.fn(),
@@ -87,6 +90,8 @@ describe("Member routes", () => {
     mockDbQuery.trips.findFirst.mockResolvedValue({ title: "テスト旅行" });
     mockCreateNotification.mockResolvedValue(undefined);
     mockNotifyUsers.mockReturnValue(undefined);
+    // Default: no articles linked to the trip (C-2 / C-3 safe default)
+    mockDbQuery.articleTrips.findMany.mockResolvedValue([]);
     // Default: count query returns 0 (under limit / no expenses)
     const mockWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
     mockDbSelect.mockReturnValue({
@@ -271,6 +276,78 @@ describe("Member routes", () => {
         expect.objectContaining({ type: "member_added" }),
       );
     });
+
+    // C-2: notify article owners when a non-public article is linked to the trip
+    it("POST: 非公開記事が紐づいている旅行にメンバーを追加すると記事オーナーへ通知する", async () => {
+      const articleOwnerId = "00000000-0000-0000-0000-000000000099";
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: fakeUser2Id,
+        name: "New Member",
+      });
+      mockDbQuery.tripMembers.findFirst
+        .mockResolvedValueOnce({ tripId, userId: fakeUserId, role: "owner" })
+        .mockResolvedValueOnce(undefined);
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      });
+      // Trip has one private article owned by someone else
+      mockDbQuery.articleTrips.findMany.mockResolvedValue([
+        {
+          article: {
+            id: "article-uuid-1",
+            ownerId: articleOwnerId,
+            title: "Private Article",
+            visibility: "private",
+          },
+        },
+      ]);
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      await app.request(basePath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: fakeUser2Id, role: "editor" }),
+      });
+
+      expect(mockNotifyUsers).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "article_shared_member_added" }),
+      );
+    });
+
+    it("POST: 公開記事が紐づいている場合は article_shared_member_added を送らない", async () => {
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: fakeUser2Id,
+        name: "New Member",
+      });
+      mockDbQuery.tripMembers.findFirst
+        .mockResolvedValueOnce({ tripId, userId: fakeUserId, role: "owner" })
+        .mockResolvedValueOnce(undefined);
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      });
+      // Trip has only a public article
+      mockDbQuery.articleTrips.findMany.mockResolvedValue([
+        {
+          article: {
+            id: "article-uuid-2",
+            ownerId: "00000000-0000-0000-0000-000000000099",
+            title: "Public Article",
+            visibility: "public",
+          },
+        },
+      ]);
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      await app.request(basePath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: fakeUser2Id, role: "editor" }),
+      });
+
+      expect(mockNotifyUsers).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "article_shared_member_added" }),
+      );
+    });
   });
 
   describe(`PATCH ${basePath}/:userId`, () => {
@@ -404,6 +481,87 @@ describe("Member routes", () => {
       });
 
       expect(res.status).toBe(404);
+    });
+
+    // C-3: article_trips cleanup when member has articles linked to the trip
+    it("DELETE: 離脱メンバーが保有する記事の article_trips リンクを削除する", async () => {
+      mockDbQuery.tripMembers.findFirst
+        .mockResolvedValueOnce({ tripId, userId: fakeUserId, role: "owner" })
+        .mockResolvedValueOnce({
+          tripId,
+          userId: fakeUser2Id,
+          role: "editor",
+          user: { name: "Editor" },
+        });
+
+      // C-3: select returns one article owned by the departing member
+      const mockWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      mockDbSelect
+        // First call: expense check (inside transaction)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: mockWhere,
+            leftJoin: vi.fn().mockReturnValue({ where: mockWhere }),
+          }),
+        })
+        // Second call: articles owned by departing user
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ id: "article-uuid-1" }]),
+          }),
+        });
+
+      mockDbDelete.mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      const res = await app.request(`${basePath}/${fakeUser2Id}`, {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(200);
+      // delete called twice: once for articleTrips, once for tripMembers
+      expect(mockDbDelete).toHaveBeenCalledTimes(2);
+    });
+
+    it("DELETE: 離脱メンバーが記事を持たない場合は article_trips を削除しない", async () => {
+      mockDbQuery.tripMembers.findFirst
+        .mockResolvedValueOnce({ tripId, userId: fakeUserId, role: "owner" })
+        .mockResolvedValueOnce({
+          tripId,
+          userId: fakeUser2Id,
+          role: "editor",
+          user: { name: "Editor" },
+        });
+
+      // select returns empty articles list for departing user
+      const mockWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      mockDbSelect
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: mockWhere,
+            leftJoin: vi.fn().mockReturnValue({ where: mockWhere }),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([]),
+          }),
+        });
+
+      mockDbDelete.mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      const res = await app.request(`${basePath}/${fakeUser2Id}`, {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(200);
+      // delete called only once: just tripMembers, no articleTrips to remove
+      expect(mockDbDelete).toHaveBeenCalledTimes(1);
     });
   });
 });

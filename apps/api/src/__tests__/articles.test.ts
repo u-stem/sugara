@@ -159,6 +159,46 @@ describe("Article routes", () => {
     });
   });
 
+  // --- PATCH /api/articles/reorder (minor-1) ---
+  describe("PATCH /api/articles/reorder", () => {
+    it("updates sortOrder in a single bulk statement (not N queries)", async () => {
+      const id1 = "00000000-0000-0000-0000-000000000011";
+      const id2 = "00000000-0000-0000-0000-000000000012";
+      mockDbQuery.articles.findMany.mockResolvedValue([{ id: id1 }, { id: id2 }]);
+      mockDbUpdate.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(undefined),
+        }),
+      });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/reorder", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds: [id1, id2] }),
+      });
+
+      expect(res.status).toBe(200);
+      // The bulk approach calls update exactly once regardless of input length.
+      expect(mockDbUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns 400 when an id does not belong to the user", async () => {
+      const ownId = "00000000-0000-0000-0000-000000000011";
+      const otherId = "00000000-0000-0000-0000-000000000099";
+      mockDbQuery.articles.findMany.mockResolvedValue([{ id: ownId }]);
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/reorder", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds: [ownId, otherId] }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
   // --- PATCH /api/articles/:id ---
   describe("PATCH /api/articles/:articleId", () => {
     it("returns 404 when not owner", async () => {

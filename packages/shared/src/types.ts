@@ -98,6 +98,7 @@ export type TripListItem = {
   currency: string;
   role: MemberRole;
   totalSchedules: number;
+  memberCount: number;
   updatedAt: string;
 };
 
