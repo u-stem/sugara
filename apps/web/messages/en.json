@@ -979,7 +979,7 @@
   "article": {
     "pageTitle": "Articles",
     "new": "Write article",
-    "createFab": "Write article",
+    "createFab": "New article",
     "filterByVisibility": "Filter by visibility",
     "filterAll": "All",
     "filterPublic": "Public",

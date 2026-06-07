@@ -979,7 +979,7 @@
   "article": {
     "pageTitle": "記事",
     "new": "記事を書く",
-    "createFab": "記事を書く",
+    "createFab": "新規作成",
     "filterByVisibility": "公開状態で絞り込み",
     "filterAll": "すべて",
     "filterPublic": "公開",
