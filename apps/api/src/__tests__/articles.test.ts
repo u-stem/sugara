@@ -183,6 +183,24 @@ describe("Article routes", () => {
       expect(mockDbUpdate).toHaveBeenCalledTimes(1);
     });
 
+    it("returns 200 with { ok: true } and skips UPDATE when orderedIds is empty", async () => {
+      // Empty list is a valid no-op; must NOT trigger the bulk CASE/WHEN that
+      // produces invalid SQL ("CASE  END") and causes a Postgres 500.
+      mockDbQuery.articles.findMany.mockResolvedValue([]);
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/reorder", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds: [] }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      // No UPDATE must be issued — the bulk CASE/WHEN is skipped entirely.
+      expect(mockDbUpdate).not.toHaveBeenCalled();
+    });
+
     it("returns 400 when an id does not belong to the user", async () => {
       const ownId = "00000000-0000-0000-0000-000000000011";
       const otherId = "00000000-0000-0000-0000-000000000099";

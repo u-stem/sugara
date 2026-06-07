@@ -10,6 +10,7 @@ const {
   mockDbSelect,
   mockCreateNotification,
   mockNotifyUsers,
+  mockNotifyArticleOwnersOnMemberAdded,
 } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
   mockDbQuery: {
@@ -33,6 +34,7 @@ const {
   mockDbSelect: vi.fn(),
   mockCreateNotification: vi.fn(),
   mockNotifyUsers: vi.fn(),
+  mockNotifyArticleOwnersOnMemberAdded: vi.fn(),
 }));
 
 vi.mock("../lib/auth", () => ({
@@ -63,9 +65,13 @@ vi.mock("../lib/activity-logger", () => ({
 vi.mock("../lib/notifications", () => ({
   createNotification: (...args: unknown[]) => mockCreateNotification(...args),
   notifyUsers: (...args: unknown[]) => mockNotifyUsers(...args),
+  // C-2 helper — mocked so tests verify the call boundary, not internal DB queries.
+  notifyArticleOwnersOnMemberAdded: (...args: unknown[]) =>
+    mockNotifyArticleOwnersOnMemberAdded(...args),
 }));
 
 import { MAX_MEMBERS_PER_TRIP } from "@sugara/shared";
+import { articleTrips } from "../db/schema";
 import { memberRoutes } from "../routes/members";
 
 const fakeUserId = "00000000-0000-0000-0000-000000000001";
@@ -90,6 +96,7 @@ describe("Member routes", () => {
     mockDbQuery.trips.findFirst.mockResolvedValue({ title: "テスト旅行" });
     mockCreateNotification.mockResolvedValue(undefined);
     mockNotifyUsers.mockReturnValue(undefined);
+    mockNotifyArticleOwnersOnMemberAdded.mockResolvedValue(undefined);
     // Default: no articles linked to the trip (C-2 / C-3 safe default)
     mockDbQuery.articleTrips.findMany.mockResolvedValue([]);
     // Default: count query returns 0 (under limit / no expenses)
@@ -277,9 +284,8 @@ describe("Member routes", () => {
       );
     });
 
-    // C-2: notify article owners when a non-public article is linked to the trip
-    it("POST: 非公開記事が紐づいている旅行にメンバーを追加すると記事オーナーへ通知する", async () => {
-      const articleOwnerId = "00000000-0000-0000-0000-000000000099";
+    // C-2: members.ts delegates to the helper; verify correct arguments are forwarded.
+    it("POST: メンバー追加時に notifyArticleOwnersOnMemberAdded を呼ぶ", async () => {
       mockDbQuery.users.findFirst.mockResolvedValue({
         id: fakeUser2Id,
         name: "New Member",
@@ -290,17 +296,6 @@ describe("Member routes", () => {
       mockDbInsert.mockReturnValue({
         values: vi.fn().mockResolvedValue(undefined),
       });
-      // Trip has one private article owned by someone else
-      mockDbQuery.articleTrips.findMany.mockResolvedValue([
-        {
-          article: {
-            id: "article-uuid-1",
-            ownerId: articleOwnerId,
-            title: "Private Article",
-            visibility: "private",
-          },
-        },
-      ]);
 
       const app = createTestApp(memberRoutes, "/api/trips");
       await app.request(basePath, {
@@ -309,8 +304,14 @@ describe("Member routes", () => {
         body: JSON.stringify({ userId: fakeUser2Id, role: "editor" }),
       });
 
-      expect(mockNotifyUsers).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "article_shared_member_added" }),
+      // The helper must be called with the added user and actor suppression.
+      expect(mockNotifyArticleOwnersOnMemberAdded).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tripId,
+          addedUserIds: [fakeUser2Id],
+          memberName: "New Member",
+          excludeOwnerId: fakeUserId,
+        }),
       );
     });
 
@@ -325,7 +326,9 @@ describe("Member routes", () => {
       mockDbInsert.mockReturnValue({
         values: vi.fn().mockResolvedValue(undefined),
       });
-      // Trip has only a public article
+      // Trip has only a public article — public-article filtering happens inside
+      // the helper; here we confirm notifyUsers is never called directly with
+      // article_shared_member_added (the helper is mocked to a no-op).
       mockDbQuery.articleTrips.findMany.mockResolvedValue([
         {
           article: {
@@ -523,6 +526,8 @@ describe("Member routes", () => {
       expect(res.status).toBe(200);
       // delete called twice: once for articleTrips, once for tripMembers
       expect(mockDbDelete).toHaveBeenCalledTimes(2);
+      // First delete must target articleTrips (not a blanket delete of another table)
+      expect(mockDbDelete).toHaveBeenCalledWith(articleTrips);
     });
 
     it("DELETE: 離脱メンバーが記事を持たない場合は article_trips を削除しない", async () => {
@@ -562,6 +567,8 @@ describe("Member routes", () => {
       expect(res.status).toBe(200);
       // delete called only once: just tripMembers, no articleTrips to remove
       expect(mockDbDelete).toHaveBeenCalledTimes(1);
+      // articleTrips must NOT have been touched
+      expect(mockDbDelete).not.toHaveBeenCalledWith(articleTrips);
     });
   });
 });

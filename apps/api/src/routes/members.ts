@@ -10,7 +10,7 @@ import { db } from "../db/index";
 import { articles, articleTrips, expenseSplits, expenses, tripMembers, users } from "../db/schema";
 import { logActivity } from "../lib/activity-logger";
 import { ERROR_MSG } from "../lib/constants";
-import { notifyUsers } from "../lib/notifications";
+import { notifyArticleOwnersOnMemberAdded, notifyUsers } from "../lib/notifications";
 import { getParam } from "../lib/params";
 import { requireAuth } from "../middleware/auth";
 import { requireTripAccess } from "../middleware/require-trip-access";
@@ -129,27 +129,14 @@ memberRoutes.post("/:tripId/members", requireTripAccess("owner"), async (c) => {
 
   // C-2: notify owners of non-public articles linked to this trip that a new
   // member can now see their work.  Fire-and-forget; safe to run after commit.
-  const linkedArticleRows = await db.query.articleTrips.findMany({
-    where: eq(articleTrips.tripId, tripId),
-    with: {
-      article: { columns: { id: true, ownerId: true, title: true, visibility: true } },
-    },
+  // excludeOwnerId suppresses self-notification when the actor (trip owner)
+  // also has articles linked to this trip.
+  void notifyArticleOwnersOnMemberAdded({
+    tripId,
+    addedUserIds: [targetUser.id],
+    memberName: targetUser.name,
+    excludeOwnerId: user.id,
   });
-  for (const { article } of linkedArticleRows) {
-    if (article.visibility !== "public" && article.ownerId !== targetUser.id) {
-      notifyUsers({
-        type: "article_shared_member_added",
-        tripId,
-        userIds: [article.ownerId],
-        makePayload: (tripName) => ({
-          tripName,
-          articleId: article.id,
-          articleTitle: article.title,
-          memberName: targetUser.name,
-        }),
-      });
-    }
-  }
 
   return c.json(
     {

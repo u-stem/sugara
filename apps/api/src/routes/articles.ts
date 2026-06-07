@@ -221,8 +221,12 @@ articleRoutes.patch("/reorder", requireNonGuest, async (c) => {
     return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 400);
   }
 
-  // Bulk CASE/WHEN update avoids N round-trips to Postgres.
+  // Empty list is a no-op; skip CASE/WHEN to avoid a Postgres syntax error
+  // ("CASE  END" with no WHEN clauses is invalid SQL).
   const { orderedIds } = parsed.data;
+  if (orderedIds.length === 0) return c.json({ ok: true });
+
+  // Bulk CASE/WHEN update avoids N round-trips to Postgres.
   await db
     .update(articles)
     .set({

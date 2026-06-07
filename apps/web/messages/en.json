@@ -999,7 +999,7 @@
     "tripsLabel": "Link to trips",
     "tripsHint": "Members of a linked trip can see this article even if it's private.",
     "tripsEmpty": "No trips available to link",
-    "sharedWithNMembers": "Shared with {count} members",
+    "sharedWithNMembers": "Shared with {count, plural, one {# member} other {# members}}",
     "noTrips": "Not linked",
     "creating": "Creating...",
     "create": "Create",
