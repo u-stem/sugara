@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { DUMMY_EMAIL_DOMAIN, MAX_TRIP_LIMIT, MAX_TRIPS_PER_USER } from "@sugara/shared";
 import { and, count, countDistinct, desc, eq, gte, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { z } from "zod";
 import { db } from "../db/index";
 import {
   accounts,
@@ -262,16 +261,23 @@ adminRoutes.get("/api/admin/users", requireAuth, requireAdmin, async (c) => {
 // PATCH /api/admin/users/:userId/trip-limit — 旅行作成上限の変更（管理者専用）
 adminRoutes.patch("/api/admin/users/:userId/trip-limit", requireAuth, requireAdmin, async (c) => {
   const userId = getParam(c, "userId");
-  const parsed = z
-    .object({ tripLimit: z.number().int().min(1).max(MAX_TRIP_LIMIT) })
-    .safeParse(await c.req.json());
-  if (!parsed.success) {
+  // Hand-rolled validation: apps/api validates request bodies without a direct
+  // zod dependency (schemas live in @sugara/shared). A lone tripLimit field
+  // doesn't justify adding zod to apps/api's package.json.
+  const body = await c.req.json<{ tripLimit?: unknown }>();
+
+  if (
+    typeof body.tripLimit !== "number" ||
+    !Number.isInteger(body.tripLimit) ||
+    body.tripLimit < 1 ||
+    body.tripLimit > MAX_TRIP_LIMIT
+  ) {
     return c.json({ error: `tripLimit must be an integer between 1 and ${MAX_TRIP_LIMIT}` }, 400);
   }
 
   const updated = await db
     .update(users)
-    .set({ tripLimit: parsed.data.tripLimit, updatedAt: new Date() })
+    .set({ tripLimit: body.tripLimit, updatedAt: new Date() })
     .where(and(eq(users.id, userId), eq(users.isAnonymous, false)))
     .returning({ id: users.id, tripLimit: users.tripLimit });
 
