@@ -239,7 +239,8 @@ memberRoutes.delete("/:tripId/members/:userId", requireTripAccess("owner"), asyn
     const ownedArticleRows = await tx
       .select({ id: articles.id })
       .from(articles)
-      .where(eq(articles.ownerId, targetUserId));
+      .innerJoin(articleTrips, eq(articleTrips.articleId, articles.id))
+      .where(and(eq(articles.ownerId, targetUserId), eq(articleTrips.tripId, tripId)));
     const ownedArticleIds = ownedArticleRows.map((r) => r.id);
     if (ownedArticleIds.length > 0) {
       await tx

@@ -147,6 +147,35 @@ describe("useArticleSelection", () => {
     expect(mockToastSuccess).toHaveBeenCalledTimes(1);
   });
 
+  // --- selectAll fills selectedIds with all articleIds ---
+  it("selectAll sets selectedIds to every articleId passed to the hook", () => {
+    const { result } = renderSel();
+
+    act(() => result.current.selectAll());
+
+    expect(result.current.selectedIds).toEqual(new Set([articleId1, articleId2]));
+  });
+
+  // --- deselectAll empties selectedIds ---
+  it("deselectAll clears all selected IDs", () => {
+    const { result } = renderSel();
+    act(() => result.current.toggle(articleId1));
+
+    act(() => result.current.deselectAll());
+
+    expect(result.current.selectedIds.size).toBe(0);
+  });
+
+  // --- select replaces selectedIds with exactly the given ids ---
+  it("select sets selectedIds to only the provided ids", () => {
+    const { result } = renderSel();
+    act(() => result.current.toggle(articleId2));
+
+    act(() => result.current.select([articleId1]));
+
+    expect(result.current.selectedIds).toEqual(new Set([articleId1]));
+  });
+
   // --- exit clears selection ---
   it("exits selection mode and clears selected IDs on exit", () => {
     const { result } = renderSel();

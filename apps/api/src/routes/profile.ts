@@ -8,6 +8,7 @@ import { areFriends } from "../lib/friends";
 import { getParam, isValidUuid } from "../lib/params";
 import { optionalAuth } from "../middleware/optional-auth";
 import type { OptionalAuthEnv } from "../types";
+import { articleSummary } from "./articles";
 
 const profileRoutes = new Hono<OptionalAuthEnv>();
 
@@ -98,18 +99,7 @@ profileRoutes.get("/:userId/articles", optionalAuth, async (c) => {
     id: user.id,
     name: user.name,
     image: user.image,
-    articles: rows.map((a) => ({
-      id: a.id,
-      ownerId: a.ownerId,
-      title: a.title,
-      tags: a.tags,
-      visibility: a.visibility,
-      sortOrder: a.sortOrder,
-      likeCount: a.likes.length,
-      likedByMe: viewerId ? a.likes.some((l) => l.userId === viewerId) : false,
-      createdAt: a.createdAt,
-      updatedAt: a.updatedAt,
-    })),
+    articles: rows.map((a) => articleSummary(a, viewerId)),
   });
 });
 

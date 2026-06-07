@@ -1,7 +1,7 @@
 import type { ArticleListItem } from "@sugara/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
@@ -48,9 +48,10 @@ export function useArticleSelection({ articleIds, invalidateArticles }: UseArtic
     setSelectedIds(new Set());
   }
 
-  function select(ids: string[]) {
+  // Stable identity so callers can list it in effect deps without re-running.
+  const select = useCallback((ids: string[]) => {
     setSelectedIds(new Set(ids));
-  }
+  }, []);
 
   async function handleBatchDelete() {
     const ids = [...selectedIds];

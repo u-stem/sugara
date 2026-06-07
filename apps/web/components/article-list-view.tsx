@@ -2,6 +2,7 @@
 
 import { MAX_ARTICLES_PER_USER } from "@sugara/shared";
 import { Globe, ListFilter, Lock, Plus, SquareMousePointer, Trash2, Users, X } from "lucide-react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -43,7 +44,10 @@ function ArticlesSkeleton() {
     <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {["s1", "s2", "s3"].map((key) => (
         <div key={key} className="rounded-lg border bg-card p-6 shadow-sm">
-          <Skeleton className="h-5 w-32" />
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-5 w-16 rounded-full" />
+          </div>
           <Skeleton className="mt-4 h-4 w-40" />
         </div>
       ))}
@@ -96,6 +100,9 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
       <div className="mx-auto mt-4 max-w-2xl">
         <div className="rounded-lg border bg-muted/50 p-8 text-center">
           <p className="text-sm text-muted-foreground">{ta("createDescription")}</p>
+          <Button asChild className="mt-4">
+            <Link href="/auth/signup">{ta("signupCta")}</Link>
+          </Button>
         </div>
       </div>
     );
@@ -124,7 +131,7 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
         size="sm"
         className="h-8 px-2 text-xs"
         onClick={sel.selectedIds.size === filteredArticles.length ? sel.deselectAll : sel.selectAll}
-        disabled={sel.batchLoading}
+        disabled={sel.batchLoading || filteredArticles.length === 0}
       >
         {sel.selectedIds.size === filteredArticles.length ? tc("deselectAll") : tc("selectAll")}
       </Button>

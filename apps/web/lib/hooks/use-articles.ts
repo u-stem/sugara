@@ -59,7 +59,7 @@ export function useArticles(isGuest: boolean): UseArticlesReturn {
     if (pruned.length < sel.selectedIds.size) {
       sel.select(pruned);
     }
-  }, [filteredArticles, sel.selectionMode, sel.selectedIds]);
+  }, [filteredArticles, sel.selectionMode, sel.selectedIds, sel.select]);
 
   return {
     articles,

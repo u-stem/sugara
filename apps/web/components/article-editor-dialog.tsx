@@ -419,7 +419,7 @@ export function ArticleEditorDialog({
                         type="button"
                         onClick={() => setTags(tags.filter((t) => t !== tag))}
                         aria-label={ta("removeTag", { tag })}
-                        className="rounded-full hover:text-destructive"
+                        className="-mr-1 rounded-full p-1 hover:text-destructive"
                       >
                         <X className="h-3 w-3" />
                       </button>

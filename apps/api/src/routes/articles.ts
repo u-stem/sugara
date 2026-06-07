@@ -37,8 +37,9 @@ type ArticleWithLikes = {
 };
 
 // List/profile cards: omit the (potentially large) Markdown body. Shape matches
-// ArticleListItem in @sugara/shared.
-function articleSummary(a: ArticleWithLikes, viewerId: string | undefined) {
+// ArticleListItem in @sugara/shared. Exported so profile routes serialize the
+// same shape instead of duplicating the field mapping.
+export function articleSummary(a: ArticleWithLikes, viewerId: string | undefined) {
   return {
     id: a.id,
     ownerId: a.ownerId,
@@ -384,9 +385,12 @@ articleRoutes.post("/:articleId/like", requireNonGuest, async (c) => {
 
   await db.insert(articleLikes).values({ articleId, userId: user.id }).onConflictDoNothing();
 
-  const liked = article.likes.some((l) => l.userId === user.id);
-  const likeCount = liked ? article.likes.length : article.likes.length + 1;
-  return c.json({ liked: true, likeCount });
+  // Re-count after the write so concurrent likes don't skew the returned total.
+  const [counted] = await db
+    .select({ value: count() })
+    .from(articleLikes)
+    .where(eq(articleLikes.articleId, articleId));
+  return c.json({ liked: true, likeCount: counted?.value ?? 0 });
 });
 
 // Remove own like (idempotent). Guests are excluded for consistency with other mutations.
@@ -409,9 +413,12 @@ articleRoutes.delete("/:articleId/like", requireNonGuest, async (c) => {
     .delete(articleLikes)
     .where(and(eq(articleLikes.articleId, articleId), eq(articleLikes.userId, user.id)));
 
-  const liked = article.likes.some((l) => l.userId === user.id);
-  const likeCount = liked ? article.likes.length - 1 : article.likes.length;
-  return c.json({ liked: false, likeCount });
+  // Re-count after the write so concurrent likes don't skew the returned total.
+  const [counted] = await db
+    .select({ value: count() })
+    .from(articleLikes)
+    .where(eq(articleLikes.articleId, articleId));
+  return c.json({ liked: false, likeCount: counted?.value ?? 0 });
 });
 
 // ==============================================================================

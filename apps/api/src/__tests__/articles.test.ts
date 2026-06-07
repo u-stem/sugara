@@ -234,6 +234,94 @@ describe("Article routes", () => {
       });
       expect(res.status).toBe(404);
     });
+
+    it("updates title and returns the updated article (200)", async () => {
+      const now = new Date("2024-01-01T00:00:00Z");
+      const existing = {
+        id: articleId,
+        ownerId: userId,
+        title: "Old title",
+        content: "body",
+        tags: [],
+        visibility: "private",
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now,
+        likes: [],
+        articleTrips: [],
+      };
+      mockDbQuery.articles.findFirst.mockResolvedValue(existing);
+      mockDbUpdate.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([{ ...existing, title: "New title" }]),
+          }),
+        }),
+      });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "New title" }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.title).toBe("New title");
+    });
+
+    it("returns 200 without UPDATE when no fields changed (hasChanges early return)", async () => {
+      const now = new Date("2024-01-01T00:00:00Z");
+      const existing = {
+        id: articleId,
+        ownerId: userId,
+        title: "Same title",
+        content: "body",
+        tags: [],
+        visibility: "private",
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now,
+        likes: [],
+        articleTrips: [],
+      };
+      mockDbQuery.articles.findFirst.mockResolvedValue(existing);
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Same title" }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockDbUpdate).not.toHaveBeenCalled();
+    });
+  });
+
+  // --- DELETE /api/articles/:id ---
+  describe("DELETE /api/articles/:articleId", () => {
+    it("deletes own article and returns { ok: true } (200)", async () => {
+      mockDbQuery.articles.findFirst.mockResolvedValue({ id: articleId, ownerId: userId });
+      mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}`, { method: "DELETE" });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+    });
+
+    it("returns 404 when the article is owned by another user", async () => {
+      mockDbQuery.articles.findFirst.mockResolvedValue({ id: articleId, ownerId: otherUserId });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}`, { method: "DELETE" });
+
+      expect(res.status).toBe(404);
+    });
   });
 
   // --- PUT /api/articles/:id/trips ---
@@ -266,6 +354,22 @@ describe("Article routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.tripIds).toEqual([tripId]);
+    });
+
+    it("removes all trip links when tripIds is empty", async () => {
+      mockDbQuery.articles.findFirst.mockResolvedValue({ id: articleId, ownerId: userId });
+      mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}/trips`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tripIds: [] }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.tripIds).toEqual([]);
     });
   });
 
@@ -335,6 +439,49 @@ describe("Article routes", () => {
       const app = createTestApp(articleDetailRoutes, "/api/articles");
       const res = await app.request(`/api/articles/${articleId}`);
       expect(res.status).toBe(200);
+    });
+
+    it("returns a friends_only article to a friend (200)", async () => {
+      mockDbQuery.articles.findFirst.mockResolvedValue({
+        id: articleId,
+        ownerId: otherUserId,
+        title: "Friends only",
+        content: "body",
+        tags: [],
+        visibility: "friends_only",
+        sortOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        likes: [],
+        articleTrips: [],
+      });
+      mockDbQuery.friends.findFirst.mockResolvedValue({ id: "friend-1" });
+
+      const app = createTestApp(articleDetailRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}`);
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 404 for a friends_only article to a non-friend", async () => {
+      mockDbQuery.articles.findFirst.mockResolvedValue({
+        id: articleId,
+        ownerId: otherUserId,
+        title: "Friends only",
+        content: "body",
+        tags: [],
+        visibility: "friends_only",
+        sortOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        likes: [],
+        articleTrips: [],
+      });
+      mockDbQuery.friends.findFirst.mockResolvedValue(undefined);
+      mockDbQuery.tripMembers.findFirst.mockResolvedValue(undefined);
+
+      const app = createTestApp(articleDetailRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}`);
+      expect(res.status).toBe(404);
     });
   });
 
@@ -464,6 +611,10 @@ describe("Article routes", () => {
           .fn()
           .mockReturnValue({ onConflictDoNothing: vi.fn().mockResolvedValue(undefined) }),
       });
+      // Post-write count() re-query returns the authoritative total.
+      mockDbSelect.mockReturnValue({
+        from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ value: 1 }]) }),
+      });
 
       const app = createTestApp(articleRoutes, "/api/articles");
       const res = await app.request(`/api/articles/${articleId}/like`, { method: "POST" });
@@ -519,6 +670,44 @@ describe("Article routes", () => {
       const app = createTestApp(articleRoutes, "/api/articles");
       const res = await app.request(`/api/articles/${articleId}/like`, { method: "DELETE" });
       expect(res.status).toBe(403);
+    });
+
+    it("unliking a visible article returns { liked: false, likeCount: 0 }", async () => {
+      mockDbQuery.articles.findFirst.mockResolvedValue({
+        id: articleId,
+        ownerId: otherUserId,
+        visibility: "public",
+        likes: [],
+        articleTrips: [],
+      });
+      mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+      mockDbSelect.mockReturnValue({
+        from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ value: 0 }]) }),
+      });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}/like`, { method: "DELETE" });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body).toEqual({ liked: false, likeCount: 0 });
+    });
+
+    it("returns 404 when the article is not visible to the viewer", async () => {
+      mockDbQuery.articles.findFirst.mockResolvedValue({
+        id: articleId,
+        ownerId: otherUserId,
+        visibility: "private",
+        likes: [],
+        articleTrips: [],
+      });
+      mockDbQuery.tripMembers.findFirst.mockResolvedValue(undefined);
+      mockDbQuery.friends.findFirst.mockResolvedValue(undefined);
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request(`/api/articles/${articleId}/like`, { method: "DELETE" });
+
+      expect(res.status).toBe(404);
     });
   });
 

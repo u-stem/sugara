@@ -105,6 +105,8 @@ describe("Member routes", () => {
       from: vi.fn().mockReturnValue({
         where: mockWhere,
         leftJoin: vi.fn().mockReturnValue({ where: mockWhere }),
+        // C-3: owned-articles query joins article_trips; default to none linked.
+        innerJoin: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
       }),
     });
   });
@@ -507,10 +509,12 @@ describe("Member routes", () => {
             leftJoin: vi.fn().mockReturnValue({ where: mockWhere }),
           }),
         })
-        // Second call: articles owned by departing user
+        // Second call: articles owned by departing user, linked to this trip
         .mockReturnValueOnce({
           from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([{ id: "article-uuid-1" }]),
+            innerJoin: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([{ id: "article-uuid-1" }]),
+            }),
           }),
         });
 
@@ -551,7 +555,7 @@ describe("Member routes", () => {
         })
         .mockReturnValueOnce({
           from: vi.fn().mockReturnValue({
-            where: vi.fn().mockResolvedValue([]),
+            innerJoin: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
           }),
         });
 

@@ -985,6 +985,7 @@
     "filterPublic": "Public",
     "createTitle": "Create article",
     "createDescription": "Write your article using the toolbar buttons. Images aren't supported.",
+    "signupCta": "Sign up to write articles",
     "editTitle": "Edit article",
     "editDescription": "Update the article content.",
     "titleLabel": "Title",

@@ -26,7 +26,7 @@ export const queryKeys = {
   articles: {
     all: ["articles"] as const,
     list: () => [...queryKeys.articles.all, "list"] as const,
-    detail: (articleId: string) => [...queryKeys.articles.all, articleId] as const,
+    detail: (articleId: string) => [...queryKeys.articles.all, "detail", articleId] as const,
     byTrip: (tripId: string) => [...queryKeys.articles.all, "trip", tripId] as const,
   },
   users: {

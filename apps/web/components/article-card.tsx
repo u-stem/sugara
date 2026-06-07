@@ -86,6 +86,7 @@ export const ArticleCard = memo(function ArticleCard({
         type="button"
         onClick={() => onSelect?.(id)}
         aria-pressed={selected}
+        aria-label={title}
         className="group block w-full text-left focus-visible:outline-none"
       >
         <Card
