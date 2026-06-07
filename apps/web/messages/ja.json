@@ -1029,6 +1029,9 @@
     "limitReached": "記事は最大{max}件まで作成できます",
     "relatedTitle": "関連記事",
     "tripEmpty": "この旅行に紐づく記事はありません",
+    "bulkDeleted": "{count}件の記事を削除しました",
+    "batchDeleteTitle": "{count}件の記事を削除しますか？",
+    "batchDeleteDescription": "選択した記事が削除されます。この操作は取り消せません。",
     "toolbar": {
       "bold": "太字",
       "italic": "斜体",

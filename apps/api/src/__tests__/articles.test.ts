@@ -338,6 +338,80 @@ describe("Article routes", () => {
     });
   });
 
+  // --- POST /api/articles/batch-delete ---
+  describe("POST /api/articles/batch-delete", () => {
+    const articleId2 = "00000000-0000-0000-0000-000000000011";
+
+    it("deletes multiple own articles and returns ok", async () => {
+      mockDbQuery.articles.findMany.mockResolvedValue([{ id: articleId }, { id: articleId2 }]);
+      mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleIds: [articleId, articleId2] }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.ok).toBe(true);
+      expect(body.deleted).toBe(2);
+    });
+
+    it("returns 404 when some articles are not owned by the user", async () => {
+      // Only 1 found but 2 were requested — the other belongs to a different user.
+      mockDbQuery.articles.findMany.mockResolvedValue([{ id: articleId }]);
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleIds: [articleId, articleId2] }),
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 403 for guest accounts", async () => {
+      mockGetSession.mockResolvedValue({
+        user: { ...fakeUser, isAnonymous: true },
+        session: { id: "s" },
+      });
+
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleIds: [articleId] }),
+      });
+
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 400 with empty articleIds (schema validation)", async () => {
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleIds: [] }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 with duplicate articleIds (schema validation)", async () => {
+      const app = createTestApp(articleRoutes, "/api/articles");
+      const res = await app.request("/api/articles/batch-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ articleIds: [articleId, articleId] }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
   // --- GET /api/trips/:tripId/articles ---
   describe("GET /api/trips/:tripId/articles", () => {
     it("returns 404 when the viewer is not a trip member", async () => {

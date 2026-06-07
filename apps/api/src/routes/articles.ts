@@ -1,4 +1,5 @@
 import {
+  batchArticleIdsSchema,
   createArticleSchema,
   MAX_ARTICLES_PER_USER,
   reorderArticlesSchema,
@@ -238,6 +239,33 @@ articleRoutes.patch("/reorder", requireNonGuest, async (c) => {
     .where(inArray(articles.id, orderedIds));
 
   return c.json({ ok: true });
+});
+
+// Batch delete own articles
+articleRoutes.post("/batch-delete", requireNonGuest, async (c) => {
+  const user = c.get("user");
+
+  const body = await c.req.json();
+  const parsed = batchArticleIdsSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+
+  const { articleIds } = parsed.data;
+
+  const owned = await db.query.articles.findMany({
+    where: and(inArray(articles.id, articleIds), eq(articles.ownerId, user.id)),
+    columns: { id: true },
+  });
+  if (owned.length !== articleIds.length) {
+    return c.json({ error: ERROR_MSG.ARTICLE_NOT_FOUND }, 404);
+  }
+
+  await db
+    .delete(articles)
+    .where(and(eq(articles.ownerId, user.id), inArray(articles.id, articleIds)));
+
+  return c.json({ ok: true, deleted: articleIds.length });
 });
 
 // Update own article

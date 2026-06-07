@@ -1,7 +1,7 @@
 "use client";
 
 import { MAX_ARTICLES_PER_USER } from "@sugara/shared";
-import { Globe, ListFilter, Lock, Plus, Users } from "lucide-react";
+import { Globe, ListFilter, Lock, Plus, SquareMousePointer, Trash2, Users, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type React from "react";
 import { useEffect, useState } from "react";
@@ -12,6 +12,16 @@ import { Fab } from "@/components/fab";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { LoadingBoundary } from "@/components/ui/loading-boundary";
+import {
+  ResponsiveAlertDialog,
+  ResponsiveAlertDialogCancel,
+  ResponsiveAlertDialogContent,
+  ResponsiveAlertDialogDescription,
+  ResponsiveAlertDialogDestructiveAction,
+  ResponsiveAlertDialogFooter,
+  ResponsiveAlertDialogHeader,
+  ResponsiveAlertDialogTitle,
+} from "@/components/ui/responsive-alert-dialog";
 import {
   Select,
   SelectContent,
@@ -65,6 +75,7 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
     createDialogOpen,
     setCreateDialogOpen,
     invalidateArticles,
+    sel,
   } = useArticles(isGuest);
 
   const [visibilitySheetOpen, setVisibilitySheetOpen] = useState(false);
@@ -92,6 +103,46 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
 
   const atLimit = articles.length >= MAX_ARTICLES_PER_USER;
 
+  // --- Selection toolbar (shared between PC and SP) ---
+  const selectionBar = (
+    <div className="flex h-8 select-none items-center gap-1.5 rounded-lg bg-muted px-1.5">
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        onClick={sel.exit}
+        disabled={sel.batchLoading}
+        aria-label={tc("endSelection")}
+      >
+        <X className="h-4 w-4" aria-hidden />
+      </Button>
+      <span className="text-xs font-medium">
+        {tc("selectedCount", { count: sel.selectedIds.size })}
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 px-2 text-xs"
+        onClick={sel.selectedIds.size === filteredArticles.length ? sel.deselectAll : sel.selectAll}
+        disabled={sel.batchLoading}
+      >
+        {sel.selectedIds.size === filteredArticles.length ? tc("deselectAll") : tc("selectAll")}
+      </Button>
+      <div className="ml-auto flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 px-2 text-xs text-destructive"
+          disabled={sel.selectedIds.size === 0 || sel.batchLoading}
+          onClick={() => sel.setBatchDeleteOpen(true)}
+        >
+          <Trash2 className="h-4 w-4" aria-hidden />
+          {tc("delete")}
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <LoadingBoundary
@@ -107,33 +158,52 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
           </div>
         }
       >
-        <div className="mt-4 flex items-center gap-2">
+        <div className="mt-4">
           {isMobile ? (
-            <>
-              <button
-                type="button"
-                aria-label={ta("filterByVisibility")}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  setVisibilitySheetOpen(true);
-                }}
-                className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 text-xs"
-              >
-                {filters.find((f) => f.value === visibilityFilter)?.icon}
-                {filters.find((f) => f.value === visibilityFilter)?.label ?? ta("filterAll")}
-              </button>
-              <ActionSheet
-                open={visibilitySheetOpen}
-                onOpenChange={setVisibilitySheetOpen}
-                actions={filters.map((f) => ({
-                  label: f.label,
-                  icon: f.icon,
-                  onClick: () => setVisibilityFilter(f.value),
-                }))}
-              />
-            </>
+            // --- SP branch ---
+            sel.selectionMode ? (
+              selectionBar
+            ) : (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  aria-label={ta("filterByVisibility")}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    setVisibilitySheetOpen(true);
+                  }}
+                  className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md border bg-background px-2 text-xs"
+                >
+                  {filters.find((f) => f.value === visibilityFilter)?.icon}
+                  {filters.find((f) => f.value === visibilityFilter)?.label ?? ta("filterAll")}
+                </button>
+                <ActionSheet
+                  open={visibilitySheetOpen}
+                  onOpenChange={setVisibilitySheetOpen}
+                  actions={filters.map((f) => ({
+                    label: f.label,
+                    icon: f.icon,
+                    onClick: () => setVisibilityFilter(f.value),
+                  }))}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 flex-1"
+                  onClick={sel.enter}
+                  disabled={!online || filteredArticles.length === 0}
+                  aria-label={tc("selectionMode")}
+                >
+                  <SquareMousePointer className="h-4 w-4" aria-hidden />
+                  {tc("select")}
+                </Button>
+              </div>
+            )
+          ) : // --- PC branch ---
+          sel.selectionMode ? (
+            selectionBar
           ) : (
-            <>
+            <div className="flex items-center gap-2">
               <Select
                 value={visibilityFilter}
                 onValueChange={(v) => setVisibilityFilter(v as ArticleVisibilityFilter)}
@@ -155,7 +225,16 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
                   ))}
                 </SelectContent>
               </Select>
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={sel.enter}
+                  disabled={!online || filteredArticles.length === 0}
+                >
+                  <SquareMousePointer className="h-4 w-4" aria-hidden />
+                  {tc("select")}
+                </Button>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span>
@@ -164,7 +243,7 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
                         disabled={!online || atLimit}
                         onClick={() => setCreateDialogOpen(true)}
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-4 w-4" aria-hidden />
                         {ta("new")}
                       </Button>
                     </span>
@@ -176,7 +255,7 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
                   )}
                 </Tooltip>
               </div>
-            </>
+            </div>
           )}
         </div>
 
@@ -195,12 +274,41 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
                   animationFillMode: "both",
                 }}
               >
-                <ArticleCard {...article} hrefPrefix={hrefPrefix} />
+                <ArticleCard
+                  {...article}
+                  hrefPrefix={hrefPrefix}
+                  selectable={sel.selectionMode}
+                  selected={sel.selectedIds.has(article.id)}
+                  onSelect={sel.toggle}
+                />
               </div>
             ))}
           </div>
         )}
       </LoadingBoundary>
+
+      <ResponsiveAlertDialog open={sel.batchDeleteOpen} onOpenChange={sel.setBatchDeleteOpen}>
+        <ResponsiveAlertDialogContent>
+          <ResponsiveAlertDialogHeader>
+            <ResponsiveAlertDialogTitle>
+              {ta("batchDeleteTitle", { count: sel.selectedIds.size })}
+            </ResponsiveAlertDialogTitle>
+            <ResponsiveAlertDialogDescription>
+              {ta("batchDeleteDescription")}
+            </ResponsiveAlertDialogDescription>
+          </ResponsiveAlertDialogHeader>
+          <ResponsiveAlertDialogFooter>
+            <ResponsiveAlertDialogCancel>
+              <X className="h-4 w-4" aria-hidden />
+              {tc("cancel")}
+            </ResponsiveAlertDialogCancel>
+            <ResponsiveAlertDialogDestructiveAction onClick={sel.handleBatchDelete}>
+              <Trash2 className="h-4 w-4" aria-hidden />
+              {ta("deleteConfirm")}
+            </ResponsiveAlertDialogDestructiveAction>
+          </ResponsiveAlertDialogFooter>
+        </ResponsiveAlertDialogContent>
+      </ResponsiveAlertDialog>
 
       <ArticleEditorDialog
         open={createDialogOpen}
@@ -210,7 +318,7 @@ export function ArticleListView({ hrefPrefix = "/articles" }: ArticleListViewPro
       <Fab
         onClick={() => setCreateDialogOpen(true)}
         label={ta("createFab")}
-        hidden={!online || atLimit}
+        hidden={!online || atLimit || sel.selectionMode}
       />
     </>
   );

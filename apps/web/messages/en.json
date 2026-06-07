@@ -1029,6 +1029,9 @@
     "limitReached": "You can create up to {max} articles",
     "relatedTitle": "Related articles",
     "tripEmpty": "No articles linked to this trip",
+    "bulkDeleted": "{count, plural, one {# article} other {# articles}} deleted",
+    "batchDeleteTitle": "Delete {count, plural, one {# article} other {# articles}}?",
+    "batchDeleteDescription": "The selected articles will be deleted. This cannot be undone.",
     "toolbar": {
       "bold": "Bold",
       "italic": "Italic",

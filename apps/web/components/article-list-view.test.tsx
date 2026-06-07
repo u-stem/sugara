@@ -41,6 +41,20 @@ vi.mock("@/lib/hooks/use-articles", () => ({
     createDialogOpen: false,
     setCreateDialogOpen: vi.fn(),
     invalidateArticles: vi.fn(),
+    sel: {
+      selectionMode: false,
+      selectedIds: new Set<string>(),
+      batchLoading: false,
+      batchDeleteOpen: false,
+      setBatchDeleteOpen: vi.fn(),
+      enter: vi.fn(),
+      exit: vi.fn(),
+      toggle: vi.fn(),
+      select: vi.fn(),
+      selectAll: vi.fn(),
+      deselectAll: vi.fn(),
+      handleBatchDelete: vi.fn(),
+    },
   }),
 }));
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  batchArticleIdsSchema,
   createArticleSchema,
   reorderArticlesSchema,
   setArticleTripsSchema,
@@ -97,5 +98,28 @@ describe("setArticleTripsSchema", () => {
 
   it("rejects non-guid ids", () => {
     expect(setArticleTripsSchema.safeParse({ tripIds: ["not-a-guid"] }).success).toBe(false);
+  });
+});
+
+describe("batchArticleIdsSchema", () => {
+  it("accepts a list of unique valid GUIDs", () => {
+    expect(batchArticleIdsSchema.safeParse({ articleIds: [guid(1), guid(2)] }).success).toBe(true);
+  });
+
+  it("rejects an empty list", () => {
+    expect(batchArticleIdsSchema.safeParse({ articleIds: [] }).success).toBe(false);
+  });
+
+  it("rejects duplicate article IDs", () => {
+    expect(batchArticleIdsSchema.safeParse({ articleIds: [guid(1), guid(1)] }).success).toBe(false);
+  });
+
+  it("rejects non-guid IDs", () => {
+    expect(batchArticleIdsSchema.safeParse({ articleIds: ["not-a-guid"] }).success).toBe(false);
+  });
+
+  it("rejects more than the max per-user article count", () => {
+    const ids = Array.from({ length: 21 }, (_, i) => guid(i));
+    expect(batchArticleIdsSchema.safeParse({ articleIds: ids }).success).toBe(false);
   });
 });

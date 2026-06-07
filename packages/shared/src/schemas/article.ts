@@ -46,3 +46,13 @@ export const setArticleTripsSchema = z.object({
     .refine((arr) => new Set(arr).size === arr.length, "Duplicate trips are not allowed")
     .default([]),
 });
+
+// Batch operations on own articles (e.g. bulk delete).
+export const batchArticleIdsSchema = z.object({
+  articleIds: z
+    .array(z.string().check(z.guid()))
+    .min(1)
+    .max(MAX_ARTICLES_PER_USER)
+    .refine((arr) => new Set(arr).size === arr.length, "Duplicate article IDs are not allowed"),
+});
+export type BatchArticleIds = z.infer<typeof batchArticleIdsSchema>;
