@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { MarkdownRenderer } from "@/lib/markdown";
 import { queryKeys } from "@/lib/query-keys";
@@ -285,74 +286,48 @@ export function ArticleEditorDialog({
             <div className="space-y-3">
               <Label htmlFor="article-content">{ta("contentLabel")}</Label>
               <Tabs defaultValue="write">
-                <TabsList>
-                  <TabsTrigger value="write">{ta("write")}</TabsTrigger>
-                  <TabsTrigger value="preview">{ta("preview")}</TabsTrigger>
+                <TabsList className="w-full">
+                  <TabsTrigger value="write" className="flex-1">
+                    {ta("write")}
+                  </TabsTrigger>
+                  <TabsTrigger value="preview" className="flex-1">
+                    {ta("preview")}
+                  </TabsTrigger>
                 </TabsList>
                 <TabsContent value="write">
                   {/* Format toolbar: lets users apply Markdown without knowing the syntax */}
-                  <div className="flex flex-wrap gap-0.5 rounded-t-md border border-b-0 bg-muted/30 p-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => applyFormat("bold")}
-                      aria-label={ta("toolbar.bold")}
-                    >
-                      <Bold className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => applyFormat("italic")}
-                      aria-label={ta("toolbar.italic")}
-                    >
-                      <Italic className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => applyFormat("heading")}
-                      aria-label={ta("toolbar.heading")}
-                    >
-                      <Heading2 className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => applyFormat("list")}
-                      aria-label={ta("toolbar.list")}
-                    >
-                      <List className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => applyFormat("quote")}
-                      aria-label={ta("toolbar.quote")}
-                    >
-                      <Quote className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                      onClick={() => applyFormat("link")}
-                      aria-label={ta("toolbar.link")}
-                    >
-                      <Link className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
-                  </div>
+                  <TooltipProvider>
+                    <div className="flex flex-wrap gap-0.5 rounded-t-md border border-b-0 bg-muted/30 p-1">
+                      {[
+                        { format: "bold" as const, Icon: Bold, label: ta("toolbar.bold") },
+                        { format: "italic" as const, Icon: Italic, label: ta("toolbar.italic") },
+                        {
+                          format: "heading" as const,
+                          Icon: Heading2,
+                          label: ta("toolbar.heading"),
+                        },
+                        { format: "list" as const, Icon: List, label: ta("toolbar.list") },
+                        { format: "quote" as const, Icon: Quote, label: ta("toolbar.quote") },
+                        { format: "link" as const, Icon: Link, label: ta("toolbar.link") },
+                      ].map(({ format, Icon, label }) => (
+                        <Tooltip key={format}>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => applyFormat(format)}
+                              aria-label={label}
+                            >
+                              <Icon className="h-3.5 w-3.5" aria-hidden />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{label}</TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </div>
+                  </TooltipProvider>
                   <Textarea
                     id="article-content"
                     ref={textareaRef}
