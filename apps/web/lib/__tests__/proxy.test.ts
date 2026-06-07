@@ -58,6 +58,27 @@ describe("proxy — SP redirect", () => {
   });
 });
 
+describe("proxy — articles SP routing", () => {
+  it("redirects /articles to /sp/articles in SP mode", async () => {
+    const req = makeRequest("/articles", { viewMode: "sp" });
+    const res = await proxy(req);
+    expect(res?.headers.get("location")).toContain("/sp/articles");
+  });
+
+  it("does NOT bounce /sp/articles back to /articles (has SP counterpart)", async () => {
+    const req = makeRequest("/sp/articles", { viewMode: "sp" });
+    const res = await proxy(req);
+    // Should not redirect away from the SP article page to the desktop one.
+    expect(res?.headers.get("location")).not.toContain("/articles");
+  });
+
+  it("redirects mobile UA with no cookie to SP for /articles", async () => {
+    const req = makeRequest("/articles/abc123", { ua: MOBILE_UA });
+    const res = await proxy(req);
+    expect(res?.headers.get("location")).toContain("/sp/articles/abc123");
+  });
+});
+
 describe("proxy — SP-only route fallback", () => {
   it("redirects /sp/notifications to /home in desktop mode", async () => {
     const req = makeRequest("/sp/notifications", { viewMode: "desktop" });

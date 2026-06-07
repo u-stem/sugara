@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { MOBILE_UA_REGEX, SP_ONLY_ROUTES, SP_PREFIX, SP_ROUTES, VIEW_MODE_COOKIE } from "@/lib/view-mode";
 
-const protectedPaths = ["/home", "/trips", "/bookmarks", "/friends", "/settings", "/my", "/tools", "/sp", "/admin"];
+const protectedPaths = ["/home", "/trips", "/bookmarks", "/articles", "/friends", "/settings", "/my", "/tools", "/sp", "/admin"];
 const guestOnlyPaths = ["/", "/auth/login", "/auth/signup"];
 
 const isDev = process.env.NODE_ENV === "development";

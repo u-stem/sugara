@@ -14,6 +14,7 @@ export type ViewMode = "desktop" | "sp";
 export const SP_ROUTES = [
   "/home",
   "/bookmarks",
+  "/articles",
   "/friends",
   "/trips",
   "/settings",
