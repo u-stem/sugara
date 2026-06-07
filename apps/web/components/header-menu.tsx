@@ -93,7 +93,7 @@ export function HeaderMenu() {
       {expanded && (
         <div
           id="header-menu-panel"
-          className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150 md:static md:z-auto md:mt-0 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none"
+          className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150 lg:static lg:z-auto lg:mt-0 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none"
         >
           <Tooltip>
             <TooltipTrigger asChild>
