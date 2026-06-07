@@ -91,7 +91,10 @@ export function HeaderMenu() {
   return (
     <div ref={ref} className="relative flex items-center">
       {expanded && (
-        <div className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150 md:static md:z-auto md:mt-0 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none">
+        <div
+          id="header-menu-panel"
+          className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150 md:static md:z-auto md:mt-0 md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none"
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -141,6 +144,7 @@ export function HeaderMenu() {
         type="button"
         aria-label={expanded ? t("closeMenu") : t("openMenu")}
         aria-expanded={expanded}
+        aria-controls="header-menu-panel"
         onClick={toggle}
         className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
       >
@@ -162,7 +166,10 @@ export function SpHeaderMenu() {
   return (
     <div ref={ref} className="relative flex items-center">
       {expanded && (
-        <div className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150">
+        <div
+          id="sp-header-menu-panel"
+          className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150"
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -197,6 +204,7 @@ export function SpHeaderMenu() {
         type="button"
         aria-label={expanded ? t("closeMenu") : t("openMenu")}
         aria-expanded={expanded}
+        aria-controls="sp-header-menu-panel"
         onClick={toggle}
         className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
       >
