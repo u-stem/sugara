@@ -953,4 +953,52 @@ describe("Expense routes", () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe("POST /api/trips/:tripId/expenses/batch-delete", () => {
+    const e1 = "00000000-0000-0000-0000-0000000000a1";
+    const e2 = "00000000-0000-0000-0000-0000000000a2";
+
+    it("deletes multiple expenses and resets settlement payments", async () => {
+      mockDbQuery.expenses.findMany.mockResolvedValue([{ id: e1 }, { id: e2 }]);
+
+      const res = await makeApp().request(`/api/trips/${tripId}/expenses/batch-delete`, {
+        method: "POST",
+        body: JSON.stringify({ expenseIds: [e1, e2] }),
+      });
+
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.deleted).toBe(2);
+      // expenses + settlement payments both deleted within the transaction
+      expect(mockDbDelete).toHaveBeenCalledTimes(2);
+      expect(logActivity).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "deleted", entityType: "expense" }),
+      );
+    });
+
+    it("returns 404 when some ids do not belong to the trip", async () => {
+      mockDbQuery.expenses.findMany.mockResolvedValue([{ id: e1 }]); // only one of two found
+
+      const res = await makeApp().request(`/api/trips/${tripId}/expenses/batch-delete`, {
+        method: "POST",
+        body: JSON.stringify({ expenseIds: [e1, e2] }),
+      });
+
+      expect(res.status).toBe(404);
+      expect(mockDbDelete).not.toHaveBeenCalled();
+    });
+
+    it("blocks viewer role (404 to avoid leaking trip existence)", async () => {
+      setupAuth("viewer");
+
+      const res = await makeApp().request(`/api/trips/${tripId}/expenses/batch-delete`, {
+        method: "POST",
+        body: JSON.stringify({ expenseIds: [e1] }),
+      });
+
+      // requireTripAccess("editor") returns 404 (TRIP_NOT_FOUND) when the role is insufficient
+      expect(res.status).toBe(404);
+      expect(mockDbDelete).not.toHaveBeenCalled();
+    });
+  });
 });

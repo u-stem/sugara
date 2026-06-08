@@ -1,5 +1,6 @@
 import type { CurrencyCode, ExpenseCategory } from "@sugara/shared";
 import {
+  batchExpenseIdsSchema,
   convertToBase,
   createExpenseSchema,
   EXPENSE_CATEGORY_LABELS,
@@ -8,7 +9,7 @@ import {
   toMinorUnits,
   updateExpenseSchema,
 } from "@sugara/shared";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
 import {
@@ -522,6 +523,45 @@ expenseRoutes.delete("/:tripId/expenses/:expenseId", requireTripAccess("editor")
   });
 
   return c.body(null, 204);
+});
+
+// Batch delete expenses
+expenseRoutes.post("/:tripId/expenses/batch-delete", requireTripAccess("editor"), async (c) => {
+  const user = c.get("user");
+  const tripId = getParam(c, "tripId");
+
+  const body = await c.req.json();
+  const parsed = batchExpenseIdsSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.flatten() }, 400);
+  }
+  const { expenseIds } = parsed.data;
+
+  const owned = await db.query.expenses.findMany({
+    where: and(inArray(expenses.id, expenseIds), eq(expenses.tripId, tripId)),
+    columns: { id: true },
+  });
+  if (owned.length !== expenseIds.length) {
+    return c.json({ error: ERROR_MSG.EXPENSE_NOT_FOUND }, 404);
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(expenses)
+      .where(and(inArray(expenses.id, expenseIds), eq(expenses.tripId, tripId)));
+    // Auto-reset settlement payments when expenses change
+    await tx.delete(settlementPayments).where(eq(settlementPayments.tripId, tripId));
+  });
+
+  logActivity({
+    tripId,
+    userId: user.id,
+    action: "deleted",
+    entityType: "expense",
+    detail: `${expenseIds.length}件`,
+  });
+
+  return c.json({ ok: true, deleted: expenseIds.length });
 });
 
 export { expenseRoutes };

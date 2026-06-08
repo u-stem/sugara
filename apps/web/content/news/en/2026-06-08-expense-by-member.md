@@ -13,6 +13,10 @@ Open "Show Details" under the total spending on the Expenses tab and you'll now 
 - Expenses entered in a foreign currency are converted to the trip currency, so the per-member totals add up to the total spending
 - It is hidden on solo trips with a single member, since it would just repeat the total
 
+### Sorting and bulk-deleting expenses
+
+A sort menu was added at the top of the expense list — switch between newest, oldest, highest amount and lowest amount (foreign-currency expenses are compared after conversion to the trip currency). You can also tap "Select" to pick multiple expenses and delete them together (edit permission required).
+
 ## Enhancement
 
 ### Details now available on solo trips
