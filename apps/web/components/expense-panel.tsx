@@ -237,7 +237,7 @@ export function ExpensePanel({
                             key === sortKey ? (
                               <Check className="h-4 w-4" />
                             ) : (
-                              <span className="w-4" />
+                              <ArrowUpDown className="h-4 w-4" />
                             ),
                           onClick: () => changeSortKey(key),
                         }))}
