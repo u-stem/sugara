@@ -766,6 +766,7 @@
     "totalSpendingAmount": "Total: {amount} JPY",
     "showDetails": "Show Details",
     "byCategory": "By Category",
+    "byMember": "By Member",
     "countSuffix": "{count} items",
     "paidBy": "Paid by {name}",
     "splitEqualShort": "Equal",

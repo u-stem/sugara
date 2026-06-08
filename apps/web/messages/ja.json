@@ -766,6 +766,7 @@
     "totalSpendingAmount": "合計支出: {amount}円",
     "showDetails": "明細を表示",
     "byCategory": "カテゴリ別",
+    "byMember": "メンバー別",
     "countSuffix": "{count}件",
     "paidBy": "{name}が支払い",
     "splitEqualShort": "均等",

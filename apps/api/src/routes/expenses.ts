@@ -27,6 +27,7 @@ import { getParam } from "../lib/params";
 import {
   calculateDirectTransfers,
   calculateEqualSplit,
+  calculateMemberBurdens,
   calculateSettlement,
 } from "../lib/settlement";
 import { requireAuth } from "../middleware/auth";
@@ -93,6 +94,16 @@ expenseRoutes.get("/:tripId/expenses", requireTripAccess(), async (c) => {
     count: data.count,
   }));
 
+  const memberTotals = calculateMemberBurdens(
+    expenseList.map((e) => ({
+      splitType: e.splitType,
+      amount: e.amount,
+      baseAmount: e.baseAmount,
+      splits: e.splits.map((s) => ({ userId: s.userId, amount: s.amount })),
+    })),
+    memberInfos,
+  );
+
   const payments = await db.query.settlementPayments.findMany({
     where: eq(settlementPayments.tripId, tripId),
   });
@@ -103,6 +114,7 @@ expenseRoutes.get("/:tripId/expenses", requireTripAccess(), async (c) => {
     settlement,
     settlementPayments: payments,
     categoryTotals,
+    memberTotals,
   });
 });
 

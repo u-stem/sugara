@@ -337,12 +337,20 @@ export type CategoryTotal = {
   count: number;
 };
 
+/** Per-member spending total in trip currency (minor units). */
+export type MemberTotal = {
+  userId: string;
+  name: string;
+  total: number;
+};
+
 export type ExpensesResponse = {
   tripCurrency: CurrencyCode;
   expenses: ExpenseItem[];
   settlement: Settlement;
   settlementPayments: SettlementPayment[];
   categoryTotals: CategoryTotal[];
+  memberTotals: MemberTotal[];
 };
 
 export type SettlementPayment = {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   calculateDirectTransfers,
   calculateEqualSplit,
+  calculateMemberBurdens,
   calculateSettlement,
 } from "../lib/settlement";
 
@@ -202,6 +203,179 @@ describe("calculateSettlement", () => {
     // Charlie paid 0, owes 333 -> net = -333
     const totalTransfer = result.transfers.reduce((sum, t) => sum + t.amount, 0);
     expect(totalTransfer).toBe(666);
+  });
+});
+
+describe("calculateMemberBurdens", () => {
+  it("returns empty when no expenses", () => {
+    expect(calculateMemberBurdens([], [alice, bob])).toEqual([]);
+  });
+
+  it("sums equal splits as-is (already trip currency)", () => {
+    const result = calculateMemberBurdens(
+      [
+        {
+          splitType: "equal",
+          amount: 1000,
+          baseAmount: null,
+          splits: [
+            { userId: alice.id, amount: 500 },
+            { userId: bob.id, amount: 500 },
+          ],
+        },
+      ],
+      [alice, bob],
+    );
+    expect(result).toEqual([
+      { userId: alice.id, name: alice.name, total: 500 },
+      { userId: bob.id, name: bob.name, total: 500 },
+    ]);
+  });
+
+  it("accumulates a member's burden across multiple expenses", () => {
+    const result = calculateMemberBurdens(
+      [
+        {
+          splitType: "equal",
+          amount: 3000,
+          baseAmount: null,
+          splits: [
+            { userId: alice.id, amount: 1000 },
+            { userId: bob.id, amount: 1000 },
+            { userId: charlie.id, amount: 1000 },
+          ],
+        },
+        {
+          splitType: "custom",
+          amount: 1000,
+          baseAmount: null,
+          splits: [
+            { userId: alice.id, amount: 300 },
+            { userId: bob.id, amount: 700 },
+          ],
+        },
+      ],
+      [alice, bob, charlie],
+    );
+    // Alice 1000+300=1300, Bob 1000+700=1700, Charlie 1000 -> sorted desc
+    expect(result).toEqual([
+      { userId: bob.id, name: bob.name, total: 1700 },
+      { userId: alice.id, name: alice.name, total: 1300 },
+      { userId: charlie.id, name: charlie.name, total: 1000 },
+    ]);
+  });
+
+  it("converts foreign-currency custom splits to trip currency via baseAmount", () => {
+    const result = calculateMemberBurdens(
+      [
+        {
+          splitType: "custom",
+          amount: 1000, // foreign currency
+          baseAmount: 1500, // trip currency
+          splits: [
+            { userId: alice.id, amount: 300 },
+            { userId: bob.id, amount: 700 },
+          ],
+        },
+      ],
+      [alice, bob],
+    );
+    // 300/1000 * 1500 = 450, 700/1000 * 1500 = 1050
+    expect(result).toEqual([
+      { userId: bob.id, name: bob.name, total: 1050 },
+      { userId: alice.id, name: alice.name, total: 450 },
+    ]);
+  });
+
+  it("treats itemized splits the same as custom (foreign-currency conversion)", () => {
+    const result = calculateMemberBurdens(
+      [
+        {
+          splitType: "itemized",
+          amount: 1000, // foreign currency
+          baseAmount: 1500, // trip currency
+          splits: [
+            { userId: alice.id, amount: 300 },
+            { userId: bob.id, amount: 700 },
+          ],
+        },
+      ],
+      [alice, bob],
+    );
+    expect(result).toEqual([
+      { userId: bob.id, name: bob.name, total: 1050 },
+      { userId: alice.id, name: alice.name, total: 450 },
+    ]);
+  });
+
+  it("assigns the rounding remainder to the largest fractional share", () => {
+    const result = calculateMemberBurdens(
+      [
+        {
+          splitType: "custom",
+          amount: 1000, // foreign currency
+          baseAmount: 1001, // trip currency; +1 forces a remainder of 1
+          splits: [
+            { userId: alice.id, amount: 400 },
+            { userId: bob.id, amount: 300 },
+            { userId: charlie.id, amount: 300 },
+          ],
+        },
+      ],
+      [alice, bob, charlie],
+    );
+    // ideal 400.4 / 300.3 / 300.3 -> floor 400/300/300 (=1000), remainder 1
+    // goes to alice (largest fractional part 0.4)
+    expect(result).toEqual([
+      { userId: alice.id, name: alice.name, total: 401 },
+      { userId: bob.id, name: bob.name, total: 300 },
+      { userId: charlie.id, name: charlie.name, total: 300 },
+    ]);
+    expect(result.reduce((acc, m) => acc + m.total, 0)).toBe(1001);
+  });
+
+  it("omits members with zero burden", () => {
+    const result = calculateMemberBurdens(
+      [
+        {
+          splitType: "custom",
+          amount: 1000,
+          baseAmount: null,
+          splits: [
+            { userId: alice.id, amount: 1000 },
+            { userId: bob.id, amount: 0 },
+          ],
+        },
+      ],
+      [alice, bob],
+    );
+    expect(result).toEqual([{ userId: alice.id, name: alice.name, total: 1000 }]);
+  });
+
+  it("warns when a split references a user not in the member list", async () => {
+    const { logger } = await import("../lib/logger");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const result = calculateMemberBurdens(
+      [
+        {
+          splitType: "equal",
+          amount: 1000,
+          baseAmount: null,
+          splits: [
+            { userId: alice.id, amount: 500 },
+            { userId: "unknown-id", amount: 500 },
+          ],
+        },
+      ],
+      [alice, bob],
+    );
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "unknown-id" }),
+      expect.any(String),
+    );
+    expect(result).toEqual([{ userId: alice.id, name: alice.name, total: 500 }]);
+    warnSpy.mockRestore();
   });
 });
 

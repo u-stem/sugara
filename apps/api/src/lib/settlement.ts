@@ -1,3 +1,4 @@
+import type { ExpenseSplitType, MemberTotal } from "@sugara/shared";
 import { logger } from "./logger";
 
 type ExpenseData = {
@@ -143,4 +144,79 @@ export function calculateDirectTransfers(
   }
 
   return transfers.sort((x, y) => y.amount - x.amount);
+}
+
+type BurdenExpenseData = {
+  splitType: ExpenseSplitType;
+  /** Original-currency amount in minor units. */
+  amount: number;
+  /** Trip-currency amount in minor units, or null when the expense is already in trip currency. */
+  baseAmount: number | null;
+  splits: { userId: string; amount: number }[];
+};
+
+/**
+ * Per-member spending total in trip currency. Splits are stored in mixed
+ * currencies: equal splits and same-currency custom/itemized splits are already
+ * in trip currency, while foreign-currency custom/itemized splits hold the
+ * original currency. The latter are converted via baseAmount so the per-member
+ * totals sum to the same trip-currency grand total as the category breakdown.
+ */
+export function calculateMemberBurdens(
+  expenses: BurdenExpenseData[],
+  members: UserInfo[],
+): MemberTotal[] {
+  const memberMap = new Map(members.map((m) => [m.id, m]));
+  const totals = new Map<string, number>(members.map((m) => [m.id, 0]));
+
+  for (const expense of expenses) {
+    for (const { userId, amount } of resolveBurdens(expense)) {
+      if (!memberMap.has(userId)) {
+        logger.warn({ userId }, "User found in expense splits but not in member list");
+        continue;
+      }
+      totals.set(userId, (totals.get(userId) ?? 0) + amount);
+    }
+  }
+
+  return members
+    .map((m) => ({ userId: m.id, name: m.name, total: totals.get(m.id) ?? 0 }))
+    .filter((m) => m.total > 0)
+    .sort((a, b) => b.total - a.total);
+}
+
+function resolveBurdens(expense: BurdenExpenseData): { userId: string; amount: number }[] {
+  // equal splits are pre-converted to trip currency on save; same-currency
+  // custom/itemized splits (baseAmount null) are already in trip currency too.
+  if (expense.splitType === "equal" || expense.baseAmount == null) {
+    return expense.splits.map((s) => ({ userId: s.userId, amount: s.amount }));
+  }
+  // Foreign-currency custom/itemized: distribute baseAmount by each split's
+  // share of the original amount, assigning rounding remainder to the largest
+  // fractional parts so the per-expense total matches baseAmount exactly.
+  return distributeByShare(expense.splits, expense.amount, expense.baseAmount);
+}
+
+// Precondition: sum(splits[i].amount) === amount (guaranteed at save time, where
+// custom/itemized splits must cover the full expense amount). If that invariant
+// breaks, the floored sum could exceed baseAmount and remainder would go negative.
+function distributeByShare(
+  splits: { userId: string; amount: number }[],
+  amount: number,
+  baseAmount: number,
+): { userId: string; amount: number }[] {
+  if (amount <= 0) {
+    return splits.map((s) => ({ userId: s.userId, amount: 0 }));
+  }
+  const ideal = splits.map((s) => (s.amount * baseAmount) / amount);
+  const floored = ideal.map((v) => Math.floor(v));
+  const remainder = baseAmount - floored.reduce((sum, v) => sum + v, 0);
+  const byFraction = ideal
+    .map((v, i) => ({ i, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac);
+  const result = floored.slice();
+  for (let k = 0; k < remainder && k < byFraction.length; k++) {
+    result[byFraction[k].i] += 1;
+  }
+  return splits.map((s, i) => ({ userId: s.userId, amount: result[i] }));
 }

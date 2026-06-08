@@ -291,6 +291,12 @@ const JA_FAQS = [
       "精算一覧は2つの表示方式を切り替えられます。「最小送金」は送金回数が最小になるよう計算した金額で、実際に振り込む手間が最も少なくなります。「立替ごと」は各支出を立て替えた人へ、その負担者が直接返す金額で、同じ相手との貸し借りは相殺されます。どちらの方式でも各メンバーの最終的な収支は同じです。精算チェック（完了記録）は「最小送金」でのみ行えます。",
     sortOrder: 78,
   },
+  {
+    question: "費用の明細はメンバー別に見られますか？",
+    answer:
+      "はい。費用タブで合計支出の「明細を表示」を開くと、カテゴリ別の集計に加えて「メンバー別」の負担額（各メンバーに割り当てられた金額の合計）が旅行の通貨で表示されます。外貨で登録した費用も旅行の通貨に換算して合算されるため、合計支出と一致します。メンバーが1人の旅行ではメンバー別は表示されません。",
+    sortOrder: 79,
+  },
   // ---- Souvenirs ----
   {
     question: "「お土産」リストとは何ですか？",
@@ -688,6 +694,12 @@ const EN_FAQS = [
       'The settlement list can be switched between two display modes. "Minimal" shows amounts calculated to minimize the number of transfers, so you make the fewest payments. "By payer" shows amounts repaid directly to whoever paid for each expense, with debts between the same pair offset against each other. Both modes produce the exact same net balance for every member. Settlement checks (completion records) can only be made in "Minimal" mode.',
     sortOrder: 78,
   },
+  {
+    question: "Can I see the expense breakdown per member?",
+    answer:
+      'Yes. Open "Show Details" under the total spending in the Expenses tab to see a "By Member" breakdown (the total amount allocated to each member) in the trip currency, in addition to the category breakdown. Expenses entered in a foreign currency are converted to the trip currency, so the per-member totals add up to the total spending. The per-member breakdown is hidden on solo trips with only one member.',
+    sortOrder: 79,
+  },
   // ---- Souvenirs ----
   {
     question: "What is the 'Souvenirs' list?",
@@ -820,7 +832,7 @@ function resolveCategory(sortOrder: number): string {
   if (sortOrder === 60) return "bookmarks";
   if (sortOrder >= 62 && sortOrder <= 63) return "articles";
   if (sortOrder === 65) return "reactions";
-  if (sortOrder >= 70 && sortOrder <= 77) return "expenses";
+  if (sortOrder >= 70 && sortOrder <= 79) return "expenses";
   if (sortOrder >= 80 && sortOrder <= 81) return "souvenirs";
   if (sortOrder === 85) return "feedback";
   if (sortOrder >= 90 && sortOrder <= 92) return "ux";

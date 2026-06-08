@@ -91,13 +91,19 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
     setDialogOpen(true);
   };
 
-  const { tripCurrency, expenses, settlement, settlementPayments, categoryTotals } = data ?? {
-    tripCurrency: "JPY" as CurrencyCode,
-    expenses: [],
-    settlement: { totalAmount: 0, balances: [], transfers: [], directTransfers: [] },
-    settlementPayments: [],
-    categoryTotals: [],
+  // Fall back per-field (not on `data` as a whole) so a partial response — e.g. an
+  // older cached payload without memberTotals — can't surface undefined arrays.
+  const tripCurrency = data?.tripCurrency ?? "JPY";
+  const expenses = data?.expenses ?? [];
+  const settlement = data?.settlement ?? {
+    totalAmount: 0,
+    balances: [],
+    transfers: [],
+    directTransfers: [],
   };
+  const settlementPayments = data?.settlementPayments ?? [];
+  const categoryTotals = data?.categoryTotals ?? [];
+  const memberTotals = data?.memberTotals ?? [];
 
   return (
     <LoadingBoundary
@@ -132,7 +138,7 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
                 {formatCurrency(settlement.totalAmount, tripCurrency, locale)}
               </span>
             </div>
-            {(settlement.transfers.length > 0 || settlement.directTransfers.length > 0) && (
+            {(categoryTotals.length > 0 || memberTotals.length > 1) && (
               <>
                 <CollapsiblePrimitive.Trigger className="flex w-full items-center gap-1 border-t px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/80 transition-colors [&[data-state=open]>svg]:rotate-180">
                   <ChevronDown className="h-3 w-3 transition-transform duration-200" />
@@ -161,6 +167,25 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
                             </span>
                           </div>
                         ))}
+                    </div>
+                  )}
+                  {memberTotals.length > 1 && (
+                    <div className="space-y-1 border-t px-3 pt-2 pb-3">
+                      <p className="text-xs text-muted-foreground">{te("byMember")}</p>
+                      {memberTotals.map((mt) => (
+                        <div
+                          key={mt.userId}
+                          className="flex items-center justify-between pl-2 text-sm"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
+                            <span translate="yes">{mt.name}</span>
+                          </span>
+                          <span className="font-medium">
+                            {formatCurrency(mt.total, tripCurrency, locale)}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </CollapsiblePrimitive.Content>
