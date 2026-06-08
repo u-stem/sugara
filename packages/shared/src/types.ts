@@ -331,10 +331,17 @@ export type Settlement = {
 };
 
 export type CategoryTotal = {
-  category: ExpenseCategory;
-  label: string;
+  /** null = uncategorized expenses. */
+  category: ExpenseCategory | null;
   total: number;
   count: number;
+};
+
+/** Per-member spending total in trip currency (minor units). */
+export type MemberTotal = {
+  userId: string;
+  name: string;
+  total: number;
 };
 
 export type ExpensesResponse = {
@@ -343,6 +350,7 @@ export type ExpensesResponse = {
   settlement: Settlement;
   settlementPayments: SettlementPayment[];
   categoryTotals: CategoryTotal[];
+  memberTotals: MemberTotal[];
 };
 
 export type SettlementPayment = {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { currencyCodeSchema } from "../currency";
-import { MAX_LINE_ITEMS_PER_EXPENSE } from "../limits";
+import { MAX_EXPENSES_PER_TRIP, MAX_LINE_ITEMS_PER_EXPENSE } from "../limits";
 
 export const EXPENSE_TITLE_MAX_LENGTH = 200;
 
@@ -147,4 +147,12 @@ export const createSettlementPaymentSchema = z.object({
   fromUserId: z.string().check(z.guid()),
   toUserId: z.string().check(z.guid()),
   amount: z.number().int().positive(),
+});
+
+export const batchExpenseIdsSchema = z.object({
+  expenseIds: z
+    .array(z.string().check(z.guid()))
+    .min(1)
+    .max(MAX_EXPENSES_PER_TRIP)
+    .refine((arr) => new Set(arr).size === arr.length, "Duplicate expense IDs are not allowed"),
 });

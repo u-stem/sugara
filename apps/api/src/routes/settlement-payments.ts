@@ -8,7 +8,7 @@ import { logActivity } from "../lib/activity-logger";
 import { ERROR_MSG, PG_UNIQUE_VIOLATION } from "../lib/constants";
 import { notifyUsers } from "../lib/notifications";
 import { getParam } from "../lib/params";
-import { calculateSettlement } from "../lib/settlement";
+import { calculateSettlement, toSettlementExpenses } from "../lib/settlement";
 import { requireAuth } from "../middleware/auth";
 import { requireTripAccess } from "../middleware/require-trip-access";
 import type { AppEnv } from "../types";
@@ -52,11 +52,15 @@ settlementPaymentRoutes.post("/:tripId/settlement-payments", requireTripAccess()
   const tripCurrency = (trip?.currency ?? "JPY") as CurrencyCode;
 
   const memberInfos = members.map((m) => ({ id: m.user.id, name: m.user.name }));
-  const expenseData = expenseList.map((e) => ({
-    paidByUserId: e.paidByUserId,
-    amount: e.baseAmount ?? e.amount,
-    splits: e.splits.map((s) => ({ userId: s.userId, amount: s.amount })),
-  }));
+  const expenseData = toSettlementExpenses(
+    expenseList.map((e) => ({
+      paidByUserId: e.paidByUserId,
+      splitType: e.splitType,
+      amount: e.amount,
+      baseAmount: e.baseAmount,
+      splits: e.splits.map((s) => ({ userId: s.userId, amount: s.amount })),
+    })),
+  );
   const settlement = calculateSettlement(expenseData, memberInfos);
 
   const matchingTransfer = settlement.transfers.find(

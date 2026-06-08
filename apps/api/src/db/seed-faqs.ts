@@ -291,18 +291,30 @@ const JA_FAQS = [
       "精算一覧は2つの表示方式を切り替えられます。「最小送金」は送金回数が最小になるよう計算した金額で、実際に振り込む手間が最も少なくなります。「立替ごと」は各支出を立て替えた人へ、その負担者が直接返す金額で、同じ相手との貸し借りは相殺されます。どちらの方式でも各メンバーの最終的な収支は同じです。精算チェック（完了記録）は「最小送金」でのみ行えます。",
     sortOrder: 78,
   },
+  {
+    question: "費用の明細はメンバー別に見られますか？",
+    answer:
+      "はい。費用タブで合計支出の「明細を表示」を開くと、カテゴリ別の集計に加えて「メンバー別」の負担額（各メンバーに割り当てられた金額の合計）が旅行の通貨で表示されます。外貨で登録した費用も旅行の通貨に換算して合算されるため、合計支出と一致します。メンバーが1人の旅行ではメンバー別は表示されません。",
+    sortOrder: 79,
+  },
   // ---- Souvenirs ----
   {
     question: "「お土産」リストとは何ですか？",
     answer:
       "旅行ごとに購入したいお土産を管理できる機能です。品名・対象・購入場所・URLなどを記録し、チェックボックスで購入済みにマークできます。アイテムごとに「メンバーに公開」をONにすると、同じ旅行のメンバーにも表示されます。公開しない限りは自分だけに表示されます。",
+    sortOrder: 81,
+  },
+  {
+    question: "費用を並び替えたり、まとめて削除できますか？",
+    answer:
+      "はい。費用一覧の上部の並び替えメニューで「新しい順」「古い順」「金額が高い順」「金額が低い順」に切り替えられます。また「選択」ボタンから複数の費用を選んでまとめて削除できます（編集権限が必要です）。",
     sortOrder: 80,
   },
   {
     question: "お土産の共有スタイル「おすすめ」と「おつかい」の違いは何ですか？",
     answer:
       "共有をONにすると、デフォルトでは購入状態もメンバーに表示されます。「おすすめ」を選ぶと情報共有のみとなり、購入状態はメンバーに見えません。「おつかい」はデフォルトと同じく購入状態も表示されます。",
-    sortOrder: 81,
+    sortOrder: 82,
   },
   // ---- Feedback ----
   {
@@ -688,18 +700,30 @@ const EN_FAQS = [
       'The settlement list can be switched between two display modes. "Minimal" shows amounts calculated to minimize the number of transfers, so you make the fewest payments. "By payer" shows amounts repaid directly to whoever paid for each expense, with debts between the same pair offset against each other. Both modes produce the exact same net balance for every member. Settlement checks (completion records) can only be made in "Minimal" mode.',
     sortOrder: 78,
   },
+  {
+    question: "Can I see the expense breakdown per member?",
+    answer:
+      'Yes. Open "Show Details" under the total spending in the Expenses tab to see a "By Member" breakdown (the total amount allocated to each member) in the trip currency, in addition to the category breakdown. Expenses entered in a foreign currency are converted to the trip currency, so the per-member totals add up to the total spending. The per-member breakdown is hidden on solo trips with only one member.',
+    sortOrder: 79,
+  },
   // ---- Souvenirs ----
   {
     question: "What is the 'Souvenirs' list?",
     answer:
       "A feature for managing souvenirs you want to buy for each trip. Record item name, recipient, shop location, URL, and more. Mark items as purchased with checkboxes. Turn on 'Share with members' per item to make it visible to trip members. Items remain private unless explicitly shared.",
+    sortOrder: 81,
+  },
+  {
+    question: "Can I sort expenses or delete several at once?",
+    answer:
+      'Yes. Use the sort menu at the top of the expense list to switch between newest, oldest, highest amount and lowest amount. You can also tap "Select" to choose multiple expenses and delete them together (edit permission required).',
     sortOrder: 80,
   },
   {
     question: "What's the difference between 'Recommendation' and 'Errand' sharing styles?",
     answer:
       "When sharing is on, purchase status is visible to members by default. Selecting 'Recommendation' shares information only — purchase status is hidden from members. 'Errand' shows purchase status to members (same as default).",
-    sortOrder: 81,
+    sortOrder: 82,
   },
   // ---- Feedback ----
   {
@@ -820,8 +844,8 @@ function resolveCategory(sortOrder: number): string {
   if (sortOrder === 60) return "bookmarks";
   if (sortOrder >= 62 && sortOrder <= 63) return "articles";
   if (sortOrder === 65) return "reactions";
-  if (sortOrder >= 70 && sortOrder <= 77) return "expenses";
-  if (sortOrder >= 80 && sortOrder <= 81) return "souvenirs";
+  if (sortOrder >= 70 && sortOrder <= 80) return "expenses";
+  if (sortOrder >= 81 && sortOrder <= 82) return "souvenirs";
   if (sortOrder === 85) return "feedback";
   if (sortOrder >= 90 && sortOrder <= 92) return "ux";
   if (sortOrder >= 93 && sortOrder <= 96) return "maps";
