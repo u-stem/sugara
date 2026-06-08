@@ -68,6 +68,7 @@ export function ExpensePanel({
   const tm = useTranslations("messages");
   const te = useTranslations("expense");
   const tc = useTranslations("common");
+  const tlExpCat = useTranslations("labels.expenseCategory");
   const locale = useLocale();
   const isMobile = useMobile();
   const queryClient = useQueryClient();
@@ -250,12 +251,12 @@ export function ExpensePanel({
                         .sort((a, b) => b.total - a.total)
                         .map((ct) => (
                           <div
-                            key={ct.category}
+                            key={ct.category ?? "uncategorized"}
                             className="flex items-center justify-between pl-2 text-sm"
                           >
                             <span className="flex items-center gap-1.5">
                               <span className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
-                              {ct.label}
+                              {ct.category ? tlExpCat(ct.category) : te("uncategorized")}
                               <span className="text-xs text-muted-foreground">
                                 ({te("countSuffix", { count: ct.count })})
                               </span>

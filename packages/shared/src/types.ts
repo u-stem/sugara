@@ -331,8 +331,8 @@ export type Settlement = {
 };
 
 export type CategoryTotal = {
-  category: ExpenseCategory;
-  label: string;
+  /** null = uncategorized expenses. */
+  category: ExpenseCategory | null;
   total: number;
   count: number;
 };

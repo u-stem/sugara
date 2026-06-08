@@ -3,7 +3,6 @@ import {
   batchExpenseIdsSchema,
   convertToBase,
   createExpenseSchema,
-  EXPENSE_CATEGORY_LABELS,
   formatCurrency,
   MAX_EXPENSES_PER_TRIP,
   toMinorUnits,
@@ -83,19 +82,24 @@ expenseRoutes.get("/:tripId/expenses", requireTripAccess(), async (c) => {
     directTransfers: calculateDirectTransfers(expenseData, memberInfos),
   };
 
-  const categoryMap = new Map<string, { total: number; count: number }>();
+  // Group by category, keeping uncategorized expenses under a null bucket so the
+  // category breakdown totals match the grand total. The display label is resolved
+  // on the client via i18n (no label is sent here).
+  const UNCATEGORIZED = "__uncategorized__";
+  const categoryMap = new Map<
+    string,
+    { category: ExpenseCategory | null; total: number; count: number }
+  >();
   for (const e of expenseList) {
-    if (e.category) {
-      const existing = categoryMap.get(e.category) ?? { total: 0, count: 0 };
-      existing.total += e.baseAmount ?? e.amount;
-      existing.count += 1;
-      categoryMap.set(e.category, existing);
-    }
+    const key = e.category ?? UNCATEGORIZED;
+    const existing = categoryMap.get(key) ?? { category: e.category ?? null, total: 0, count: 0 };
+    existing.total += e.baseAmount ?? e.amount;
+    existing.count += 1;
+    categoryMap.set(key, existing);
   }
 
-  const categoryTotals = Array.from(categoryMap.entries()).map(([category, data]) => ({
-    category: category as ExpenseCategory,
-    label: EXPENSE_CATEGORY_LABELS[category as ExpenseCategory],
+  const categoryTotals = Array.from(categoryMap.values()).map((data) => ({
+    category: data.category,
     total: data.total,
     count: data.count,
   }));

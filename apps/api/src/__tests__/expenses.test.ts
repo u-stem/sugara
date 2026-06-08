@@ -222,10 +222,18 @@ describe("Expense routes", () => {
 
       const json = await res.json();
       expect(json.categoryTotals).toBeDefined();
-      expect(json.categoryTotals).toHaveLength(1);
-      expect(json.categoryTotals[0].category).toBe("transportation");
-      expect(json.categoryTotals[0].total).toBe(800);
-      expect(json.categoryTotals[0].count).toBe(2);
+      expect(json.categoryTotals).toHaveLength(2);
+      const transportation = json.categoryTotals.find(
+        (c: { category: string | null }) => c.category === "transportation",
+      );
+      expect(transportation.total).toBe(800);
+      expect(transportation.count).toBe(2);
+      // Uncategorized expenses are grouped under a null category
+      const uncategorized = json.categoryTotals.find(
+        (c: { category: string | null }) => c.category === null,
+      );
+      expect(uncategorized.total).toBe(200);
+      expect(uncategorized.count).toBe(1);
     });
   });
 
