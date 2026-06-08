@@ -25,22 +25,22 @@
   "packageManager": "bun@1.3.2",
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
-    "lefthook": "2.1.8",
+    "lefthook": "2.1.9",
     "turbo": "2.9.16"
   },
   "dependencies": {
     "@serwist/next": "9.5.11",
-    "@supabase/supabase-js": "2.106.2",
-    "better-auth": "1.6.11",
+    "@supabase/supabase-js": "2.108.0",
+    "better-auth": "1.6.15",
     "drizzle-kit": "0.31.10",
     "drizzle-orm": "0.45.2",
     "exceljs": "4.4.0",
-    "hono": "4.12.23",
-    "next": "16.2.6",
+    "hono": "4.12.24",
+    "next": "16.2.7",
     "next-intl": "4.13.0",
-    "nodemailer": "8.0.9",
+    "nodemailer": "8.0.10",
     "postcss": "8.5.15",
-    "vitest": "4.1.7"
+    "vitest": "4.1.8"
   },
   "overrides": {
     "picomatch": "4.0.4",
