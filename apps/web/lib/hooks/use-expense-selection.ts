@@ -1,7 +1,7 @@
 import type { ExpensesResponse } from "@sugara/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { api, getApiErrorMessage } from "@/lib/api";
 import { queryKeys } from "@/lib/query-keys";
@@ -26,10 +26,11 @@ export function useExpenseSelection(tripId: string) {
     setSelectionMode(true);
   }
 
-  function exit() {
+  // Stable identity so callers can list it in effect deps (e.g. exit on tab change).
+  const exit = useCallback(() => {
     setSelectionMode(false);
     setSelectedIds(new Set());
-  }
+  }, []);
 
   function toggle(id: string) {
     setSelectedIds((prev) => {

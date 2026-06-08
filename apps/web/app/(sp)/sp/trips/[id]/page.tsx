@@ -434,6 +434,7 @@ export default function SpTripDetailPage() {
               canEdit={canEdit}
               addOpen={addExpenseOpen}
               onAddOpenChange={setAddExpenseOpen}
+              isActive={mobileTab === "expenses"}
             />
           </div>
         ) : (

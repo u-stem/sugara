@@ -3,7 +3,15 @@
 import type { CurrencyCode, ExpenseItem, ExpensesResponse } from "@sugara/shared";
 import { formatCurrency } from "@sugara/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpDown, ChevronDown, ListChecks, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  ArrowUpDown,
+  ChevronDown,
+  Pencil,
+  Plus,
+  SquareMousePointer,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
 import { useEffect, useMemo, useState } from "react";
@@ -46,9 +54,17 @@ type ExpensePanelProps = {
   canEdit: boolean;
   addOpen?: boolean;
   onAddOpenChange?: (open: boolean) => void;
+  /** Whether this tab is currently visible. Selection mode is exited when it becomes inactive. */
+  isActive?: boolean;
 };
 
-export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: ExpensePanelProps) {
+export function ExpensePanel({
+  tripId,
+  canEdit,
+  addOpen,
+  onAddOpenChange,
+  isActive = true,
+}: ExpensePanelProps) {
   const tm = useTranslations("messages");
   const te = useTranslations("expense");
   const tc = useTranslations("common");
@@ -112,6 +128,12 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
 
   const selection = useExpenseSelection(tripId);
 
+  // SP swipe tabs keep every panel mounted, so exit selection mode when this tab
+  // is swiped away to avoid a stale selection bar persisting on other tabs.
+  useEffect(() => {
+    if (!isActive) selection.exit();
+  }, [isActive, selection.exit]);
+
   const [sortKey, setSortKey] = useState<ExpenseSortKey>("newest");
   useEffect(() => {
     const saved = EXPENSE_SORT_KEYS.find((k) => k === localStorage.getItem(EXPENSE_SORT_KEY));
@@ -144,73 +166,71 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
         <div className="space-y-4">
           {/* Toolbar */}
           {selection.selectionMode ? (
-            <div className="flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1.5">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={selection.exit}>
-                <X className="h-4 w-4" />
+            <div className="flex items-center gap-1.5 rounded-lg bg-muted px-1.5 py-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={selection.exit}>
+                <X className="h-3.5 w-3.5" />
               </Button>
-              <span className="text-sm font-medium">
+              <span className="text-xs font-medium">
                 {tc("selectedCount", { count: selection.selectedIds.size })}
               </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() =>
+                  allSelected
+                    ? selection.deselectAll()
+                    : selection.selectAll(sortedExpenses.map((e) => e.id))
+                }
+              >
+                {allSelected ? tc("deselectAll") : tc("selectAll")}
+              </Button>
               <div className="ml-auto flex items-center gap-1">
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() =>
-                    allSelected
-                      ? selection.deselectAll()
-                      : selection.selectAll(sortedExpenses.map((e) => e.id))
-                  }
-                >
-                  {allSelected ? tc("deselectAll") : tc("selectAll")}
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  disabled={selection.selectedIds.size === 0}
+                  className="h-8 px-2 text-xs text-destructive"
+                  disabled={selection.selectedIds.size === 0 || selection.batchLoading}
                   onClick={() => selection.setBatchDeleteOpen(true)}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                   {tc("delete")}
                 </Button>
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-between gap-2">
-              {expenses.length > 0 ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <ArrowUpDown className="h-4 w-4" />
-                      {te(`sort_${sortKey}`)}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    {EXPENSE_SORT_KEYS.map((key) => (
-                      <DropdownMenuItem key={key} onClick={() => changeSortKey(key)}>
-                        {te(`sort_${key}`)}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <span />
-              )}
-              {canEdit && (
-                <div className="flex items-center gap-2">
-                  {expenses.length > 0 && (
-                    <Button variant="outline" size="sm" onClick={selection.enter}>
-                      <ListChecks className="h-4 w-4" />
-                      {tc("select")}
-                    </Button>
-                  )}
-                  {!isMobile && (
-                    <Button variant="outline" size="sm" onClick={handleAdd}>
-                      <Plus className="h-4 w-4" />
-                      {te("addTitle")}
-                    </Button>
-                  )}
-                </div>
-              )}
+            <div className="flex items-center gap-1.5">
+              <div className="flex flex-1 items-center gap-1.5 [&>*]:flex-1 lg:ml-auto lg:flex-initial lg:[&>*]:flex-initial">
+                {canEdit && !isMobile && (
+                  <Button variant="outline" size="sm" className="h-9" onClick={handleAdd}>
+                    <Plus className="h-4 w-4" />
+                    {te("addTitle")}
+                  </Button>
+                )}
+                {canEdit && expenses.length > 0 && (
+                  <Button variant="outline" size="sm" className="h-9" onClick={selection.enter}>
+                    <SquareMousePointer className="h-4 w-4" />
+                    {tc("select")}
+                  </Button>
+                )}
+                {expenses.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-9">
+                        <ArrowUpDown className="h-4 w-4" />
+                        {te(`sort_${sortKey}`)}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {EXPENSE_SORT_KEYS.map((key) => (
+                        <DropdownMenuItem key={key} onClick={() => changeSortKey(key)}>
+                          {te(`sort_${key}`)}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </div>
             </div>
           )}
 
