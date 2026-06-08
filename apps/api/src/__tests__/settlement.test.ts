@@ -4,6 +4,7 @@ import {
   calculateEqualSplit,
   calculateMemberBurdens,
   calculateSettlement,
+  resolveBurdens,
 } from "../lib/settlement";
 
 const alice = { id: "alice-id", name: "Alice" };
@@ -376,6 +377,85 @@ describe("calculateMemberBurdens", () => {
     );
     expect(result).toEqual([{ userId: alice.id, name: alice.name, total: 500 }]);
     warnSpy.mockRestore();
+  });
+});
+
+describe("resolveBurdens", () => {
+  it("returns equal splits unchanged (already trip currency)", () => {
+    expect(
+      resolveBurdens({
+        splitType: "equal",
+        amount: 1000,
+        baseAmount: 1500,
+        splits: [
+          { userId: "a", amount: 500 },
+          { userId: "b", amount: 500 },
+        ],
+      }),
+    ).toEqual([
+      { userId: "a", amount: 500 },
+      { userId: "b", amount: 500 },
+    ]);
+  });
+
+  it("returns same-currency custom splits unchanged", () => {
+    expect(
+      resolveBurdens({
+        splitType: "custom",
+        amount: 1000,
+        baseAmount: null,
+        splits: [
+          { userId: "a", amount: 300 },
+          { userId: "b", amount: 700 },
+        ],
+      }),
+    ).toEqual([
+      { userId: "a", amount: 300 },
+      { userId: "b", amount: 700 },
+    ]);
+  });
+
+  it("converts foreign custom splits to trip currency", () => {
+    expect(
+      resolveBurdens({
+        splitType: "custom",
+        amount: 1000,
+        baseAmount: 1500,
+        splits: [
+          { userId: "a", amount: 300 },
+          { userId: "b", amount: 700 },
+        ],
+      }),
+    ).toEqual([
+      { userId: "a", amount: 450 },
+      { userId: "b", amount: 1050 },
+    ]);
+  });
+});
+
+describe("settlement with foreign custom splits (converted via resolveBurdens)", () => {
+  it("nets balances in trip currency, not the original currency", () => {
+    // Trip currency e.g. USD; expense in a foreign currency: amount 1000,
+    // baseAmount 1500. Alice paid; custom split alice 300 / bob 700 (foreign).
+    const expense = {
+      splitType: "custom" as const,
+      amount: 1000,
+      baseAmount: 1500,
+      splits: [
+        { userId: alice.id, amount: 300 },
+        { userId: bob.id, amount: 700 },
+      ],
+    };
+    const input = [
+      {
+        paidByUserId: alice.id,
+        amount: expense.baseAmount,
+        splits: resolveBurdens(expense),
+      },
+    ];
+    const result = calculateSettlement(input, [alice, bob]);
+    // Alice paid 1500, owes 450 -> net +1050; Bob owes 1050 -> net -1050
+    expect(result.transfers).toEqual([{ from: bob, to: alice, amount: 1050 }]);
   });
 });
 

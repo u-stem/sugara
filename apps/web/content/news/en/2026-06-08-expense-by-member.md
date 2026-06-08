@@ -1,7 +1,7 @@
 ---
 title: "Added a per-member breakdown to expense details"
 date: "2026-06-08"
-summary: "The \"Show Details\" view on the Expenses tab now shows a per-member breakdown alongside the category breakdown, and details are available on solo trips too."
+summary: "The \"Show Details\" view on the Expenses tab now shows a per-member breakdown alongside the category breakdown, and can be opened on solo trips too once an expense has a category."
 ---
 
 ## New feature

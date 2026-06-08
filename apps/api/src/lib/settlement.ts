@@ -185,7 +185,10 @@ export function calculateMemberBurdens(
     .sort((a, b) => b.total - a.total);
 }
 
-function resolveBurdens(expense: BurdenExpenseData): { userId: string; amount: number }[] {
+// Exported so the expenses route can convert splits to trip currency before
+// feeding them to calculateSettlement / calculateDirectTransfers, keeping the
+// settlement nets consistent with calculateMemberBurdens for foreign splits.
+export function resolveBurdens(expense: BurdenExpenseData): { userId: string; amount: number }[] {
   // equal splits are pre-converted to trip currency on save; same-currency
   // custom/itemized splits (baseAmount null) are already in trip currency too.
   if (expense.splitType === "equal" || expense.baseAmount == null) {
