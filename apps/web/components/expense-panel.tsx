@@ -143,6 +143,11 @@ export function ExpensePanel({
     setSortKey(key);
     localStorage.setItem(EXPENSE_SORT_KEY, key);
   };
+  // Cycle through the sort options on each press (like the candidate sort toggle).
+  const cycleSortKey = () => {
+    const idx = EXPENSE_SORT_KEYS.indexOf(sortKey);
+    changeSortKey(EXPENSE_SORT_KEYS[(idx + 1) % EXPENSE_SORT_KEYS.length]);
+  };
 
   const sortedExpenses = useMemo(() => sortExpenses(expenses, sortKey), [expenses, sortKey]);
 
@@ -214,21 +219,10 @@ export function ExpensePanel({
                   </Button>
                 )}
                 {expenses.length > 0 && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-9">
-                        <ArrowUpDown className="h-4 w-4" />
-                        {te(`sort_${sortKey}`)}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {EXPENSE_SORT_KEYS.map((key) => (
-                        <DropdownMenuItem key={key} onClick={() => changeSortKey(key)}>
-                          {te(`sort_${key}`)}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <Button variant="outline" size="sm" className="h-9" onClick={cycleSortKey}>
+                    <ArrowUpDown className="h-4 w-4" />
+                    {te(`sort_${sortKey}`)}
+                  </Button>
                 )}
               </div>
             </div>
