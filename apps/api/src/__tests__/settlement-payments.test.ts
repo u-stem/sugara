@@ -51,6 +51,7 @@ vi.mock("../lib/settlement", () => ({
       },
     ],
   }),
+  toSettlementExpenses: vi.fn((expenses) => expenses),
 }));
 
 import { logActivity } from "../lib/activity-logger";

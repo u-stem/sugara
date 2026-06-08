@@ -29,7 +29,7 @@ import {
   calculateEqualSplit,
   calculateMemberBurdens,
   calculateSettlement,
-  resolveBurdens,
+  toSettlementExpenses,
 } from "../lib/settlement";
 import { requireAuth } from "../middleware/auth";
 import { requireTripAccess } from "../middleware/require-trip-access";
@@ -67,19 +67,15 @@ expenseRoutes.get("/:tripId/expenses", requireTripAccess(), async (c) => {
   const tripCurrency = (tripRow?.currency ?? "JPY") as CurrencyCode;
 
   const memberInfos = members.map((m) => ({ id: m.user.id, name: m.user.name }));
-  const expenseData = expenseList.map((e) => ({
-    paidByUserId: e.paidByUserId,
-    amount: e.baseAmount ?? e.amount,
-    // Convert splits to trip currency too. paidBy side uses baseAmount (trip
-    // currency), so foreign custom/itemized splits (stored in the original
-    // currency) must be converted as well, or the net balances mix currencies.
-    splits: resolveBurdens({
+  const expenseData = toSettlementExpenses(
+    expenseList.map((e) => ({
+      paidByUserId: e.paidByUserId,
       splitType: e.splitType,
       amount: e.amount,
       baseAmount: e.baseAmount,
       splits: e.splits.map((s) => ({ userId: s.userId, amount: s.amount })),
-    }),
-  }));
+    })),
+  );
 
   const settlement = {
     ...calculateSettlement(expenseData, memberInfos),

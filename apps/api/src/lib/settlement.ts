@@ -1,7 +1,7 @@
 import type { ExpenseSplitType, MemberTotal } from "@sugara/shared";
 import { logger } from "./logger";
 
-type ExpenseData = {
+export type ExpenseData = {
   paidByUserId: string;
   amount: number;
   splits: { userId: string; amount: number }[];
@@ -222,4 +222,21 @@ function distributeByShare(
     result[byFraction[k].i] += 1;
   }
   return splits.map((s, i) => ({ userId: s.userId, amount: result[i] }));
+}
+
+/**
+ * Normalize stored expenses into trip-currency settlement inputs. Both the paid
+ * amount (baseAmount ?? amount) and every split are expressed in trip currency,
+ * so callers of calculateSettlement / calculateDirectTransfers stay consistent
+ * for foreign custom/itemized splits. Use this everywhere settlement is computed
+ * (the expenses list and settlement-payment validation) to avoid drift.
+ */
+export function toSettlementExpenses(
+  expenses: (BurdenExpenseData & { paidByUserId: string })[],
+): ExpenseData[] {
+  return expenses.map((e) => ({
+    paidByUserId: e.paidByUserId,
+    amount: e.baseAmount ?? e.amount,
+    splits: resolveBurdens(e),
+  }));
 }
