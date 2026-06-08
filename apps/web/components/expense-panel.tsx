@@ -5,6 +5,7 @@ import { formatCurrency } from "@sugara/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpDown,
+  Check,
   ChevronDown,
   Pencil,
   Plus,
@@ -83,6 +84,7 @@ export function ExpensePanel({
   const setDialogOpen = onAddOpenChange ?? setInternalDialogOpen;
   const [editingExpenseItem, setEditingExpenseItem] = useState<ExpenseItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpenseItem | null>(null);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: (expenseId: string) =>
@@ -142,11 +144,6 @@ export function ExpensePanel({
   const changeSortKey = (key: ExpenseSortKey) => {
     setSortKey(key);
     localStorage.setItem(EXPENSE_SORT_KEY, key);
-  };
-  // Cycle through the sort options on each press (like the candidate sort toggle).
-  const cycleSortKey = () => {
-    const idx = EXPENSE_SORT_KEYS.indexOf(sortKey);
-    changeSortKey(EXPENSE_SORT_KEYS[(idx + 1) % EXPENSE_SORT_KEYS.length]);
   };
 
   const sortedExpenses = useMemo(() => sortExpenses(expenses, sortKey), [expenses, sortKey]);
@@ -218,18 +215,61 @@ export function ExpensePanel({
                     {tc("select")}
                   </Button>
                 )}
-                {expenses.length > 0 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9"
-                    onClick={cycleSortKey}
-                    aria-label={`${tc("sort")}: ${te(`sort_${sortKey}`)}`}
-                  >
-                    <ArrowUpDown className="h-4 w-4" />
-                    {te(`sort_${sortKey}`)}
-                  </Button>
-                )}
+                {expenses.length > 0 &&
+                  (isMobile ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9"
+                        onClick={() => setSortSheetOpen(true)}
+                        aria-label={`${tc("sort")}: ${te(`sort_${sortKey}`)}`}
+                      >
+                        <ArrowUpDown className="h-4 w-4" />
+                        {te(`sort_${sortKey}`)}
+                      </Button>
+                      <ActionSheet
+                        open={sortSheetOpen}
+                        onOpenChange={setSortSheetOpen}
+                        actions={EXPENSE_SORT_KEYS.map((key) => ({
+                          label: te(`sort_${key}`),
+                          icon:
+                            key === sortKey ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <span className="w-4" />
+                            ),
+                          onClick: () => changeSortKey(key),
+                        }))}
+                      />
+                    </>
+                  ) : (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9"
+                          aria-label={`${tc("sort")}: ${te(`sort_${sortKey}`)}`}
+                        >
+                          <ArrowUpDown className="h-4 w-4" />
+                          {te(`sort_${sortKey}`)}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {EXPENSE_SORT_KEYS.map((key) => (
+                          <DropdownMenuItem key={key} onClick={() => changeSortKey(key)}>
+                            {key === sortKey ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <span className="w-4" />
+                            )}
+                            {te(`sort_${key}`)}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ))}
               </div>
             </div>
           )}
