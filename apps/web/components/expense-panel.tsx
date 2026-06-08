@@ -135,11 +135,10 @@ export function ExpensePanel({
     if (!isActive) selection.exit();
   }, [isActive, selection.exit]);
 
-  const [sortKey, setSortKey] = useState<ExpenseSortKey>("newest");
-  useEffect(() => {
-    const saved = EXPENSE_SORT_KEYS.find((k) => k === localStorage.getItem(EXPENSE_SORT_KEY));
-    if (saved) setSortKey(saved);
-  }, []);
+  const [sortKey, setSortKey] = useState<ExpenseSortKey>(() => {
+    if (typeof window === "undefined") return "newest";
+    return EXPENSE_SORT_KEYS.find((k) => k === localStorage.getItem(EXPENSE_SORT_KEY)) ?? "newest";
+  });
   const changeSortKey = (key: ExpenseSortKey) => {
     setSortKey(key);
     localStorage.setItem(EXPENSE_SORT_KEY, key);
@@ -220,7 +219,13 @@ export function ExpensePanel({
                   </Button>
                 )}
                 {expenses.length > 0 && (
-                  <Button variant="outline" size="sm" className="h-9" onClick={cycleSortKey}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    onClick={cycleSortKey}
+                    aria-label={`${tc("sort")}: ${te(`sort_${sortKey}`)}`}
+                  >
                     <ArrowUpDown className="h-4 w-4" />
                     {te(`sort_${sortKey}`)}
                   </Button>
@@ -247,7 +252,7 @@ export function ExpensePanel({
                   {categoryTotals.length > 0 && (
                     <div className="space-y-1 border-t px-3 pt-2 pb-3">
                       <p className="text-xs text-muted-foreground">{te("byCategory")}</p>
-                      {categoryTotals
+                      {[...categoryTotals]
                         .sort((a, b) => b.total - a.total)
                         .map((ct) => (
                           <div

@@ -12,6 +12,8 @@ export function sortExpenses(expenses: ExpenseItem[], key: ExpenseSortKey): Expe
   const amountOf = (e: ExpenseItem) => e.baseAmount ?? e.amount;
   const arr = [...expenses];
   switch (key) {
+    case "newest":
+      return arr.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     case "oldest":
       return arr.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     case "amountHigh":
@@ -19,6 +21,8 @@ export function sortExpenses(expenses: ExpenseItem[], key: ExpenseSortKey): Expe
     case "amountLow":
       return arr.sort((a, b) => amountOf(a) - amountOf(b));
     default:
-      return arr.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      // Exhaustiveness check: adding a new sort key without a case fails to compile.
+      key satisfies never;
+      return arr;
   }
 }

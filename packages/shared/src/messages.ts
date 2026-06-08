@@ -12,7 +12,7 @@ import {
   MAX_QUICK_POLLS_PER_USER,
   MAX_SCHEDULES_PER_TRIP,
 } from "./limits";
-import type { ExpenseCategory, ExpenseSplitType } from "./schemas/expense";
+import type { ExpenseSplitType } from "./schemas/expense";
 import type { MemberRole } from "./schemas/member";
 import type { ScheduleCategory, ScheduleColor, TransportMethod } from "./schemas/schedule";
 import type { TripStatus } from "./schemas/trip";
@@ -552,17 +552,6 @@ export const SCHEDULE_COLOR_LABELS: Record<ScheduleColor, string> = {
   pink: "ピンク",
   orange: "オレンジ",
   gray: "グレー",
-};
-
-export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
-  transportation: "交通費",
-  accommodation: "宿泊費",
-  meals: "食費",
-  communication: "通信費",
-  supplies: "消耗品費",
-  entertainment: "交際費",
-  conference: "会議費",
-  other: "その他",
 };
 
 export const SPLIT_TYPE_LABELS: Record<ExpenseSplitType, string> = {
