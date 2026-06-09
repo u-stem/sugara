@@ -4,7 +4,7 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../../db";
-import { bookmarkLists, bookmarks, expenses, tripMembers, trips } from "../../db/schema";
+import { articles, bookmarkLists, bookmarks, expenses, tripMembers, trips } from "../../db/schema";
 import { verifyListOwnership } from "../../lib/bookmark-ownership";
 import { v1AuditLog } from "../../lib/external-api/audit-log";
 import { ApiV1Error, getApiKey, type V1Env, v1ErrorHandler } from "../../lib/external-api/errors";
@@ -492,5 +492,121 @@ v1App.get("/bookmark-lists/:listId/bookmarks", requireApiKey("bookmarks:read"), 
   return c.json({
     data,
     pagination: { limit: queryLimit, offset: queryOffset, total },
+  });
+});
+
+// ---------- GET /api/v1/articles ----------
+//
+// Returns the authenticated user's own articles without the body (content is
+// omitted for list efficiency — fetch /articles/:id for the full content).
+// Visibility-based filtering is NOT applied: the v1 key owner only ever sees
+// their own articles (ownerId === userId boundary is sufficient).
+
+v1App.get("/articles", requireApiKey("articles:read"), async (c) => {
+  const key = getApiKey(c);
+  const userId = key.userId;
+
+  const parsed = paginationSchema.safeParse({
+    limit: c.req.query("limit"),
+    offset: c.req.query("offset"),
+  });
+  if (!parsed.success) {
+    throw new ApiV1Error(400, "invalid_request", "Invalid query parameters");
+  }
+  const { limit: queryLimit, offset: queryOffset } = parsed.data;
+
+  // Total count
+  const countResult = await db
+    .select({ total: count() })
+    .from(articles)
+    .where(eq(articles.ownerId, userId));
+  const total = countResult[0]?.total ?? 0;
+
+  // Fetch page of articles (no content) with linked trip ids
+  const articleRows = await db.query.articles.findMany({
+    where: eq(articles.ownerId, userId),
+    columns: {
+      id: true,
+      title: true,
+      tags: true,
+      visibility: true,
+      sortOrder: true,
+      createdAt: true,
+      updatedAt: true,
+      // content intentionally excluded from list view
+    },
+    with: {
+      articleTrips: { columns: { tripId: true } },
+    },
+    orderBy: (arts, { asc }) => [asc(arts.sortOrder)],
+    limit: queryLimit,
+    offset: queryOffset,
+  });
+
+  const data = articleRows.map((a) => ({
+    id: a.id,
+    title: a.title,
+    tags: a.tags,
+    visibility: a.visibility,
+    tripIds: a.articleTrips.map((t) => t.tripId),
+    createdAt: a.createdAt.toISOString(),
+    updatedAt: a.updatedAt.toISOString(),
+  }));
+
+  return c.json({
+    data,
+    pagination: { limit: queryLimit, offset: queryOffset, total },
+  });
+});
+
+// ---------- GET /api/v1/articles/:id ----------
+//
+// Returns the full article including content. Returns 404 for articles owned
+// by other users (existence concealment — prevents enumeration of other users'
+// article ids via timing or status differences).
+
+v1App.get("/articles/:id", requireApiKey("articles:read"), async (c) => {
+  const key = getApiKey(c);
+  const userId = key.userId;
+
+  const rawId = c.req.param("id");
+  const parsedId = uuidSchema.safeParse(rawId);
+  if (!parsedId.success) {
+    throw new ApiV1Error(400, "invalid_request", "Invalid article id");
+  }
+  const articleId = parsedId.data;
+
+  const article = await db.query.articles.findFirst({
+    where: eq(articles.id, articleId),
+    columns: {
+      id: true,
+      ownerId: true,
+      title: true,
+      content: true,
+      tags: true,
+      visibility: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+    with: {
+      articleTrips: { columns: { tripId: true } },
+    },
+  });
+
+  // Existence concealment: 404 whether the article doesn't exist or belongs to
+  // another user (same policy as bookmark lists — prevents id enumeration).
+  if (!article || article.ownerId !== userId) {
+    throw new ApiV1Error(404, "not_found", "Article not found or access denied");
+  }
+
+  return c.json({
+    id: article.id,
+    title: article.title,
+    content: article.content,
+    tags: article.tags,
+    visibility: article.visibility,
+    tripIds: article.articleTrips.map((t) => t.tripId),
+    createdAt: article.createdAt.toISOString(),
+    updatedAt: article.updatedAt.toISOString(),
   });
 });

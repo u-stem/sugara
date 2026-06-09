@@ -9,6 +9,7 @@ const { mockVerifyApiKey, mockCheckTripAccess, mockDbQuery, mockDbSelect } = vi.
     expenses: { findMany: vi.fn() },
     bookmarkLists: { findFirst: vi.fn(), findMany: vi.fn() },
     bookmarks: { findMany: vi.fn() },
+    articles: { findFirst: vi.fn(), findMany: vi.fn() },
   },
   mockDbSelect: vi.fn(),
 }));
@@ -52,7 +53,7 @@ const USER_ID_2 = "aaaaaaaa-0000-0000-0000-000000000002";
 const VALID_KEY = {
   id: "bbbbbbbb-0000-0000-0000-000000000001",
   userId: USER_ID_1,
-  scopes: ["trips:read", "expenses:read", "bookmarks:read"] as string[],
+  scopes: ["trips:read", "expenses:read", "bookmarks:read", "articles:read"] as string[],
   expiresAt: new Date(Date.now() + 3_600_000),
 };
 
@@ -422,6 +423,126 @@ describe("GET /bookmark-lists/:listId/bookmarks", () => {
     const res = await v1App.request("/bookmark-lists/not-a-uuid/bookmarks", {
       headers: AUTH_HEADER,
     });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "invalid_request", message: expect.any(String) } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Articles list — GET /articles
+// ---------------------------------------------------------------------------
+
+const ARTICLE_ID = "11111111-0000-0000-0000-000000000001";
+const TRIP_ID_A = "22222222-0000-0000-0000-000000000001";
+
+const articleSummaryRow = {
+  id: ARTICLE_ID,
+  title: "Kyoto Trip Report",
+  tags: ["kyoto", "japan"],
+  visibility: "public" as const,
+  sortOrder: 0,
+  createdAt: new Date("2026-05-01T00:00:00Z"),
+  updatedAt: new Date("2026-05-02T00:00:00Z"),
+  articleTrips: [{ tripId: TRIP_ID_A }],
+};
+
+describe("GET /articles", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns only the authenticated user's own articles (no content)", async () => {
+    setupValidKey();
+    mockCountQuery(1);
+    mockDbQuery.articles.findMany.mockResolvedValue([articleSummaryRow]);
+
+    const res = await v1App.request("/articles", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toBe(ARTICLE_ID);
+    expect(body.data[0].title).toBe("Kyoto Trip Report");
+    expect(body.data[0].tags).toEqual(["kyoto", "japan"]);
+    expect(body.data[0].visibility).toBe("public");
+    expect(body.data[0].tripIds).toEqual([TRIP_ID_A]);
+    expect(body.pagination.total).toBe(1);
+  });
+
+  it("does not include content in the list response", async () => {
+    setupValidKey();
+    mockCountQuery(1);
+    mockDbQuery.articles.findMany.mockResolvedValue([articleSummaryRow]);
+
+    const res = await v1App.request("/articles", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data[0]).not.toHaveProperty("content");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Article detail — GET /articles/:id
+// ---------------------------------------------------------------------------
+
+describe("GET /articles/:id", () => {
+  const articleDetailRow = {
+    ...articleSummaryRow,
+    ownerId: USER_ID_1,
+    content: "## Day 1\n\nArrived in Kyoto...",
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 404 when article belongs to another user", async () => {
+    setupValidKey(); // VALID_KEY.userId = USER_ID_1
+    // Article owned by a different user
+    mockDbQuery.articles.findFirst.mockResolvedValue({
+      ...articleDetailRow,
+      ownerId: "ffffffff-0000-0000-0000-000000000099",
+    });
+
+    const res = await v1App.request(`/articles/${ARTICLE_ID}`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "not_found", message: expect.any(String) } });
+  });
+
+  it("returns 404 when article does not exist", async () => {
+    setupValidKey();
+    mockDbQuery.articles.findFirst.mockResolvedValue(null);
+
+    const res = await v1App.request(`/articles/${ARTICLE_ID}`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns full article with content and tripIds when owner requests it", async () => {
+    setupValidKey(); // userId = USER_ID_1
+    mockDbQuery.articles.findFirst.mockResolvedValue(articleDetailRow); // ownerId = USER_ID_1
+
+    const res = await v1App.request(`/articles/${ARTICLE_ID}`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBe(ARTICLE_ID);
+    expect(body.title).toBe("Kyoto Trip Report");
+    expect(body.content).toBe("## Day 1\n\nArrived in Kyoto...");
+    expect(body.tags).toEqual(["kyoto", "japan"]);
+    expect(body.tripIds).toEqual([TRIP_ID_A]);
+    expect(body).not.toHaveProperty("ownerId");
+  });
+
+  it("returns 400 for non-UUID article id", async () => {
+    setupValidKey();
+
+    const res = await v1App.request("/articles/not-a-uuid", { headers: AUTH_HEADER });
 
     expect(res.status).toBe(400);
     const body = await res.json();
