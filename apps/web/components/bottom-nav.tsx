@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 type NavLink = {
   href: string;
-  labelKey: "home" | "bookmarks" | "friends";
+  labelKey: "home" | "bookmarks" | "articles" | "friends";
   icon: React.ComponentType<{ className?: string }>;
 };
 

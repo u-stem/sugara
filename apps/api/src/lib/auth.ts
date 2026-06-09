@@ -120,6 +120,10 @@ export const auth = betterAuth({
         type: "date",
         required: false,
       },
+      tripLimit: {
+        type: "number",
+        required: false,
+      },
     },
   },
   databaseHooks: {

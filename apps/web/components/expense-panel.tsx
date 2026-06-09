@@ -3,10 +3,19 @@
 import type { CurrencyCode, ExpenseItem, ExpensesResponse } from "@sugara/shared";
 import { formatCurrency } from "@sugara/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  ArrowUpDown,
+  Check,
+  ChevronDown,
+  Pencil,
+  Plus,
+  SquareMousePointer,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Collapsible as CollapsiblePrimitive } from "radix-ui";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ActionSheet } from "@/components/action-sheet";
 import { ExpenseDialog } from "@/components/expense-dialog";
@@ -30,23 +39,37 @@ import {
   ResponsiveAlertDialogHeader,
   ResponsiveAlertDialogTitle,
 } from "@/components/ui/responsive-alert-dialog";
+import { SelectionIndicator } from "@/components/ui/selection-indicator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, apiVoid, getApiErrorMessage } from "@/lib/api";
 import { useSession } from "@/lib/auth-client";
+import { EXPENSE_SORT_KEYS, type ExpenseSortKey, sortExpenses } from "@/lib/expense-sort";
+import { useExpenseSelection } from "@/lib/hooks/use-expense-selection";
 import { useMobile } from "@/lib/hooks/use-is-mobile";
 import { queryKeys } from "@/lib/query-keys";
+
+const EXPENSE_SORT_KEY = "sugara:expense-sort";
 
 type ExpensePanelProps = {
   tripId: string;
   canEdit: boolean;
   addOpen?: boolean;
   onAddOpenChange?: (open: boolean) => void;
+  /** Whether this tab is currently visible. Selection mode is exited when it becomes inactive. */
+  isActive?: boolean;
 };
 
-export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: ExpensePanelProps) {
+export function ExpensePanel({
+  tripId,
+  canEdit,
+  addOpen,
+  onAddOpenChange,
+  isActive = true,
+}: ExpensePanelProps) {
   const tm = useTranslations("messages");
   const te = useTranslations("expense");
   const tc = useTranslations("common");
+  const tlExpCat = useTranslations("labels.expenseCategory");
   const locale = useLocale();
   const isMobile = useMobile();
   const queryClient = useQueryClient();
@@ -61,6 +84,7 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
   const setDialogOpen = onAddOpenChange ?? setInternalDialogOpen;
   const [editingExpenseItem, setEditingExpenseItem] = useState<ExpenseItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpenseItem | null>(null);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: (expenseId: string) =>
@@ -91,13 +115,41 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
     setDialogOpen(true);
   };
 
-  const { tripCurrency, expenses, settlement, settlementPayments, categoryTotals } = data ?? {
-    tripCurrency: "JPY" as CurrencyCode,
-    expenses: [],
-    settlement: { totalAmount: 0, balances: [], transfers: [], directTransfers: [] },
-    settlementPayments: [],
-    categoryTotals: [],
+  // Fall back per-field (not on `data` as a whole) so a partial response — e.g. an
+  // older cached payload without memberTotals — can't surface undefined arrays.
+  const tripCurrency = data?.tripCurrency ?? "JPY";
+  const expenses = data?.expenses ?? [];
+  const settlement = data?.settlement ?? {
+    totalAmount: 0,
+    balances: [],
+    transfers: [],
+    directTransfers: [],
   };
+  const settlementPayments = data?.settlementPayments ?? [];
+  const categoryTotals = data?.categoryTotals ?? [];
+  const memberTotals = data?.memberTotals ?? [];
+
+  const selection = useExpenseSelection(tripId);
+
+  // SP swipe tabs keep every panel mounted, so exit selection mode when this tab
+  // is swiped away to avoid a stale selection bar persisting on other tabs.
+  useEffect(() => {
+    if (!isActive) selection.exit();
+  }, [isActive, selection.exit]);
+
+  const [sortKey, setSortKey] = useState<ExpenseSortKey>(() => {
+    if (typeof window === "undefined") return "newest";
+    return EXPENSE_SORT_KEYS.find((k) => k === localStorage.getItem(EXPENSE_SORT_KEY)) ?? "newest";
+  });
+  const changeSortKey = (key: ExpenseSortKey) => {
+    setSortKey(key);
+    localStorage.setItem(EXPENSE_SORT_KEY, key);
+  };
+
+  const sortedExpenses = useMemo(() => sortExpenses(expenses, sortKey), [expenses, sortKey]);
+
+  const allSelected =
+    sortedExpenses.length > 0 && selection.selectedIds.size === sortedExpenses.length;
 
   return (
     <LoadingBoundary
@@ -114,13 +166,111 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
         <p className="py-4 text-center text-sm text-destructive">{te("fetchFailed")}</p>
       ) : (
         <div className="space-y-4">
-          {/* Toolbar (hidden on mobile where FAB is used) */}
-          {canEdit && !isMobile && (
-            <div className="flex justify-end">
-              <Button variant="outline" size="sm" onClick={handleAdd}>
-                <Plus className="h-4 w-4" />
-                {te("addTitle")}
+          {/* Toolbar */}
+          {selection.selectionMode ? (
+            <div className="flex items-center gap-1.5 rounded-lg bg-muted px-1.5 py-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={selection.exit}>
+                <X className="h-3.5 w-3.5" />
               </Button>
+              <span className="text-xs font-medium">
+                {tc("selectedCount", { count: selection.selectedIds.size })}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() =>
+                  allSelected
+                    ? selection.deselectAll()
+                    : selection.selectAll(sortedExpenses.map((e) => e.id))
+                }
+              >
+                {allSelected ? tc("deselectAll") : tc("selectAll")}
+              </Button>
+              <div className="ml-auto flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 px-2 text-xs text-destructive"
+                  disabled={selection.selectedIds.size === 0 || selection.batchLoading}
+                  onClick={() => selection.setBatchDeleteOpen(true)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {tc("delete")}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <div className="flex flex-1 items-center gap-1.5 [&>*]:flex-1 lg:ml-auto lg:flex-initial lg:[&>*]:flex-initial">
+                {canEdit && !isMobile && (
+                  <Button variant="outline" size="sm" className="h-9" onClick={handleAdd}>
+                    <Plus className="h-4 w-4" />
+                    {te("addTitle")}
+                  </Button>
+                )}
+                {canEdit && expenses.length > 0 && (
+                  <Button variant="outline" size="sm" className="h-9" onClick={selection.enter}>
+                    <SquareMousePointer className="h-4 w-4" />
+                    {tc("select")}
+                  </Button>
+                )}
+                {expenses.length > 0 &&
+                  (isMobile ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9"
+                        onClick={() => setSortSheetOpen(true)}
+                        aria-label={`${tc("sort")}: ${te(`sort_${sortKey}`)}`}
+                      >
+                        <ArrowUpDown className="h-4 w-4" />
+                        {te(`sort_${sortKey}`)}
+                      </Button>
+                      <ActionSheet
+                        open={sortSheetOpen}
+                        onOpenChange={setSortSheetOpen}
+                        actions={EXPENSE_SORT_KEYS.map((key) => ({
+                          label: te(`sort_${key}`),
+                          icon:
+                            key === sortKey ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <ArrowUpDown className="h-4 w-4" />
+                            ),
+                          onClick: () => changeSortKey(key),
+                        }))}
+                      />
+                    </>
+                  ) : (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9"
+                          aria-label={`${tc("sort")}: ${te(`sort_${sortKey}`)}`}
+                        >
+                          <ArrowUpDown className="h-4 w-4" />
+                          {te(`sort_${sortKey}`)}
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        {EXPENSE_SORT_KEYS.map((key) => (
+                          <DropdownMenuItem key={key} onClick={() => changeSortKey(key)}>
+                            {key === sortKey ? (
+                              <Check className="h-4 w-4" />
+                            ) : (
+                              <span className="w-4" />
+                            )}
+                            {te(`sort_${key}`)}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  ))}
+              </div>
             </div>
           )}
 
@@ -132,7 +282,7 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
                 {formatCurrency(settlement.totalAmount, tripCurrency, locale)}
               </span>
             </div>
-            {(settlement.transfers.length > 0 || settlement.directTransfers.length > 0) && (
+            {(categoryTotals.length > 0 || memberTotals.length > 1) && (
               <>
                 <CollapsiblePrimitive.Trigger className="flex w-full items-center gap-1 border-t px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/80 transition-colors [&[data-state=open]>svg]:rotate-180">
                   <ChevronDown className="h-3 w-3 transition-transform duration-200" />
@@ -142,16 +292,16 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
                   {categoryTotals.length > 0 && (
                     <div className="space-y-1 border-t px-3 pt-2 pb-3">
                       <p className="text-xs text-muted-foreground">{te("byCategory")}</p>
-                      {categoryTotals
+                      {[...categoryTotals]
                         .sort((a, b) => b.total - a.total)
                         .map((ct) => (
                           <div
-                            key={ct.category}
+                            key={ct.category ?? "uncategorized"}
                             className="flex items-center justify-between pl-2 text-sm"
                           >
                             <span className="flex items-center gap-1.5">
                               <span className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
-                              {ct.label}
+                              {ct.category ? tlExpCat(ct.category) : te("uncategorized")}
                               <span className="text-xs text-muted-foreground">
                                 ({te("countSuffix", { count: ct.count })})
                               </span>
@@ -161,6 +311,25 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
                             </span>
                           </div>
                         ))}
+                    </div>
+                  )}
+                  {memberTotals.length > 1 && (
+                    <div className="space-y-1 border-t px-3 pt-2 pb-3">
+                      <p className="text-xs text-muted-foreground">{te("byMember")}</p>
+                      {memberTotals.map((mt) => (
+                        <div
+                          key={mt.userId}
+                          className="flex items-center justify-between pl-2 text-sm"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <span className="h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
+                            <span translate="yes">{mt.name}</span>
+                          </span>
+                          <span className="font-medium">
+                            {formatCurrency(mt.total, tripCurrency, locale)}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </CollapsiblePrimitive.Content>
@@ -185,13 +354,16 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
           {/* ExpenseItem list */}
           {expenses.length > 0 && (
             <div className="space-y-2">
-              {expenses.map((expense) => (
+              {sortedExpenses.map((expense) => (
                 <ExpenseRow
                   key={expense.id}
                   expense={expense}
                   tripCurrency={tripCurrency}
                   canEdit={canEdit}
                   isMobile={isMobile}
+                  selectable={selection.selectionMode}
+                  selected={selection.selectedIds.has(expense.id)}
+                  onSelect={selection.toggle}
                   onEdit={handleEdit}
                   onDelete={setDeleteTarget}
                 />
@@ -243,6 +415,33 @@ export function ExpensePanel({ tripId, canEdit, addOpen, onAddOpenChange }: Expe
               </ResponsiveAlertDialogFooter>
             </ResponsiveAlertDialogContent>
           </ResponsiveAlertDialog>
+
+          <ResponsiveAlertDialog
+            open={selection.batchDeleteOpen}
+            onOpenChange={selection.setBatchDeleteOpen}
+          >
+            <ResponsiveAlertDialogContent>
+              <ResponsiveAlertDialogHeader>
+                <ResponsiveAlertDialogTitle>{te("bulkDeleteTitle")}</ResponsiveAlertDialogTitle>
+                <ResponsiveAlertDialogDescription>
+                  {te("bulkDeleteDescription", { count: selection.selectedIds.size })}
+                </ResponsiveAlertDialogDescription>
+              </ResponsiveAlertDialogHeader>
+              <ResponsiveAlertDialogFooter>
+                <ResponsiveAlertDialogCancel>
+                  <X className="h-4 w-4" />
+                  {tc("cancel")}
+                </ResponsiveAlertDialogCancel>
+                <ResponsiveAlertDialogDestructiveAction
+                  onClick={selection.handleBatchDelete}
+                  disabled={selection.batchLoading}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  {tc("deletConfirm")}
+                </ResponsiveAlertDialogDestructiveAction>
+              </ResponsiveAlertDialogFooter>
+            </ResponsiveAlertDialogContent>
+          </ResponsiveAlertDialog>
         </div>
       )}
     </LoadingBoundary>
@@ -254,6 +453,9 @@ function ExpenseRow({
   tripCurrency,
   canEdit,
   isMobile,
+  selectable,
+  selected,
+  onSelect,
   onEdit,
   onDelete,
 }: {
@@ -261,6 +463,9 @@ function ExpenseRow({
   tripCurrency: CurrencyCode;
   canEdit: boolean;
   isMobile: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
   onEdit: (expense: ExpenseItem) => void;
   onDelete: (expense: ExpenseItem) => void;
 }) {
@@ -274,20 +479,26 @@ function ExpenseRow({
 
   return (
     <CollapsiblePrimitive.Root className="rounded-md border">
-      <div className="flex items-center justify-between gap-2 p-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" translate="yes">
-            {expense.title}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {te("paidBy", { name: expense.paidByUser.name })}
-            {" / "}
-            {tlSplit(expense.splitType)}
-            {expense.category && ` / ${tlExpCat(expense.category)}`}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <span className="text-sm font-bold">
+      {selectable ? (
+        <button
+          type="button"
+          onClick={() => onSelect?.(expense.id)}
+          aria-pressed={selected}
+          className="flex w-full items-center gap-2 p-3 text-left transition-colors hover:bg-accent/50"
+        >
+          <SelectionIndicator checked={!!selected} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium" translate="yes">
+              {expense.title}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {te("paidBy", { name: expense.paidByUser.name })}
+              {" / "}
+              {tlSplit(expense.splitType)}
+              {expense.category && ` / ${tlExpCat(expense.category)}`}
+            </p>
+          </div>
+          <span className="shrink-0 text-sm font-bold">
             {formatCurrency(expense.amount, currency, locale)}
             {expense.baseAmount != null && expense.currency !== tripCurrency && (
               <span className="text-muted-foreground">
@@ -296,48 +507,76 @@ function ExpenseRow({
               </span>
             )}
           </span>
-          {canEdit &&
-            (isMobile ? (
-              <>
-                <ItemMenuButton
-                  ariaLabel={te("menuLabel", { title: expense.title })}
-                  onClick={() => setSheetOpen(true)}
-                />
-                <ActionSheet
-                  open={sheetOpen}
-                  onOpenChange={setSheetOpen}
-                  actions={[
-                    {
-                      label: tc("edit"),
-                      icon: <Pencil className="h-4 w-4" />,
-                      onClick: () => onEdit(expense),
-                    },
-                    {
-                      label: tc("delete"),
-                      icon: <Trash2 className="h-4 w-4" />,
-                      onClick: () => onDelete(expense),
-                      variant: "destructive" as const,
-                    },
-                  ]}
-                />
-              </>
-            ) : (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <ItemMenuButton ariaLabel={te("menuLabel", { title: expense.title })} />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => onEdit(expense)}>
-                    <Pencil /> {tc("edit")}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="text-destructive" onClick={() => onDelete(expense)}>
-                    <Trash2 /> {tc("delete")}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ))}
+        </button>
+      ) : (
+        <div className="flex items-center justify-between gap-2 p-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium" translate="yes">
+              {expense.title}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {te("paidBy", { name: expense.paidByUser.name })}
+              {" / "}
+              {tlSplit(expense.splitType)}
+              {expense.category && ` / ${tlExpCat(expense.category)}`}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-sm font-bold">
+              {formatCurrency(expense.amount, currency, locale)}
+              {expense.baseAmount != null && expense.currency !== tripCurrency && (
+                <span className="text-muted-foreground">
+                  {" "}
+                  ({formatCurrency(expense.baseAmount, tripCurrency, locale)})
+                </span>
+              )}
+            </span>
+            {canEdit &&
+              (isMobile ? (
+                <>
+                  <ItemMenuButton
+                    ariaLabel={te("menuLabel", { title: expense.title })}
+                    onClick={() => setSheetOpen(true)}
+                  />
+                  <ActionSheet
+                    open={sheetOpen}
+                    onOpenChange={setSheetOpen}
+                    actions={[
+                      {
+                        label: tc("edit"),
+                        icon: <Pencil className="h-4 w-4" />,
+                        onClick: () => onEdit(expense),
+                      },
+                      {
+                        label: tc("delete"),
+                        icon: <Trash2 className="h-4 w-4" />,
+                        onClick: () => onDelete(expense),
+                        variant: "destructive" as const,
+                      },
+                    ]}
+                  />
+                </>
+              ) : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <ItemMenuButton ariaLabel={te("menuLabel", { title: expense.title })} />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => onEdit(expense)}>
+                      <Pencil /> {tc("edit")}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={() => onDelete(expense)}
+                    >
+                      <Trash2 /> {tc("delete")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ))}
+          </div>
         </div>
-      </div>
+      )}
       {expense.splits.length > 0 && (
         <>
           <CollapsiblePrimitive.Trigger className="flex w-full items-center gap-1 border-t px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted/80 transition-colors [&[data-state=open]>svg]:rotate-180">

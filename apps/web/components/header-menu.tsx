@@ -89,9 +89,12 @@ export function HeaderMenu() {
   const { open: openShortcutHelp } = useShortcutHelp();
 
   return (
-    <div ref={ref} className="flex items-center">
+    <div ref={ref} className="relative flex items-center">
       {expanded && (
-        <div className="flex items-center gap-1 animate-in fade-in duration-150">
+        <div
+          id="header-menu-panel"
+          className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150 lg:static lg:z-auto lg:mt-0 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none"
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -141,6 +144,7 @@ export function HeaderMenu() {
         type="button"
         aria-label={expanded ? t("closeMenu") : t("openMenu")}
         aria-expanded={expanded}
+        aria-controls="header-menu-panel"
         onClick={toggle}
         className="flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
       >
@@ -160,9 +164,12 @@ export function SpHeaderMenu() {
   const { expanded, toggle, ref } = useMenuState();
 
   return (
-    <div ref={ref} className="flex items-center">
+    <div ref={ref} className="relative flex items-center">
       {expanded && (
-        <div className="flex items-center gap-1 animate-in fade-in duration-150">
+        <div
+          id="sp-header-menu-panel"
+          className="absolute right-0 top-full z-50 mt-1 flex items-center gap-1 rounded-md border bg-popover p-1 shadow-md animate-in fade-in duration-150"
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -197,6 +204,7 @@ export function SpHeaderMenu() {
         type="button"
         aria-label={expanded ? t("closeMenu") : t("openMenu")}
         aria-expanded={expanded}
+        aria-controls="sp-header-menu-panel"
         onClick={toggle}
         className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground"
       >

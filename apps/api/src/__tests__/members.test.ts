@@ -10,6 +10,7 @@ const {
   mockDbSelect,
   mockCreateNotification,
   mockNotifyUsers,
+  mockNotifyArticleOwnersOnMemberAdded,
 } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
   mockDbQuery: {
@@ -23,6 +24,9 @@ const {
     trips: {
       findFirst: vi.fn(),
     },
+    articleTrips: {
+      findMany: vi.fn(),
+    },
   },
   mockDbInsert: vi.fn(),
   mockDbUpdate: vi.fn(),
@@ -30,6 +34,7 @@ const {
   mockDbSelect: vi.fn(),
   mockCreateNotification: vi.fn(),
   mockNotifyUsers: vi.fn(),
+  mockNotifyArticleOwnersOnMemberAdded: vi.fn(),
 }));
 
 vi.mock("../lib/auth", () => ({
@@ -60,9 +65,13 @@ vi.mock("../lib/activity-logger", () => ({
 vi.mock("../lib/notifications", () => ({
   createNotification: (...args: unknown[]) => mockCreateNotification(...args),
   notifyUsers: (...args: unknown[]) => mockNotifyUsers(...args),
+  // C-2 helper — mocked so tests verify the call boundary, not internal DB queries.
+  notifyArticleOwnersOnMemberAdded: (...args: unknown[]) =>
+    mockNotifyArticleOwnersOnMemberAdded(...args),
 }));
 
 import { MAX_MEMBERS_PER_TRIP } from "@sugara/shared";
+import { articleTrips } from "../db/schema";
 import { memberRoutes } from "../routes/members";
 
 const fakeUserId = "00000000-0000-0000-0000-000000000001";
@@ -87,12 +96,17 @@ describe("Member routes", () => {
     mockDbQuery.trips.findFirst.mockResolvedValue({ title: "テスト旅行" });
     mockCreateNotification.mockResolvedValue(undefined);
     mockNotifyUsers.mockReturnValue(undefined);
+    mockNotifyArticleOwnersOnMemberAdded.mockResolvedValue(undefined);
+    // Default: no articles linked to the trip (C-2 / C-3 safe default)
+    mockDbQuery.articleTrips.findMany.mockResolvedValue([]);
     // Default: count query returns 0 (under limit / no expenses)
     const mockWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
     mockDbSelect.mockReturnValue({
       from: vi.fn().mockReturnValue({
         where: mockWhere,
         leftJoin: vi.fn().mockReturnValue({ where: mockWhere }),
+        // C-3: owned-articles query joins article_trips; default to none linked.
+        innerJoin: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
       }),
     });
   });
@@ -271,6 +285,74 @@ describe("Member routes", () => {
         expect.objectContaining({ type: "member_added" }),
       );
     });
+
+    // C-2: members.ts delegates to the helper; verify correct arguments are forwarded.
+    it("POST: メンバー追加時に notifyArticleOwnersOnMemberAdded を呼ぶ", async () => {
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: fakeUser2Id,
+        name: "New Member",
+      });
+      mockDbQuery.tripMembers.findFirst
+        .mockResolvedValueOnce({ tripId, userId: fakeUserId, role: "owner" })
+        .mockResolvedValueOnce(undefined);
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      await app.request(basePath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: fakeUser2Id, role: "editor" }),
+      });
+
+      // The helper must be called with the added user and actor suppression.
+      expect(mockNotifyArticleOwnersOnMemberAdded).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tripId,
+          addedUserIds: [fakeUser2Id],
+          memberName: "New Member",
+          excludeOwnerId: fakeUserId,
+        }),
+      );
+    });
+
+    it("POST: 公開記事が紐づいている場合は article_shared_member_added を送らない", async () => {
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: fakeUser2Id,
+        name: "New Member",
+      });
+      mockDbQuery.tripMembers.findFirst
+        .mockResolvedValueOnce({ tripId, userId: fakeUserId, role: "owner" })
+        .mockResolvedValueOnce(undefined);
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockResolvedValue(undefined),
+      });
+      // Trip has only a public article — public-article filtering happens inside
+      // the helper; here we confirm notifyUsers is never called directly with
+      // article_shared_member_added (the helper is mocked to a no-op).
+      mockDbQuery.articleTrips.findMany.mockResolvedValue([
+        {
+          article: {
+            id: "article-uuid-2",
+            ownerId: "00000000-0000-0000-0000-000000000099",
+            title: "Public Article",
+            visibility: "public",
+          },
+        },
+      ]);
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      await app.request(basePath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: fakeUser2Id, role: "editor" }),
+      });
+
+      expect(mockNotifyUsers).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "article_shared_member_added" }),
+      );
+    });
   });
 
   describe(`PATCH ${basePath}/:userId`, () => {
@@ -404,6 +486,93 @@ describe("Member routes", () => {
       });
 
       expect(res.status).toBe(404);
+    });
+
+    // C-3: article_trips cleanup when member has articles linked to the trip
+    it("DELETE: 離脱メンバーが保有する記事の article_trips リンクを削除する", async () => {
+      mockDbQuery.tripMembers.findFirst
+        .mockResolvedValueOnce({ tripId, userId: fakeUserId, role: "owner" })
+        .mockResolvedValueOnce({
+          tripId,
+          userId: fakeUser2Id,
+          role: "editor",
+          user: { name: "Editor" },
+        });
+
+      // C-3: select returns one article owned by the departing member
+      const mockWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      mockDbSelect
+        // First call: expense check (inside transaction)
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: mockWhere,
+            leftJoin: vi.fn().mockReturnValue({ where: mockWhere }),
+          }),
+        })
+        // Second call: articles owned by departing user, linked to this trip
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            innerJoin: vi.fn().mockReturnValue({
+              where: vi.fn().mockResolvedValue([{ id: "article-uuid-1" }]),
+            }),
+          }),
+        });
+
+      mockDbDelete.mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      const res = await app.request(`${basePath}/${fakeUser2Id}`, {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(200);
+      // delete called twice: once for articleTrips, once for tripMembers
+      expect(mockDbDelete).toHaveBeenCalledTimes(2);
+      // First delete must target articleTrips (not a blanket delete of another table)
+      expect(mockDbDelete).toHaveBeenCalledWith(articleTrips);
+    });
+
+    it("DELETE: 離脱メンバーが記事を持たない場合は article_trips を削除しない", async () => {
+      mockDbQuery.tripMembers.findFirst
+        .mockResolvedValueOnce({ tripId, userId: fakeUserId, role: "owner" })
+        .mockResolvedValueOnce({
+          tripId,
+          userId: fakeUser2Id,
+          role: "editor",
+          user: { name: "Editor" },
+        });
+
+      // select returns empty articles list for departing user
+      const mockWhere = vi.fn().mockResolvedValue([{ count: 0 }]);
+      mockDbSelect
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: mockWhere,
+            leftJoin: vi.fn().mockReturnValue({ where: mockWhere }),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            innerJoin: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }),
+          }),
+        });
+
+      mockDbDelete.mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      const res = await app.request(`${basePath}/${fakeUser2Id}`, {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(200);
+      // delete called only once: just tripMembers, no articleTrips to remove
+      expect(mockDbDelete).toHaveBeenCalledTimes(1);
+      // articleTrips must NOT have been touched
+      expect(mockDbDelete).not.toHaveBeenCalledWith(articleTrips);
     });
   });
 });

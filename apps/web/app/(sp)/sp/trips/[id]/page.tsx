@@ -20,6 +20,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ActivityLog } from "@/components/activity-log";
+import { ArticlesPanel } from "@/components/articles-panel";
 import { BookmarkListPickerDialog } from "@/components/bookmark-list-picker-dialog";
 import { BookmarkPanel } from "@/components/bookmark-panel";
 import { CandidatePanel } from "@/components/candidate-panel";
@@ -74,6 +75,7 @@ type MobileContentTab =
   | "candidates"
   | "expenses"
   | "bookmarks"
+  | "articles"
   | "activity"
   | "souvenirs"
   | "map";
@@ -432,6 +434,7 @@ export default function SpTripDetailPage() {
               canEdit={canEdit}
               addOpen={addExpenseOpen}
               onAddOpenChange={setAddExpenseOpen}
+              isActive={mobileTab === "expenses"}
             />
           </div>
         ) : (
@@ -466,6 +469,12 @@ export default function SpTripDetailPage() {
           <p className="py-8 text-center text-sm text-muted-foreground">
             {tsch("schedulesNotAvailable", { feature: tsch("souvenirs") })}
           </p>
+        );
+      case "articles":
+        return (
+          <div className="rounded-lg border bg-card p-4">
+            <ArticlesPanel tripId={tripId ?? ""} />
+          </div>
         );
       case "activity":
         return <ActivityLog tripId={tripId ?? ""} />;
@@ -554,6 +563,7 @@ export default function SpTripDetailPage() {
                   onOpenActivity={() => {
                     handleMobileTabChange("activity");
                   }}
+                  onOpenArticles={isGuest ? undefined : () => handleMobileTabChange("articles")}
                   onOpenMap={trip.mapsEnabled ? () => handleMobileTabChange("map") : undefined}
                   onReaction={sendReaction}
                   cooldown={cooldown}

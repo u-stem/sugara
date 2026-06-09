@@ -40,11 +40,20 @@ export const transportMethodEnum = pgEnum("transport_method", [
   // Appended at the end so the migration is a plain ADD VALUE (Postgres cannot
   // reorder enum values). UI display order is controlled separately.
   "bicycle",
+  "ropeway",
+  "cable_car",
+  "ferry",
 ]);
 
 export const friendStatusEnum = pgEnum("friend_status", ["pending", "accepted"]);
 
 export const bookmarkListVisibilityEnum = pgEnum("bookmark_list_visibility", [
+  "private",
+  "friends_only",
+  "public",
+]);
+
+export const articleVisibilityEnum = pgEnum("article_visibility", [
   "private",
   "friends_only",
   "public",
@@ -116,6 +125,8 @@ export const users = pgTable("users", {
   username: varchar("username", { length: 30 }).unique(),
   displayUsername: varchar("display_username", { length: 30 }),
   isAnonymous: boolean("is_anonymous").notNull().default(false),
+  // Per-user override for the trip creation cap. NULL falls back to MAX_TRIPS_PER_USER.
+  tripLimit: integer("trip_limit"),
   guestExpiresAt: timestamp("guest_expires_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -328,6 +339,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "candidate_deleted",
   "candidate_reaction",
   "discord_webhook_disabled",
+  "article_shared_member_added",
 ]);
 
 export const scheduleReactions = pgTable(
@@ -420,6 +432,63 @@ export const bookmarks = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("bookmarks_list_sort_idx").on(table.listId, table.sortOrder)],
+).enableRLS();
+
+// Articles: standalone Markdown posts, on par with bookmark lists. Visibility
+// follows the same three tiers; context-sharing (members of a linked trip can
+// see even a private article) is enforced in the API layer, not here.
+export const articles = pgTable(
+  "articles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 100 }).notNull(),
+    content: text("content").notNull().default(""),
+    tags: text("tags").array().notNull().default([]),
+    visibility: articleVisibilityEnum("visibility").notNull().default("private"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("articles_owner_sort_idx").on(table.ownerId, table.sortOrder)],
+).enableRLS();
+
+// Many-to-many link between articles and trips. Cascade on both sides keeps the
+// join consistent: deleting an article or a trip drops the link, never dangling.
+export const articleTrips = pgTable(
+  "article_trips",
+  {
+    articleId: uuid("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    tripId: uuid("trip_id")
+      .notNull()
+      .references(() => trips.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.articleId, table.tripId] }),
+    index("article_trips_trip_id_idx").on(table.tripId),
+  ],
+).enableRLS();
+
+export const articleLikes = pgTable(
+  "article_likes",
+  {
+    articleId: uuid("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.articleId, table.userId] }),
+    index("article_likes_user_id_idx").on(table.userId),
+  ],
 ).enableRLS();
 
 export const groups = pgTable(
@@ -680,6 +749,22 @@ export const bookmarkListsRelations = relations(bookmarkLists, ({ one, many }) =
 
 export const bookmarksRelations = relations(bookmarks, ({ one }) => ({
   list: one(bookmarkLists, { fields: [bookmarks.listId], references: [bookmarkLists.id] }),
+}));
+
+export const articlesRelations = relations(articles, ({ one, many }) => ({
+  owner: one(users, { fields: [articles.ownerId], references: [users.id] }),
+  articleTrips: many(articleTrips),
+  likes: many(articleLikes),
+}));
+
+export const articleTripsRelations = relations(articleTrips, ({ one }) => ({
+  article: one(articles, { fields: [articleTrips.articleId], references: [articles.id] }),
+  trip: one(trips, { fields: [articleTrips.tripId], references: [trips.id] }),
+}));
+
+export const articleLikesRelations = relations(articleLikes, ({ one }) => ({
+  article: one(articles, { fields: [articleLikes.articleId], references: [articles.id] }),
+  user: one(users, { fields: [articleLikes.userId], references: [users.id] }),
 }));
 
 export const schedulePollsRelations = relations(schedulePolls, ({ one, many }) => ({

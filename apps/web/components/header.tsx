@@ -30,7 +30,9 @@ export function Header() {
   const isGuest = isGuestUser(session);
   usePushSubscription(!!session?.user && !isGuest);
   const visibleNavLinks = NAV_LINKS.filter(
-    (link) => !isGuest || (link.href !== "/bookmarks" && link.href !== "/friends"),
+    (link) =>
+      !isGuest ||
+      (link.href !== "/bookmarks" && link.href !== "/articles" && link.href !== "/friends"),
   );
   // Prevent hydration mismatch: better-auth may return cached session synchronously
   // on the client while the server always starts with null.

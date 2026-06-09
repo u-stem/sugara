@@ -51,6 +51,7 @@ import { cn } from "@/lib/utils";
 const FORMAT_LABELS: Record<ExportFormat, string> = {
   xlsx: "Excel (.xlsx)",
   csv: "CSV (.csv)",
+  ics: "iCal (.ics)",
 };
 
 function toExpenseExportData(
@@ -353,8 +354,23 @@ export default function SpTripExportPage() {
     format === "csv" ? previewSheets.get(exportSheetNames.candidates) : undefined;
   const expenseInlineData = format === "csv" ? expensePreviewData : undefined;
 
-  const fileExtension =
-    format === "csv" && delimiter === "tab" ? ".tsv" : format === "csv" ? ".csv" : ".xlsx";
+  const isIcs = format === "ics";
+
+  const icsEventCount = useMemo(() => {
+    if (!trip) return 0;
+    return trip.days.reduce((sum, day) => {
+      const pattern = day.patterns.find((p) => p.isDefault) ?? day.patterns[0];
+      return sum + (pattern?.schedules.length ?? 0);
+    }, 0);
+  }, [trip]);
+
+  const fileExtension = isIcs
+    ? ".ics"
+    : format === "csv" && delimiter === "tab"
+      ? ".tsv"
+      : format === "csv"
+        ? ".csv"
+        : ".xlsx";
 
   async function handleExport() {
     if (!trip) return;
@@ -400,7 +416,7 @@ export default function SpTripExportPage() {
               size="sm"
               className="shrink-0"
               onClick={handleExport}
-              disabled={effectiveFields.length === 0 || exporting}
+              disabled={(!isIcs && effectiveFields.length === 0) || exporting}
             >
               <Download className="h-4 w-4" />
               {exporting ? tex("exporting") : tex("exportButton")}
@@ -426,84 +442,91 @@ export default function SpTripExportPage() {
             </Select>
           </div>
 
-          {/* Field selection */}
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <Label>{te("columnsLabel")}</Label>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={selectAll}>
-                  <CheckCheck className="h-3.5 w-3.5" />
-                  {te("selectAll")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={resetToDefault}
-                  disabled={selectedFields.length === 0}
-                >
-                  <X className="h-3.5 w-3.5" />
-                  {te("deselectAll")}
-                </Button>
-              </div>
-            </div>
+          {/* iCal: schedule-only export, no column/pattern options apply */}
+          {isIcs && <p className="text-sm text-muted-foreground">{te("icsDescription")}</p>}
 
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              {EXPORT_FIELDS.map((field) => {
-                const disabled = field === "pattern" && effectivePatternMode !== "patternColumn";
-                const active = selectedSet.has(field) && !disabled;
-                const id = `export-field-${field}`;
-                return (
-                  <div
-                    key={field}
-                    className={cn(
-                      "flex select-none items-center gap-2 text-sm",
-                      disabled && "opacity-40",
-                    )}
+          {/* Field selection */}
+          {!isIcs && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <Label>{te("columnsLabel")}</Label>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={selectAll}>
+                    <CheckCheck className="h-3.5 w-3.5" />
+                    {te("selectAll")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={resetToDefault}
+                    disabled={selectedFields.length === 0}
                   >
-                    <Checkbox
-                      id={id}
-                      checked={active}
-                      disabled={disabled}
-                      onCheckedChange={() => toggleField(field)}
-                    />
-                    <Label htmlFor={id} className="flex-1 font-normal">
-                      {fieldLabels[field]}
-                    </Label>
-                    <span
+                    <X className="h-3.5 w-3.5" />
+                    {te("deselectAll")}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                {EXPORT_FIELDS.map((field) => {
+                  const disabled = field === "pattern" && effectivePatternMode !== "patternColumn";
+                  const active = selectedSet.has(field) && !disabled;
+                  const id = `export-field-${field}`;
+                  return (
+                    <div
+                      key={field}
                       className={cn(
-                        "flex h-5 min-w-5 items-center justify-center rounded-full text-xs",
-                        active ? "bg-muted text-muted-foreground" : "invisible",
+                        "flex select-none items-center gap-2 text-sm",
+                        disabled && "opacity-40",
                       )}
                     >
-                      {active ? effectiveFields.indexOf(field) + 1 : null}
-                    </span>
-                  </div>
-                );
-              })}
+                      <Checkbox
+                        id={id}
+                        checked={active}
+                        disabled={disabled}
+                        onCheckedChange={() => toggleField(field)}
+                      />
+                      <Label htmlFor={id} className="flex-1 font-normal">
+                        {fieldLabels[field]}
+                      </Label>
+                      <span
+                        className={cn(
+                          "flex h-5 min-w-5 items-center justify-center rounded-full text-xs",
+                          active ? "bg-muted text-muted-foreground" : "invisible",
+                        )}
+                      >
+                        {active ? effectiveFields.indexOf(field) + 1 : null}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Pattern mode */}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="export-pattern-mode">{te("patternLabel")}</Label>
-            <Select
-              value={effectivePatternMode}
-              onValueChange={handlePatternModeChange}
-              disabled={format === "csv"}
-            >
-              <SelectTrigger id="export-pattern-mode" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="separateSheets">{te("patternSeparateSheets")}</SelectItem>
-                <SelectItem value="patternColumn">{te("patternSingleSheet")}</SelectItem>
-              </SelectContent>
-            </Select>
-            {format === "csv" && (
-              <p className="text-xs text-muted-foreground">{te("csvNoSheetSplit")}</p>
-            )}
-          </div>
+          {!isIcs && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="export-pattern-mode">{te("patternLabel")}</Label>
+              <Select
+                value={effectivePatternMode}
+                onValueChange={handlePatternModeChange}
+                disabled={format === "csv"}
+              >
+                <SelectTrigger id="export-pattern-mode" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="separateSheets">{te("patternSeparateSheets")}</SelectItem>
+                  <SelectItem value="patternColumn">{te("patternSingleSheet")}</SelectItem>
+                </SelectContent>
+              </Select>
+              {format === "csv" && (
+                <p className="text-xs text-muted-foreground">{te("csvNoSheetSplit")}</p>
+              )}
+            </div>
+          )}
 
           {/* CSV options */}
           {format === "csv" && (
@@ -556,7 +579,7 @@ export default function SpTripExportPage() {
           )}
 
           {/* Candidates */}
-          {trip.candidates.length > 0 && (
+          {!isIcs && trip.candidates.length > 0 && (
             <div className="flex items-center gap-2">
               <Checkbox
                 id="export-include-candidates"
@@ -570,7 +593,7 @@ export default function SpTripExportPage() {
           )}
 
           {/* Expenses */}
-          {expensesData && expensesData.expenses.length > 0 && (
+          {!isIcs && expensesData && expensesData.expenses.length > 0 && (
             <div className="flex items-center gap-2">
               <Checkbox
                 id="export-include-expenses"
@@ -595,7 +618,7 @@ export default function SpTripExportPage() {
             <span className="shrink-0 text-sm text-muted-foreground">{fileExtension}</span>
           </div>
           {/* Preview */}
-          {effectiveFields.length > 0 && (
+          {(isIcs || effectiveFields.length > 0) && (
             <div className="rounded-lg border">
               {showSheetTabs && (
                 <div className="flex border-b bg-muted/30 px-2 pt-2">
@@ -617,7 +640,11 @@ export default function SpTripExportPage() {
                 </div>
               )}
               <div className="overflow-x-auto overscroll-x-contain">
-                {activeSheet === exportSheetNames.expenses && expensePreviewData ? (
+                {isIcs ? (
+                  <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+                    {tex("icsPreviewSummary", { count: icsEventCount })}
+                  </p>
+                ) : activeSheet === exportSheetNames.expenses && expensePreviewData ? (
                   <ExpensePreviewTable data={expensePreviewData} />
                 ) : activeFields.length > 0 && activeRows.length > 0 ? (
                   <>

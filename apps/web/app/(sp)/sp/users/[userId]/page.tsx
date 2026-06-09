@@ -56,7 +56,11 @@ export default function SpProfilePage() {
         {error ? (
           <ErrorMessage message={error} />
         ) : profile ? (
-          <ProfileContent profile={profile} userId={userId ?? ""} />
+          <ProfileContent
+            profile={profile}
+            userId={userId ?? ""}
+            articleHrefPrefix="/sp/articles"
+          />
         ) : (
           <ErrorMessage message={tup("userNotFound")} />
         )}

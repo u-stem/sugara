@@ -6,6 +6,9 @@ const { mockDbQuery, mockDbInsert, mockDbSelect, mockDbDelete, mockSendNotificat
       notificationPreferences: { findFirst: vi.fn() },
       pushSubscriptions: { findMany: vi.fn() },
       notifications: { findMany: vi.fn() },
+      articleTrips: { findMany: vi.fn() },
+      trips: { findFirst: vi.fn() },
+      discordWebhooks: { findFirst: vi.fn() },
     },
     mockDbInsert: vi.fn(),
     mockDbSelect: vi.fn(),
@@ -30,7 +33,7 @@ vi.mock("web-push", () => ({
   },
 }));
 
-import { createNotification } from "../lib/notifications";
+import { createNotification, notifyArticleOwnersOnMemberAdded } from "../lib/notifications";
 
 const baseParams = {
   type: "member_added" as const,
@@ -165,5 +168,67 @@ describe("createNotification", () => {
 
     expect(mockDbDelete).toHaveBeenCalled();
     expect(mockWhere).toHaveBeenCalledOnce();
+  });
+});
+
+describe("notifyArticleOwnersOnMemberAdded", () => {
+  // notifyUsers() synchronously calls db.query.trips.findFirst once per owner it
+  // notifies, so its call count == the number of owners that passed the filter.
+  // This lets us assert the helper's filtering without flushing the deep async
+  // createNotification chain.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDbQuery.trips.findFirst.mockResolvedValue({ title: "京都旅行" });
+    mockDbQuery.discordWebhooks.findFirst.mockResolvedValue(null);
+    mockDbQuery.notificationPreferences.findFirst.mockResolvedValue(null);
+    mockDbQuery.pushSubscriptions.findMany.mockResolvedValue([]);
+    mockDbQuery.notifications.findMany.mockResolvedValue([]);
+    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbSelect.mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ count: 0 }]) }),
+    });
+    mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+  });
+
+  it("非公開記事のオーナーに通知し、public 記事はスキップする", async () => {
+    mockDbQuery.articleTrips.findMany.mockResolvedValue([
+      { article: { id: "a1", ownerId: "owner-1", title: "tip1", visibility: "private" } },
+      { article: { id: "a2", ownerId: "owner-2", title: "tip2", visibility: "public" } },
+    ]);
+
+    await notifyArticleOwnersOnMemberAdded({ tripId: "trip-1", addedUserIds: ["new-1"] });
+
+    // Only the private article's owner is notified.
+    expect(mockDbQuery.trips.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("追加されたユーザー自身が所有する記事には通知しない", async () => {
+    mockDbQuery.articleTrips.findMany.mockResolvedValue([
+      { article: { id: "a1", ownerId: "new-1", title: "tip1", visibility: "private" } },
+    ]);
+
+    await notifyArticleOwnersOnMemberAdded({ tripId: "trip-1", addedUserIds: ["new-1"] });
+
+    expect(mockDbQuery.trips.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("excludeOwnerId に一致するオーナーには通知しない(actor 自己通知の抑制)", async () => {
+    mockDbQuery.articleTrips.findMany.mockResolvedValue([
+      { article: { id: "a1", ownerId: "actor-1", title: "tip1", visibility: "friends_only" } },
+    ]);
+
+    await notifyArticleOwnersOnMemberAdded({
+      tripId: "trip-1",
+      addedUserIds: ["new-1"],
+      excludeOwnerId: "actor-1",
+    });
+
+    expect(mockDbQuery.trips.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("addedUserIds が空なら記事を照会しない", async () => {
+    await notifyArticleOwnersOnMemberAdded({ tripId: "trip-1", addedUserIds: [] });
+
+    expect(mockDbQuery.articleTrips.findMany).not.toHaveBeenCalled();
   });
 });

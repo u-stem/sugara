@@ -1,28 +1,16 @@
-import type { BookmarkListVisibility } from "@sugara/shared";
-import { and, eq, inArray, or } from "drizzle-orm";
+import type { ArticleVisibility, BookmarkListVisibility } from "@sugara/shared";
+import { and, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
-import { bookmarkLists, friends, users } from "../db/schema";
+import { articles, bookmarkLists, users } from "../db/schema";
 import { ERROR_MSG } from "../lib/constants";
-import { getParam } from "../lib/params";
+import { areFriends } from "../lib/friends";
+import { getParam, isValidUuid } from "../lib/params";
 import { optionalAuth } from "../middleware/optional-auth";
 import type { OptionalAuthEnv } from "../types";
+import { articleSummary } from "./articles";
 
 const profileRoutes = new Hono<OptionalAuthEnv>();
-
-async function areFriends(userA: string, userB: string): Promise<boolean> {
-  const record = await db.query.friends.findFirst({
-    where: and(
-      eq(friends.status, "accepted"),
-      or(
-        and(eq(friends.requesterId, userA), eq(friends.addresseeId, userB)),
-        and(eq(friends.requesterId, userB), eq(friends.addresseeId, userA)),
-      ),
-    ),
-    columns: { id: true },
-  });
-  return !!record;
-}
 
 // Public profile: list bookmark lists filtered by relationship
 profileRoutes.get("/:userId/bookmark-lists", optionalAuth, async (c) => {
@@ -69,6 +57,49 @@ profileRoutes.get("/:userId/bookmark-lists", optionalAuth, async (c) => {
       createdAt: l.createdAt,
       updatedAt: l.updatedAt,
     })),
+  });
+});
+
+// Public profile: list articles filtered by relationship. Unlike the article
+// detail route, this surfaces only profile-level visibility (no context sharing).
+profileRoutes.get("/:userId/articles", optionalAuth, async (c) => {
+  const userId = getParam(c, "userId");
+  // Guard before the UUID column comparison so a non-UUID param 404s instead of
+  // surfacing a Postgres "invalid input syntax" 500 (reachable anonymously).
+  if (!isValidUuid(userId)) {
+    return c.json({ error: ERROR_MSG.USER_NOT_FOUND }, 404);
+  }
+
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { id: true, name: true, image: true },
+  });
+  if (!user) {
+    return c.json({ error: ERROR_MSG.USER_NOT_FOUND }, 404);
+  }
+
+  const viewerId = c.get("user")?.id;
+
+  let visibilityFilter: ArticleVisibility[];
+  if (viewerId === userId) {
+    visibilityFilter = ["private", "friends_only", "public"];
+  } else if (viewerId && (await areFriends(viewerId, userId))) {
+    visibilityFilter = ["friends_only", "public"];
+  } else {
+    visibilityFilter = ["public"];
+  }
+
+  const rows = await db.query.articles.findMany({
+    where: and(eq(articles.ownerId, userId), inArray(articles.visibility, visibilityFilter)),
+    orderBy: articles.sortOrder,
+    with: { likes: { columns: { userId: true } } },
+  });
+
+  return c.json({
+    id: user.id,
+    name: user.name,
+    image: user.image,
+    articles: rows.map((a) => articleSummary(a, viewerId)),
   });
 });
 

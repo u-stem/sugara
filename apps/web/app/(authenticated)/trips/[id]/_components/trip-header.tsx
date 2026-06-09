@@ -22,6 +22,7 @@ export function TripHeader({
   onEditOpen,
   onOpenBookmarks,
   onOpenActivity,
+  onOpenArticles,
   onOpenMap,
   onReaction,
   cooldown,
@@ -36,6 +37,7 @@ export function TripHeader({
   onEditOpen: () => void;
   onOpenBookmarks?: () => void;
   onOpenActivity?: () => void;
+  onOpenArticles?: () => void;
   onOpenMap?: () => void;
   onReaction?: (emoji: string) => void;
   cooldown?: boolean;
@@ -52,6 +54,7 @@ export function TripHeader({
     memberLimitReached: trip.memberCount >= MAX_MEMBERS_PER_TRIP,
     onOpenBookmarks,
     onOpenActivity,
+    onOpenArticles,
     onOpenMap,
   } as const;
 

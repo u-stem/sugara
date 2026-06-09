@@ -2,11 +2,10 @@ import type { CurrencyCode } from "@sugara/shared";
 import {
   createTripSchema,
   createTripWithPollSchema,
-  MAX_TRIPS_PER_USER,
   STATUS_LABELS,
   updateTripSchema,
 } from "@sugara/shared";
-import { and, count, desc, eq, getTableColumns, ne } from "drizzle-orm";
+import { and, count, desc, eq, getTableColumns, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
 import {
@@ -36,6 +35,7 @@ import {
   validateCoverImage,
 } from "../lib/storage";
 import { createInitialTripDays, generateDateRange, syncTripDays } from "../lib/trip-days";
+import { resolveTripLimit } from "../lib/trip-limit";
 import { requireAuth } from "../middleware/auth";
 import { requireTripAccess } from "../middleware/require-trip-access";
 import type { AppEnv } from "../types";
@@ -72,6 +72,7 @@ tripRoutes.get("/", async (c) => {
       ...tripColumns,
       role: tripMembers.role,
       totalSchedules: count(schedules.id),
+      memberCount: sql<number>`(SELECT COUNT(*)::int FROM trip_members WHERE trip_members.trip_id = ${trips.id})`,
     })
     .from(tripMembers)
     .innerJoin(trips, eq(tripMembers.tripId, trips.id))
@@ -135,7 +136,7 @@ tripRoutes.post("/", async (c) => {
         .where(eq(trips.ownerId, user.id));
       // Guests are pre-checked above, but guard again inside the transaction to
       // catch race conditions and return the same error code as the pre-check.
-      const limit = user.isAnonymous ? 1 : MAX_TRIPS_PER_USER;
+      const limit = user.isAnonymous ? 1 : await resolveTripLimit(tx, user.id);
       if (tripCount.count >= limit) {
         return user.isAnonymous ? ("GUEST_LIMIT" as const) : null;
       }
@@ -235,7 +236,7 @@ tripRoutes.post("/", async (c) => {
       .where(eq(trips.ownerId, user.id));
     // Guests are pre-checked above, but guard again inside the transaction to
     // catch race conditions and return the same error code as the pre-check.
-    const limit = user.isAnonymous ? 1 : MAX_TRIPS_PER_USER;
+    const limit = user.isAnonymous ? 1 : await resolveTripLimit(tx, user.id);
     if (tripCount.count >= limit) {
       return user.isAnonymous ? ("GUEST_LIMIT" as const) : null;
     }
@@ -550,7 +551,7 @@ tripRoutes.post("/:id/duplicate", requireTripAccess("viewer", "id"), async (c) =
       .select({ count: count() })
       .from(trips)
       .where(eq(trips.ownerId, user.id));
-    const limit = user.isAnonymous ? 1 : MAX_TRIPS_PER_USER;
+    const limit = user.isAnonymous ? 1 : await resolveTripLimit(tx, user.id);
     if (tripCount.count >= limit) {
       return null;
     }

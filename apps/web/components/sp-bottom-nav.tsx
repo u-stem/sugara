@@ -1,9 +1,9 @@
 "use client";
 
-import type { FriendRequestResponse, NotificationsResponse } from "@sugara/shared";
+import type { FriendRequestResponse } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
-import { Bell, User } from "lucide-react";
+import { User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -85,19 +85,13 @@ export function SpBottomNav() {
   });
   const friendRequestCount = friendRequests?.length ?? 0;
 
-  const { data: notifications } = useQuery({
-    queryKey: queryKeys.notifications.list(),
-    queryFn: () => api<NotificationsResponse>("/api/notifications"),
-    enabled: !!session?.user && !isGuest,
-    refetchInterval: 60_000,
-    retry: false,
-  });
-  const unreadCount = notifications?.unreadCount ?? 0;
-
   const friendHref = "/sp/friends";
   const bookmarkHref = "/sp/bookmarks";
+  const articleHref = "/sp/articles";
   const visibleLinks = SP_NAV_LINKS.filter(
-    (link) => !isGuest || (link.href !== bookmarkHref && link.href !== friendHref),
+    (link) =>
+      !isGuest ||
+      (link.href !== bookmarkHref && link.href !== articleHref && link.href !== friendHref),
   );
 
   return (
@@ -125,18 +119,6 @@ export function SpBottomNav() {
             </li>
           );
         })}
-        {mounted && session?.user && !isGuest && (
-          <li className="flex flex-1">
-            <NavItem
-              href="/sp/notifications"
-              active={pathname === "/sp/notifications"}
-              label={t("notifications")}
-              badge={unreadCount}
-            >
-              <NavIcon icon={Bell} active={pathname === "/sp/notifications"} />
-            </NavItem>
-          </li>
-        )}
         <li className="flex flex-1">
           <NavItem href="/sp/my" active={pathname === "/sp/my"} label={t("profile")}>
             {mounted && session?.user ? (

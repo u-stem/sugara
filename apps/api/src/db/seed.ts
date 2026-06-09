@@ -814,6 +814,34 @@ async function main() {
           { name: "デザート", amount: 4000, users: ["dev", "alice", "bob"] as const },
         ],
       },
+      {
+        // Foreign-currency equal split (USD): split amounts are converted to the
+        // trip currency (JPY) on save, so they aggregate cleanly per member.
+        title: "Klook 嵐山トロッコ事前予約",
+        amount: 30,
+        paidBy: "dev" as const,
+        splitType: "equal" as const,
+        category: "entertainment" as const,
+        splitWith: ["dev", "alice", "bob"] as const,
+        currency: "USD" as const,
+        exchangeRate: 150,
+      },
+      {
+        // Foreign-currency custom split in a decimals=0 currency (KRW). Exercises
+        // the per-member conversion and the foreign-split settlement fix.
+        title: "ロッテ免税店 オンライン事前予約",
+        amount: 60000,
+        paidBy: "alice" as const,
+        splitType: "custom" as const,
+        category: "supplies" as const,
+        customSplits: [
+          { user: "dev" as const, amount: 20000 },
+          { user: "alice" as const, amount: 20000 },
+          { user: "bob" as const, amount: 20000 },
+        ],
+        currency: "KRW" as const,
+        exchangeRate: 0.11,
+      },
     ];
 
     console.log(`\nCreating ${sampleExpenses.length} expenses...`);
@@ -853,11 +881,14 @@ async function main() {
           splitType: exp.splitType,
           splits,
           ...("category" in exp && exp.category ? { category: exp.category } : {}),
+          ...("currency" in exp && exp.currency ? { currency: exp.currency } : {}),
+          ...("exchangeRate" in exp && exp.exchangeRate ? { exchangeRate: exp.exchangeRate } : {}),
           ...(lineItemsPayload ? { lineItems: lineItemsPayload } : {}),
         }),
         headers: { cookie: ownerCookies },
       });
-      console.log(`  費用: ${exp.title} (${exp.amount.toLocaleString()}円)`);
+      const unit = "currency" in exp && exp.currency ? ` ${exp.currency}` : "円";
+      console.log(`  費用: ${exp.title} (${exp.amount.toLocaleString()}${unit})`);
     }
 
     // 8. Mark first settlement transfer as paid

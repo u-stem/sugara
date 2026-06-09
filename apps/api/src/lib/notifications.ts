@@ -8,6 +8,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import webpush from "web-push";
 import { db } from "../db/index";
 import {
+  articleTrips,
   discordWebhooks,
   notificationPreferences,
   notifications,
@@ -145,6 +146,65 @@ export function createNotification(params: CreateNotificationParams): Promise<vo
   return createNotificationInternal(params).catch((err) => {
     logger.error({ err, type: params.type }, "Notification creation failed");
   });
+}
+
+/**
+ * C-2 helper: notify owners of non-public articles linked to `tripId` when new
+ * members are added (manual POST or automatic poll confirmation). Fire-and-forget.
+ *
+ * - addedUserIds: the users who just joined; they are excluded from receiving
+ *   notifications about their own articles.
+ * - memberName: display name for the new member shown in the notification body.
+ * - excludeOwnerId: when the actor who performed the add also owns articles
+ *   linked to this trip, suppress that self-notification. Pass the actor's id
+ *   for manual member adds; omit for poll auto-joins where notifying the
+ *   poll-confirmer about their own article is meaningful.
+ */
+export async function notifyArticleOwnersOnMemberAdded(params: {
+  tripId: string;
+  addedUserIds: string[];
+  memberName?: string;
+  excludeOwnerId?: string;
+}): Promise<void> {
+  const { tripId, addedUserIds, memberName, excludeOwnerId } = params;
+  if (addedUserIds.length === 0) return;
+
+  const addedSet = new Set(addedUserIds);
+
+  const linkedArticleRows = await db.query.articleTrips.findMany({
+    where: eq(articleTrips.tripId, tripId),
+    with: {
+      article: { columns: { id: true, ownerId: true, title: true, visibility: true } },
+    },
+  });
+
+  // One notification per owner: a trip may link several private articles from the
+  // same owner, and without dedup they would receive one push per article.
+  const notifiedOwners = new Set<string>();
+
+  for (const { article } of linkedArticleRows) {
+    // Public articles are already visible to everyone; no notification needed.
+    if (article.visibility === "public") continue;
+    // Don't notify an added user about their own article becoming visible.
+    if (addedSet.has(article.ownerId)) continue;
+    // Suppress self-notification for the actor performing a manual member add
+    // (e.g. trip owner adding someone to a trip that has their own articles).
+    if (excludeOwnerId !== undefined && article.ownerId === excludeOwnerId) continue;
+    if (notifiedOwners.has(article.ownerId)) continue;
+    notifiedOwners.add(article.ownerId);
+
+    notifyUsers({
+      type: "article_shared_member_added",
+      tripId,
+      userIds: [article.ownerId],
+      makePayload: (tripName) => ({
+        tripName,
+        articleId: article.id,
+        articleTitle: article.title,
+        memberName: memberName ?? "",
+      }),
+    });
+  }
 }
 
 function buildPushMessage(

@@ -1,4 +1,6 @@
 export const MAX_TRIPS_PER_USER = 10;
+// Upper bound an admin may raise a single user's trip cap to.
+export const MAX_TRIP_LIMIT = 1000;
 export const MAX_SCHEDULES_PER_TRIP = 300;
 export const MAX_PATTERNS_PER_DAY = 3;
 export const MAX_MEMBERS_PER_TRIP = 20;
@@ -31,3 +33,10 @@ export const MAX_SOUVENIRS_PER_USER_PER_TRIP = 100;
 export const MAX_URLS_PER_SOUVENIR = 5;
 export const MAX_ADDRESSES_PER_SOUVENIR = 5;
 export const MAX_LINE_ITEMS_PER_EXPENSE = 50;
+
+export const MAX_ARTICLES_PER_USER = 20;
+export const MAX_TRIPS_PER_ARTICLE = 10;
+export const MAX_TAGS_PER_ARTICLE = 5;
+export const ARTICLE_TITLE_MAX_LENGTH = 100;
+export const ARTICLE_CONTENT_MAX_LENGTH = 20000;
+export const ARTICLE_TAG_MAX_LENGTH = 20;

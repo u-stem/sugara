@@ -3,14 +3,17 @@ import {
   Bed,
   Bike,
   Bus,
+  CableCar,
   Camera,
   Car,
   Footprints,
   MapPin,
   Plane,
+  Ship,
   Ticket,
   Train,
   TrainFront,
+  TramFront,
   Utensils,
 } from "lucide-react";
 
@@ -32,4 +35,7 @@ export const TRANSPORT_ICONS: Record<TransportMethod, typeof Train> = {
   car: Car,
   airplane: Plane,
   bicycle: Bike,
+  ropeway: CableCar,
+  cable_car: TramFront,
+  ferry: Ship,
 };

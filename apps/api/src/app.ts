@@ -8,6 +8,7 @@ import { activityLogRoutes } from "./routes/activity-logs";
 import { adminRoutes } from "./routes/admin";
 import { announcementRoutes } from "./routes/announcement";
 import { apiKeyRoutes } from "./routes/api-keys";
+import { articleRoutes, tripArticleRoutes } from "./routes/articles";
 import { authRoutes } from "./routes/auth";
 import { bookmarkListRoutes } from "./routes/bookmark-lists";
 import { bookmarkRoutes } from "./routes/bookmarks";
@@ -95,6 +96,8 @@ app.route("/api/friends", friendRoutes);
 app.route("/api/groups", groupRoutes);
 app.route("/api/bookmark-lists", bookmarkListRoutes);
 app.route("/api/bookmark-lists", bookmarkRoutes);
+app.route("/api/articles", articleRoutes); // articleDetailRoutes is embedded inside articleRoutes
+app.route("/api/trips", tripArticleRoutes);
 app.route("/api/users", profileRoutes);
 app.route("/api/users", unsettledSummaryRoutes);
 app.route("/api", accountRoutes);

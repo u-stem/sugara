@@ -7,10 +7,11 @@ import { SpHeaderMenu } from "@/components/header-menu";
 import { InstallBanner } from "@/components/install-banner";
 import { Logo } from "@/components/logo";
 import { OfflineBanner } from "@/components/offline-banner";
+import { SpNotificationBell } from "@/components/sp-notification-bell";
 
 /**
  * SP-specific header: simplified for mobile.
- * Navigation is handled by SpBottomNav (including notification and account menu).
+ * Navigation is handled by SpBottomNav; notifications live here in the header.
  */
 export function SpHeader() {
   const t = useTranslations("nav");
@@ -23,6 +24,7 @@ export function SpHeader() {
       <nav aria-label={t("mainNav")} className="container flex h-14 items-center">
         <Logo href="/sp/home" />
         <div className="ml-auto flex items-center gap-1">
+          <SpNotificationBell />
           <SpHeaderMenu />
         </div>
       </nav>

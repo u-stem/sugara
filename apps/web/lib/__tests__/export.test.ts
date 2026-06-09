@@ -10,6 +10,7 @@ import {
   buildCandidateRows,
   buildDefaultFileName,
   buildExpenseExport,
+  buildIcsContent,
   buildPreviewRows,
   buildScheduleRows,
   DEFAULT_CSV_OPTIONS,
@@ -21,8 +22,10 @@ import {
   type ExportField,
   type ExportOptions,
   escapeCSVValue,
+  escapeIcsText,
   exportTripToCSV,
   exportTripToExcel,
+  exportTripToIcal,
   filterCandidateFields,
   rowsToCSV,
   scheduleToRow,
@@ -1272,5 +1275,307 @@ describe("exportTripToCSV - expenses", () => {
     });
 
     expect(capturedContent).not.toContain("Expenses");
+  });
+});
+
+// --- iCal (.ics) export ---
+
+const FIXED_NOW = new Date("2025-01-02T03:04:05Z");
+
+describe("escapeIcsText", () => {
+  it("returns plain text as-is", () => {
+    expect(escapeIcsText("Tokyo Tower")).toBe("Tokyo Tower");
+  });
+
+  it("escapes backslash, semicolon and comma", () => {
+    expect(escapeIcsText("a\\b;c,d")).toBe("a\\\\b\\;c\\,d");
+  });
+
+  it("escapes newlines to literal \\n", () => {
+    expect(escapeIcsText("line1\nline2")).toBe("line1\\nline2");
+    expect(escapeIcsText("line1\r\nline2")).toBe("line1\\nline2");
+  });
+});
+
+describe("buildIcsContent", () => {
+  it("wraps events in a VCALENDAR with version and prodid", () => {
+    const ics = buildIcsContent(makeTrip(), FIXED_NOW);
+
+    expect(ics).toContain("BEGIN:VCALENDAR");
+    expect(ics).toContain("VERSION:2.0");
+    expect(ics).toContain("PRODID:-//sugara//Trip Export//EN");
+    expect(ics).toContain("END:VCALENDAR");
+  });
+
+  it("uses CRLF line endings and a trailing CRLF (RFC 5545 §3.4)", () => {
+    const ics = buildIcsContent(makeTrip(), FIXED_NOW);
+    expect(ics).toContain("BEGIN:VCALENDAR\r\nVERSION:2.0");
+    expect(ics.endsWith("END:VCALENDAR\r\n")).toBe(true);
+  });
+
+  it("keeps seconds from HH:MM:SS schedule times", () => {
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          patterns: [
+            {
+              id: "p1",
+              label: "Default",
+              isDefault: true,
+              sortOrder: 0,
+              schedules: [makeSchedule({ startTime: "09:00:30", endTime: null })],
+            },
+          ],
+        }),
+      ],
+    });
+    const ics = buildIcsContent(trip, FIXED_NOW);
+
+    // 09:00:30 JST -> 00:00:30 UTC on 2025-04-01.
+    expect(ics).toContain("DTSTART:20250401T000030Z");
+  });
+
+  it("converts JST schedule times to UTC stamps", () => {
+    // 09:00 JST on 2025-04-01 -> 00:00 UTC same day; 11:00 JST -> 02:00 UTC.
+    const ics = buildIcsContent(makeTrip(), FIXED_NOW);
+
+    expect(ics).toContain("DTSTART:20250401T000000Z");
+    expect(ics).toContain("DTEND:20250401T020000Z");
+  });
+
+  it("rolls back to the previous UTC day for early-morning JST times", () => {
+    // 00:30 JST on 2025-04-01 -> 15:30 UTC on 2025-03-31.
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          patterns: [
+            {
+              id: "p1",
+              label: "Default",
+              isDefault: true,
+              sortOrder: 0,
+              schedules: [makeSchedule({ startTime: "00:30", endTime: null })],
+            },
+          ],
+        }),
+      ],
+    });
+    const ics = buildIcsContent(trip, FIXED_NOW);
+
+    expect(ics).toContain("DTSTART:20250331T153000Z");
+  });
+
+  it("emits all-day events as VALUE=DATE with an exclusive end", () => {
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          date: "2025-04-01",
+          patterns: [
+            {
+              id: "p1",
+              label: "Default",
+              isDefault: true,
+              sortOrder: 0,
+              schedules: [makeSchedule({ startTime: null, endTime: null })],
+            },
+          ],
+        }),
+      ],
+    });
+    const ics = buildIcsContent(trip, FIXED_NOW);
+
+    expect(ics).toContain("DTSTART;VALUE=DATE:20250401");
+    expect(ics).toContain("DTEND;VALUE=DATE:20250402");
+  });
+
+  it("extends an all-day event end by endDayOffset", () => {
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          date: "2025-04-01",
+          patterns: [
+            {
+              id: "p1",
+              label: "Default",
+              isDefault: true,
+              sortOrder: 0,
+              schedules: [makeSchedule({ startTime: null, endTime: null, endDayOffset: 1 })],
+            },
+          ],
+        }),
+      ],
+    });
+    const ics = buildIcsContent(trip, FIXED_NOW);
+
+    expect(ics).toContain("DTEND;VALUE=DATE:20250403");
+  });
+
+  it("shifts a timed event's end date by endDayOffset (overnight)", () => {
+    // Hotel checkin 15:00 -> checkout 10:00 next day.
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          date: "2025-04-01",
+          patterns: [
+            {
+              id: "p1",
+              label: "Default",
+              isDefault: true,
+              sortOrder: 0,
+              schedules: [makeSchedule({ startTime: "15:00", endTime: "10:00", endDayOffset: 1 })],
+            },
+          ],
+        }),
+      ],
+    });
+    const ics = buildIcsContent(trip, FIXED_NOW);
+
+    // 15:00 JST 04-01 -> 06:00 UTC 04-01; 10:00 JST 04-02 -> 01:00 UTC 04-02.
+    expect(ics).toContain("DTSTART:20250401T060000Z");
+    expect(ics).toContain("DTEND:20250402T010000Z");
+  });
+
+  it("maps name, address and memo/urls to SUMMARY/LOCATION/DESCRIPTION", () => {
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          patterns: [
+            {
+              id: "p1",
+              label: "Default",
+              isDefault: true,
+              sortOrder: 0,
+              schedules: [
+                makeSchedule({
+                  id: "s1",
+                  name: "Lunch, Ramen",
+                  address: "Shibuya",
+                  memo: "Tasty",
+                  urls: ["https://example.com"],
+                }),
+              ],
+            },
+          ],
+        }),
+      ],
+    });
+    const ics = buildIcsContent(trip, FIXED_NOW);
+
+    expect(ics).toContain("UID:s1@sugara");
+    expect(ics).toContain("SUMMARY:Lunch\\, Ramen");
+    expect(ics).toContain("LOCATION:Shibuya");
+    expect(ics).toContain("DESCRIPTION:Tasty\\nhttps://example.com");
+    expect(ics).toContain("DTSTAMP:20250102T030405Z");
+  });
+
+  it("omits LOCATION and DESCRIPTION when address/memo/urls are empty", () => {
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          patterns: [
+            {
+              id: "p1",
+              label: "Default",
+              isDefault: true,
+              sortOrder: 0,
+              schedules: [makeSchedule({ address: null, memo: null, urls: [] })],
+            },
+          ],
+        }),
+      ],
+    });
+    const ics = buildIcsContent(trip, FIXED_NOW);
+
+    expect(ics).not.toContain("LOCATION:");
+    expect(ics).not.toContain("DESCRIPTION:");
+  });
+
+  it("emits only the default pattern's schedules", () => {
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          patterns: [
+            {
+              id: "p1",
+              label: "Default",
+              isDefault: true,
+              sortOrder: 0,
+              schedules: [makeSchedule({ id: "s1", name: "Sunny plan" })],
+            },
+            {
+              id: "p2",
+              label: "Rain",
+              isDefault: false,
+              sortOrder: 1,
+              schedules: [makeSchedule({ id: "s2", name: "Rainy plan" })],
+            },
+          ],
+        }),
+      ],
+    });
+    const ics = buildIcsContent(trip, FIXED_NOW);
+
+    expect(ics).toContain("SUMMARY:Sunny plan");
+    expect(ics).not.toContain("Rainy plan");
+  });
+});
+
+describe("exportTripToIcal", () => {
+  beforeEach(() => {
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn().mockReturnValue("blob:test"),
+      revokeObjectURL: vi.fn(),
+    });
+  });
+
+  function makeOptions(overrides: Partial<ExportOptions> = {}): ExportOptions {
+    return {
+      format: "ics",
+      fields: [],
+      patternMode: "patternColumn",
+      includeCandidates: false,
+      includeExpenses: false,
+      ...overrides,
+    };
+  }
+
+  it("downloads a calendar blob with the .ics extension", async () => {
+    let capturedContent = "";
+    vi.stubGlobal(
+      "Blob",
+      class {
+        content: string;
+        constructor(parts: string[]) {
+          this.content = parts.join("");
+          capturedContent = this.content;
+        }
+      },
+    );
+
+    const mockClick = vi.fn();
+    const mockLink = { href: "", download: "", click: mockClick };
+    vi.spyOn(document, "createElement").mockReturnValue(mockLink as unknown as HTMLElement);
+
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-04-15"));
+
+    await exportTripToIcal(makeTrip({ title: "Tokyo Trip" }), makeOptions());
+
+    expect(mockLink.download).toBe("Tokyo Trip_2025-04-15.ics");
+    expect(capturedContent).toContain("BEGIN:VCALENDAR");
+    expect(mockClick).toHaveBeenCalled();
+
+    vi.useRealTimers();
+  });
+
+  it("uses custom fileName when provided", async () => {
+    vi.stubGlobal("Blob", class {});
+    const mockClick = vi.fn();
+    const mockLink = { href: "", download: "", click: mockClick };
+    vi.spyOn(document, "createElement").mockReturnValue(mockLink as unknown as HTMLElement);
+
+    await exportTripToIcal(makeTrip(), makeOptions({ fileName: "custom" }));
+
+    expect(mockLink.download).toBe("custom.ics");
   });
 });

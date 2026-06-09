@@ -320,8 +320,36 @@
     {
       "idx": 45,
       "version": "7",
-      "when": 1780976057366,
-      "tag": "0045_first_stranger",
+      "when": 1780715087219,
+      "tag": "0045_petite_gideon",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1780724266306,
+      "tag": "0046_brainy_demogoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1780799764127,
+      "tag": "0047_dapper_morlun",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1780816100915,
+      "tag": "0048_outstanding_scarlet_witch",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1781015276854,
+      "tag": "0049_pink_leader",
       "breakpoints": true
     }
   ]
