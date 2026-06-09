@@ -316,6 +316,13 @@
       "when": 1780671276876,
       "tag": "0044_classy_fantastic_four",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1780976057366,
+      "tag": "0045_first_stranger",
+      "breakpoints": true
     }
   ]
 }
