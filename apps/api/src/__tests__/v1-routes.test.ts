@@ -1,0 +1,430 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { mockVerifyApiKey, mockCheckTripAccess, mockDbQuery, mockDbSelect } = vi.hoisted(() => ({
+  mockVerifyApiKey: vi.fn(),
+  mockCheckTripAccess: vi.fn(),
+  mockDbQuery: {
+    trips: { findFirst: vi.fn() },
+    tripMembers: { findMany: vi.fn() },
+    expenses: { findMany: vi.fn() },
+    bookmarkLists: { findFirst: vi.fn(), findMany: vi.fn() },
+    bookmarks: { findMany: vi.fn() },
+  },
+  mockDbSelect: vi.fn(),
+}));
+
+vi.mock("../lib/external-api/api-key", () => ({
+  verifyApiKey: (...args: unknown[]) => mockVerifyApiKey(...args),
+}));
+
+vi.mock("../lib/permissions", () => ({
+  checkTripAccess: (...args: unknown[]) => mockCheckTripAccess(...args),
+  canEdit: vi.fn().mockReturnValue(true),
+  isOwner: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock("../db/index", () => ({
+  db: {
+    query: mockDbQuery,
+    select: (...args: unknown[]) => mockDbSelect(...args),
+  },
+}));
+
+// Disable rate limiting in all v1 route tests
+vi.mock("../lib/external-api/rate-limit", () => ({
+  v1RateLimit: () => async (_c: unknown, next: () => Promise<void>) => {
+    await next();
+  },
+}));
+
+import { v1App } from "../routes/v1/index";
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+const TRIP_ID = "cccccccc-0000-0000-0000-000000000001";
+const LIST_ID = "eeeeeeee-0000-0000-0000-000000000001";
+// USER_ID_1 < USER_ID_2 lexicographically → memberNo 1 and 2 respectively
+const USER_ID_1 = "aaaaaaaa-0000-0000-0000-000000000001";
+const USER_ID_2 = "aaaaaaaa-0000-0000-0000-000000000002";
+
+const VALID_KEY = {
+  id: "bbbbbbbb-0000-0000-0000-000000000001",
+  userId: USER_ID_1,
+  scopes: ["trips:read", "expenses:read", "bookmarks:read"] as string[],
+  expiresAt: new Date(Date.now() + 3_600_000),
+};
+
+const OTHER_USER_KEY = {
+  ...VALID_KEY,
+  userId: "ffffffff-0000-0000-0000-000000000001",
+  scopes: ["bookmarks:read"] as string[],
+};
+
+const AUTH_HEADER = { Authorization: "Bearer sk_test" };
+
+function setupValidKey(key = VALID_KEY) {
+  mockVerifyApiKey.mockResolvedValue(key);
+}
+
+function mockCountQuery(total: number) {
+  mockDbSelect.mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([{ total }]),
+    }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Trip detail — GET /trips/:id
+// ---------------------------------------------------------------------------
+
+describe("GET /trips/:id", () => {
+  const memberRows = [
+    { userId: USER_ID_1, role: "owner", user: { name: "Alice" } },
+    { userId: USER_ID_2, role: "editor", user: { name: "Bob" } },
+  ];
+
+  const tripRow = {
+    id: TRIP_ID,
+    title: "Tokyo Trip",
+    startDate: "2026-06-01",
+    endDate: "2026-06-05",
+    currency: "JPY",
+    days: [
+      {
+        id: "day-1",
+        date: "2026-06-01",
+        dayNumber: 1,
+        patterns: [
+          {
+            id: "pat-1",
+            schedules: [
+              {
+                id: "sched-1",
+                name: "Hotel checkin",
+                category: "hotel",
+                startTime: "15:00",
+                endTime: null,
+                address: "Tokyo",
+                memo: null,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 404 when key owner is not a trip member", async () => {
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue(null);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "not_found", message: expect.any(String) } });
+  });
+
+  it("returns 400 for non-UUID trip id", async () => {
+    setupValidKey();
+
+    const res = await v1App.request("/trips/not-a-uuid", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "invalid_request", message: expect.any(String) } });
+  });
+
+  it("returns trip detail with members and days on success", async () => {
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockDbQuery.trips.findFirst.mockResolvedValue(tripRow);
+    mockDbQuery.tripMembers.findMany.mockResolvedValue(memberRows);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.id).toBe(TRIP_ID);
+    expect(body.title).toBe("Tokyo Trip");
+    expect(body.role).toBe("owner");
+    expect(body.members).toHaveLength(2);
+    expect(body.days).toHaveLength(1);
+    expect(body.days[0].schedules).toHaveLength(1);
+    expect(body.days[0].schedules[0].name).toBe("Hotel checkin");
+  });
+
+  it("assigns memberNos in stable userId-ascending order", async () => {
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue("owner");
+    // Return members in reversed order to verify the sort is applied
+    mockDbQuery.trips.findFirst.mockResolvedValue({ ...tripRow, days: [] });
+    mockDbQuery.tripMembers.findMany.mockResolvedValue([memberRows[1], memberRows[0]]);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const alice = body.members.find((m: { displayName: string }) => m.displayName === "Alice");
+    const bob = body.members.find((m: { displayName: string }) => m.displayName === "Bob");
+    // USER_ID_1 < USER_ID_2 → Alice = memberNo 1, Bob = memberNo 2
+    expect(alice.memberNo).toBe(1);
+    expect(bob.memberNo).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Expense list — GET /trips/:tripId/expenses
+// ---------------------------------------------------------------------------
+
+describe("GET /trips/:tripId/expenses", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 404 when key owner is not a trip member", async () => {
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue(null);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}/expenses`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "not_found", message: expect.any(String) } });
+  });
+
+  it("returns expenses with memberNo-based payer and splits", async () => {
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue("owner");
+
+    mockDbQuery.tripMembers.findMany.mockResolvedValue([
+      { userId: USER_ID_1, user: { name: "Alice" } },
+      { userId: USER_ID_2, user: { name: "Bob" } },
+    ]);
+    mockCountQuery(1);
+    mockDbQuery.expenses.findMany.mockResolvedValue([
+      {
+        id: "exp-1",
+        title: "Dinner",
+        amount: 1000,
+        currency: "JPY",
+        category: "meals",
+        paidByUserId: USER_ID_1,
+        createdAt: new Date("2026-06-01T18:00:00Z"),
+        paidByUser: { name: "Alice" },
+        splits: [
+          { userId: USER_ID_1, amount: 500, user: { name: "Alice" } },
+          { userId: USER_ID_2, amount: 500, user: { name: "Bob" } },
+        ],
+      },
+    ]);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}/expenses`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+
+    const exp = body.data[0];
+    expect(exp.title).toBe("Dinner");
+    // USER_ID_1 < USER_ID_2 → Alice is memberNo 1
+    expect(exp.paidBy).toEqual({ memberNo: 1, displayName: "Alice" });
+    expect(exp.splits).toHaveLength(2);
+    expect(exp.splits[0]).toEqual({ memberNo: 1, displayName: "Alice", amount: 500 });
+    expect(exp.splits[1]).toEqual({ memberNo: 2, displayName: "Bob", amount: 500 });
+  });
+
+  it("payer memberNo matches the memberNo in the members array of the trip", async () => {
+    // This test verifies cross-route consistency: the same userId produces the
+    // same memberNo regardless of which endpoint is called.
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue("owner");
+
+    const memberRows = [
+      { userId: USER_ID_1, role: "owner", user: { name: "Alice" } },
+      { userId: USER_ID_2, role: "editor", user: { name: "Bob" } },
+    ];
+
+    // First call: trips/:id
+    mockDbQuery.trips.findFirst.mockResolvedValue({
+      id: TRIP_ID,
+      title: "Trip",
+      startDate: null,
+      endDate: null,
+      currency: "JPY",
+      days: [],
+    });
+    mockDbQuery.tripMembers.findMany.mockResolvedValue(memberRows);
+
+    const tripRes = await v1App.request(`/trips/${TRIP_ID}`, { headers: AUTH_HEADER });
+    const tripBody = await tripRes.json();
+    const aliceFromTrip = tripBody.members.find(
+      (m: { displayName: string }) => m.displayName === "Alice",
+    );
+
+    // Second call: trips/:tripId/expenses
+    mockDbQuery.tripMembers.findMany.mockResolvedValue([
+      { userId: USER_ID_1, user: { name: "Alice" } },
+      { userId: USER_ID_2, user: { name: "Bob" } },
+    ]);
+    mockCountQuery(1);
+    mockDbQuery.expenses.findMany.mockResolvedValue([
+      {
+        id: "exp-1",
+        title: "Lunch",
+        amount: 500,
+        currency: "JPY",
+        category: null,
+        paidByUserId: USER_ID_1,
+        createdAt: new Date("2026-06-01T12:00:00Z"),
+        paidByUser: { name: "Alice" },
+        splits: [],
+      },
+    ]);
+
+    const expRes = await v1App.request(`/trips/${TRIP_ID}/expenses`, { headers: AUTH_HEADER });
+    const expBody = await expRes.json();
+
+    // Alice's memberNo must be identical in both responses
+    expect(expBody.data[0].paidBy.memberNo).toBe(aliceFromTrip.memberNo);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bookmark lists — GET /bookmark-lists
+// ---------------------------------------------------------------------------
+
+describe("GET /bookmark-lists", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns only the authenticated user's own lists", async () => {
+    setupValidKey();
+    mockCountQuery(2);
+    mockDbQuery.bookmarkLists.findMany.mockResolvedValue([
+      {
+        id: LIST_ID,
+        name: "Places",
+        visibility: "private",
+        sortOrder: 0,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-02T00:00:00Z"),
+        bookmarks: [{ id: "bm-1" }, { id: "bm-2" }],
+      },
+      {
+        id: "eeeeeeee-0000-0000-0000-000000000002",
+        name: "Restaurants",
+        visibility: "public",
+        sortOrder: 1,
+        createdAt: new Date("2026-01-03T00:00:00Z"),
+        updatedAt: new Date("2026-01-04T00:00:00Z"),
+        bookmarks: [],
+      },
+    ]);
+
+    const res = await v1App.request("/bookmark-lists", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(2);
+    expect(body.data[0].name).toBe("Places");
+    expect(body.data[0].bookmarkCount).toBe(2);
+    expect(body.data[1].name).toBe("Restaurants");
+    expect(body.data[1].bookmarkCount).toBe(0);
+    expect(body.pagination.total).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bookmarks in list — GET /bookmark-lists/:listId/bookmarks
+// ---------------------------------------------------------------------------
+
+describe("GET /bookmark-lists/:listId/bookmarks", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 404 when list is owned by another user", async () => {
+    // OTHER_USER_KEY has a different userId than the list owner
+    setupValidKey(OTHER_USER_KEY);
+    // verifyListOwnership uses db.query.bookmarkLists.findFirst;
+    // returning a list owned by a different user triggers the ownership check to fail
+    mockDbQuery.bookmarkLists.findFirst.mockResolvedValue({
+      id: LIST_ID,
+      userId: USER_ID_1, // list owned by USER_ID_1, not OTHER_USER_KEY.userId
+      name: "Places",
+    });
+
+    const res = await v1App.request(`/bookmark-lists/${LIST_ID}/bookmarks`, {
+      headers: AUTH_HEADER,
+    });
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "not_found", message: expect.any(String) } });
+  });
+
+  it("returns 404 when list does not exist", async () => {
+    setupValidKey();
+    mockDbQuery.bookmarkLists.findFirst.mockResolvedValue(null);
+
+    const res = await v1App.request(`/bookmark-lists/${LIST_ID}/bookmarks`, {
+      headers: AUTH_HEADER,
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns bookmarks when user owns the list", async () => {
+    setupValidKey();
+    mockDbQuery.bookmarkLists.findFirst.mockResolvedValue({
+      id: LIST_ID,
+      userId: USER_ID_1, // matches VALID_KEY.userId
+      name: "Places",
+    });
+    mockCountQuery(1);
+    mockDbQuery.bookmarks.findMany.mockResolvedValue([
+      {
+        id: "bm-1",
+        name: "Senso-ji",
+        memo: "Must visit",
+        urls: ["https://example.com"],
+        sortOrder: 0,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-02T00:00:00Z"),
+      },
+    ]);
+
+    const res = await v1App.request(`/bookmark-lists/${LIST_ID}/bookmarks`, {
+      headers: AUTH_HEADER,
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].name).toBe("Senso-ji");
+    expect(body.data[0].memo).toBe("Must visit");
+    expect(body.data[0].urls).toEqual(["https://example.com"]);
+    expect(body.pagination.total).toBe(1);
+  });
+
+  it("returns 400 for non-UUID list id", async () => {
+    setupValidKey();
+
+    const res = await v1App.request("/bookmark-lists/not-a-uuid/bookmarks", {
+      headers: AUTH_HEADER,
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "invalid_request", message: expect.any(String) } });
+  });
+});
