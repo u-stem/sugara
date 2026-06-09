@@ -7,6 +7,7 @@ import { accountRoutes } from "./routes/account";
 import { activityLogRoutes } from "./routes/activity-logs";
 import { adminRoutes } from "./routes/admin";
 import { announcementRoutes } from "./routes/announcement";
+import { apiKeyRoutes } from "./routes/api-keys";
 import { authRoutes } from "./routes/auth";
 import { bookmarkListRoutes } from "./routes/bookmark-lists";
 import { bookmarkRoutes } from "./routes/bookmarks";
@@ -40,18 +41,32 @@ import { shareRoutes } from "./routes/share";
 import { souvenirRoutes } from "./routes/souvenirs";
 import { tripDayRoutes } from "./routes/trip-days";
 import { tripRoutes } from "./routes/trips";
+import { v1App } from "./routes/v1/index";
+import type { AppEnv } from "./types";
 
-const app = new Hono<{ Variables: { requestId: string } }>();
+// Typed as AppEnv so that middleware context in this file is compatible with
+// MiddlewareHandler<AppEnv> (e.g. requestLogger). Variables set by later
+// middleware (user, session, tripRole) are intentionally absent at this layer
+// in practice, but the type widening causes no real harm since app.ts never
+// reads those variables itself.
+const app = new Hono<AppEnv>();
 
-app.use(
-  "*",
-  cors({
-    origin: env.FRONTEND_URL,
-    credentials: true,
-  }),
-);
-
-app.use("*", requestLogger());
+// v1 runs as an isolated Hono instance with its own onError. The parent's cors
+// and requestLogger middleware must NOT apply to /api/v1 paths because:
+//   (a) cors would attach Access-Control-Allow-Origin to external-API responses,
+//       contradicting the "server-to-server only, no CORS" policy (§0 / §7).
+//   (b) middleware exceptions thrown by the parent are caught by the parent's
+//       handleError, not by v1App.onError, leaking internal error shapes (§3.1).
+// Inline factory calls (not cached variables) avoid any stored-instance type
+// mismatch; the wrapper's c: Context<AppEnv> satisfies MiddlewareHandler<AppEnv>.
+app.use("*", (c, next) => {
+  if (c.req.path.startsWith("/api/v1")) return next();
+  return cors({ origin: env.FRONTEND_URL, credentials: true })(c, next);
+});
+app.use("*", (c, next) => {
+  if (c.req.path.startsWith("/api/v1")) return next();
+  return requestLogger()(c, next);
+});
 
 app.onError(handleError);
 
@@ -99,5 +114,7 @@ app.route("/", publicSettingsRoutes);
 app.route("/", adminRoutes);
 app.route("/", faqRoutes);
 app.route("/", announcementRoutes);
+app.route("/api/api-keys", apiKeyRoutes);
+app.route("/api/v1", v1App);
 
 export { app };
