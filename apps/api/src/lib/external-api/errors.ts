@@ -1,14 +1,28 @@
-import type { ErrorHandler } from "hono";
+import type { Context, ErrorHandler } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { logger } from "../logger";
 import type { VerifiedApiKey } from "./api-key";
 
 // Hono env for v1 routes — only the api key is available, not the full AuthUser.
+// apiKey is optional so that middleware earlier in the chain (audit log) can safely
+// read it before requireApiKey runs; routes use getApiKey() to get a narrowed value.
 export type V1Env = {
   Variables: {
-    apiKey: VerifiedApiKey;
+    apiKey?: VerifiedApiKey;
   };
 };
+
+// Narrows the optional apiKey from context or throws 401. Route handlers call
+// this instead of c.get("apiKey") directly to preserve the non-undefined invariant
+// that holds after requireApiKey has run. No `as` cast is needed because the
+// undefined check narrows the type at compile time.
+export function getApiKey(c: Context<V1Env>): VerifiedApiKey {
+  const key = c.get("apiKey");
+  if (key === undefined) {
+    throw new ApiV1Error(401, "unauthorized", "API key not present in context");
+  }
+  return key;
+}
 
 export type ApiV1ErrorCode =
   | "invalid_request"

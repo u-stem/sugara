@@ -26,6 +26,12 @@ export type VerifiedApiKey = {
   expiresAt: Date;
 };
 
+// Deletes all API keys for the given user. Called on password reset so that
+// compromised credentials do not leave long-lived API keys intact.
+export async function revokeApiKeysByUserId(userId: string): Promise<void> {
+  await db.delete(apiKeys).where(eq(apiKeys.userId, userId));
+}
+
 // Looks up a raw bearer token by its hash. Returns null for every invalid case
 // (unknown key / expired) without distinguishing them — the caller maps all to a
 // single 401 so response differences can't be used to enumerate keys.

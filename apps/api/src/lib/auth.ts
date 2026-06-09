@@ -14,6 +14,7 @@ import {
   USERNAME_MIN_LENGTH,
 } from "./constants";
 import { env } from "./env";
+import { revokeApiKeysByUserId } from "./external-api/api-key";
 
 // Lazily created so tests that don't use email can import auth without GMAIL_USER set
 function getTransporter() {
@@ -56,6 +57,15 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
+    // Revoke all sessions on password reset so a stolen session cookie cannot
+    // be used to bypass the password change.
+    revokeSessionsOnPasswordReset: true,
+    // Revoke all API keys on password reset. A compromised password could have
+    // been used to create API keys; rotating the password must also invalidate
+    // any long-lived tokens derived from that session.
+    onPasswordReset: async ({ user }) => {
+      await revokeApiKeysByUserId(user.id);
+    },
     sendResetPassword: async ({ user, url }) => {
       await getTransporter().sendMail({
         from: `"sugara" <${env.GMAIL_USER}>`,

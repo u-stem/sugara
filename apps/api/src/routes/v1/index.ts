@@ -3,7 +3,8 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { db } from "../../db";
 import { tripMembers, trips } from "../../db/schema";
-import { ApiV1Error, type V1Env, v1ErrorHandler } from "../../lib/external-api/errors";
+import { v1AuditLog } from "../../lib/external-api/audit-log";
+import { ApiV1Error, getApiKey, type V1Env, v1ErrorHandler } from "../../lib/external-api/errors";
 import { v1RateLimit } from "../../lib/external-api/rate-limit";
 import { requireApiKey } from "../../middleware/require-api-key";
 
@@ -15,6 +16,10 @@ const V1_RATE_LIMIT = { window: 60, max: 300 } as const;
 export const v1App = new Hono<V1Env>();
 
 v1App.onError(v1ErrorHandler);
+
+// Audit log must be first so it wraps the entire request lifecycle and can
+// observe the final status code regardless of what downstream middleware does.
+v1App.use("*", v1AuditLog());
 
 // Apply IP rate limit before auth so even unauthenticated bursts are throttled.
 // v1RateLimit wraps rateLimitByIp and re-raises 429 as ApiV1Error so the v1
@@ -33,7 +38,7 @@ const tripsQuerySchema = z.object({
 // Returns trips the key owner can access (as a trip member) with external DTO.
 // mapsEnabled / totalSchedules and other internal fields are intentionally absent.
 v1App.get("/trips", requireApiKey("trips:read"), async (c) => {
-  const key = c.get("apiKey");
+  const key = getApiKey(c);
   const userId = key.userId;
 
   const parsed = tripsQuerySchema.safeParse({
