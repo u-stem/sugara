@@ -1,7 +1,7 @@
 "use client";
 
 import { API_KEY_SCOPES, type ApiKeyScope } from "@sugara/shared";
-import { Check, Copy, Trash2 } from "lucide-react";
+import { BookOpen, Check, Copy, Trash2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -203,6 +203,15 @@ export function ApiKeysSection() {
         <CardHeader>
           <CardTitle>{t("issueTitle")}</CardTitle>
           <CardDescription>{t("description")}</CardDescription>
+          <a
+            href="/api/_docs"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex w-fit items-center gap-1.5 text-sm text-primary hover:underline"
+          >
+            <BookOpen className="h-4 w-4" />
+            {t("referenceLink")}
+          </a>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

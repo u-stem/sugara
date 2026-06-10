@@ -103,10 +103,32 @@ v1 は独立した Hono インスタンス（`v1App`）として `app.route("/ap
 
 v1 のマウントは**全内部ルーターより先**に置く。Hono は登録順にハンドラを実行するため、後段マウントだと兄弟ルーターの wildcard middleware（例: `/api` 直下にマウントされたルーターの `use("*", requireAuth)`）が v1 の Bearer 認証より先に走り、Cookie 認証の応答で横取りされる（実際に発生した回帰。`v1-mounting.test.ts` が合成済み `app` 経由で再発を検出する）。加えて `v1App` 末尾の catch-all が未知の `/api/v1` パスを v1 形式の `404 not_found` で終端し、親側へのフォールスルーを構造的に断つ。
 
+## OpenAPI ドキュメント
+
+v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
+
+**マウント先**: `/api/_docs`（`/api/v1` の外）
+
+`/api/v1` は 100% Bearer 認証のドメインとして不変にするため、Cookie 認証が必要なドキュメントエンドポイントは別プレフィックスにマウントする。
+
+| パス | 概要 |
+|---|---|
+| `/api/_docs/openapi.json` | OpenAPI 3.1 spec（JSON） |
+| `/api/_docs` | Scalar UI（API リファレンス） |
+
+**認証**: `requireAuth` + `requireNonGuest`（Cookie セッション + 本登録ユーザー限定）。ゲストアカウントや未認証ユーザーには公開しない。
+
+**spec の内容**: v1 の 7 エンドポイントのみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
+
+**Scalar UI のアセット**: `@scalar/api-reference` を `apps/web` の devDependency として固定バージョン管理する。`apps/web/scripts/copy-scalar-assets.ts` が dev サーバ起動時（`predev`）とビルド時（`prebuild`）に standalone バンドルを `apps/web/public/scalar/standalone.js` へコピーし、Next.js が同一オリジン（`/scalar/standalone.js`）から配信する。第三者オリジン依存ゼロ。生成物は `.gitignore` で除外済み（3.5 MB をリポジトリにコミットしない）。
+
+**CSP**: `/api/_docs` のレスポンスに最小 CSP を付与する（`addDocsCsp` ミドルウェア）。同一オリジン配信後は外部オリジンが不要なため `connect-src 'self'` が主効果（万一のスクリプト注入でもデータ外部送信を遮断）。`script-src 'unsafe-inline'` は Scalar の inline 初期化スクリプト（`Scalar.createApiReference('#app', config)`）のために必要。
+
+**実装**: `hono-openapi` の `describeRoute` を v1 の 7 ルートに追加してメタデータを付与し、`generateSpecs(v1App, ...)` で spec を生成。`@scalar/hono-api-reference` の `Scalar` ミドルウェアで UI を提供。`Scalar({ cdn: "/scalar/standalone.js", withDefaultFonts: false })` で外部 CDN とフォントサービスへの依存を排除。
+
 ## 今後の課題
 
 - レート制限の具体値（IP 段の window/max）を実負荷に基づいて調整
-- OpenAPI spec（`/api/_docs`）および Scalar UI の整備
 - キー ID 単位のレート制限・`X-RateLimit-*` ヘッダ（公開拡大時に後方互換追加）
 - 書き込み系スコープ（`trips:write` / `expenses:write`）の追加
 - MCP サーバによる LLM 連携（v1 REST を下層として薄くラップ）

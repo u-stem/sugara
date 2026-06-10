@@ -39,6 +39,15 @@ vi.mock("../lib/external-api/rate-limit", () => ({
 }));
 
 import { v1App } from "../routes/v1/index";
+import {
+  articleDetailResponseSchema,
+  articleListResponseSchema,
+  bookmarkListsResponseSchema,
+  bookmarksResponseSchema,
+  expenseListResponseSchema,
+  tripDetailResponseSchema,
+  tripListResponseSchema,
+} from "../routes/v1/openapi-schemas";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -260,6 +269,20 @@ describe("GET /trips", () => {
     const body = await res.json();
     expect(body).toEqual({ error: { code: "invalid_request", message: expect.any(String) } });
   });
+
+  it("200 response body conforms to tripListResponseSchema", async () => {
+    setupValidKey();
+    mockTripListQueries({
+      countTotal: 1,
+      tripRows: [tripListRow1],
+      memberCountRows: [{ tripId: TRIP_ID, memberCount: 3 }],
+    });
+
+    const res = await v1App.request("/trips", { headers: AUTH_HEADER });
+    const body = await res.json();
+
+    expect(tripListResponseSchema.safeParse(body).success).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -363,6 +386,18 @@ describe("GET /trips/:id", () => {
     // USER_ID_1 < USER_ID_2 → Alice = memberNo 1, Bob = memberNo 2
     expect(alice.memberNo).toBe(1);
     expect(bob.memberNo).toBe(2);
+  });
+
+  it("200 response body conforms to tripDetailResponseSchema", async () => {
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockDbQuery.trips.findFirst.mockResolvedValue(tripRow);
+    mockDbQuery.tripMembers.findMany.mockResolvedValue(memberRows);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}`, { headers: AUTH_HEADER });
+    const body = await res.json();
+
+    expect(tripDetailResponseSchema.safeParse(body).success).toBe(true);
   });
 });
 
@@ -481,6 +516,34 @@ describe("GET /trips/:tripId/expenses", () => {
     // Alice's memberNo must be identical in both responses
     expect(expBody.data[0].paidBy.memberNo).toBe(aliceFromTrip.memberNo);
   });
+
+  it("200 response body conforms to expenseListResponseSchema", async () => {
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockDbQuery.tripMembers.findMany.mockResolvedValue([
+      { userId: USER_ID_1, user: { name: "Alice" } },
+      { userId: USER_ID_2, user: { name: "Bob" } },
+    ]);
+    mockCountQuery(1);
+    mockDbQuery.expenses.findMany.mockResolvedValue([
+      {
+        id: "exp-1",
+        title: "Dinner",
+        amount: 1000,
+        currency: "JPY",
+        category: "meals",
+        paidByUserId: USER_ID_1,
+        createdAt: new Date("2026-06-01T18:00:00Z"),
+        paidByUser: { name: "Alice" },
+        splits: [{ userId: USER_ID_2, amount: 500, user: { name: "Bob" } }],
+      },
+    ]);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}/expenses`, { headers: AUTH_HEADER });
+    const body = await res.json();
+
+    expect(expenseListResponseSchema.safeParse(body).success).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -526,6 +589,27 @@ describe("GET /bookmark-lists", () => {
     expect(body.data[1].name).toBe("Restaurants");
     expect(body.data[1].bookmarkCount).toBe(0);
     expect(body.pagination.total).toBe(2);
+  });
+
+  it("200 response body conforms to bookmarkListsResponseSchema", async () => {
+    setupValidKey();
+    mockCountQuery(1);
+    mockDbQuery.bookmarkLists.findMany.mockResolvedValue([
+      {
+        id: LIST_ID,
+        name: "Places",
+        visibility: "private",
+        sortOrder: 0,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-02T00:00:00Z"),
+        bookmarks: [{ id: "bm-1" }],
+      },
+    ]);
+
+    const res = await v1App.request("/bookmark-lists", { headers: AUTH_HEADER });
+    const body = await res.json();
+
+    expect(bookmarkListsResponseSchema.safeParse(body).success).toBe(true);
   });
 });
 
@@ -602,6 +686,34 @@ describe("GET /bookmark-lists/:listId/bookmarks", () => {
     expect(body.pagination.total).toBe(1);
   });
 
+  it("200 response body conforms to bookmarksResponseSchema", async () => {
+    setupValidKey();
+    mockDbQuery.bookmarkLists.findFirst.mockResolvedValue({
+      id: LIST_ID,
+      userId: USER_ID_1,
+      name: "Places",
+    });
+    mockCountQuery(1);
+    mockDbQuery.bookmarks.findMany.mockResolvedValue([
+      {
+        id: "bm-1",
+        name: "Senso-ji",
+        memo: "Must visit",
+        urls: ["https://example.com"],
+        sortOrder: 0,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-02T00:00:00Z"),
+      },
+    ]);
+
+    const res = await v1App.request(`/bookmark-lists/${LIST_ID}/bookmarks`, {
+      headers: AUTH_HEADER,
+    });
+    const body = await res.json();
+
+    expect(bookmarksResponseSchema.safeParse(body).success).toBe(true);
+  });
+
   it("returns 400 for non-UUID list id", async () => {
     setupValidKey();
 
@@ -667,6 +779,17 @@ describe("GET /articles", () => {
     const body = await res.json();
     expect(body.data[0]).not.toHaveProperty("content");
   });
+
+  it("200 response body conforms to articleListResponseSchema", async () => {
+    setupValidKey();
+    mockCountQuery(1);
+    mockDbQuery.articles.findMany.mockResolvedValue([articleSummaryRow]);
+
+    const res = await v1App.request("/articles", { headers: AUTH_HEADER });
+    const body = await res.json();
+
+    expect(articleListResponseSchema.safeParse(body).success).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -722,6 +845,16 @@ describe("GET /articles/:id", () => {
     expect(body.tags).toEqual(["kyoto", "japan"]);
     expect(body.tripIds).toEqual([TRIP_ID_A]);
     expect(body).not.toHaveProperty("ownerId");
+  });
+
+  it("200 response body conforms to articleDetailResponseSchema", async () => {
+    setupValidKey();
+    mockDbQuery.articles.findFirst.mockResolvedValue(articleDetailRow);
+
+    const res = await v1App.request(`/articles/${ARTICLE_ID}`, { headers: AUTH_HEADER });
+    const body = await res.json();
+
+    expect(articleDetailResponseSchema.safeParse(body).success).toBe(true);
   });
 
   it("returns 400 for non-UUID article id", async () => {
