@@ -24,6 +24,27 @@ export function isOverUpperHalf(
   return currentY < midY;
 }
 
+/**
+ * Canonical gap index for the insert indicator line.
+ *
+ * Hovering the lower half of item i and the upper half of item i+1 both drop
+ * into the same gap, but rendering the line on "bottom of i" vs "top of i+1"
+ * produces two visually distinct positions for one insertion point (the list
+ * has inter-item spacing). Normalizing to a gap index lets the caller render
+ * a single line per gap: index k means "the gap above item k", and
+ * k === items.length means "after the last item".
+ */
+export function indicatorGapIndex(
+  sortableIds: string[],
+  overId: string | null,
+  upperHalf: boolean,
+): number | null {
+  if (overId == null) return null;
+  const idx = sortableIds.indexOf(overId);
+  if (idx === -1) return null;
+  return upperHalf ? idx : idx + 1;
+}
+
 export type DropTarget =
   | { kind: "schedule"; overId: string; upperHalf: boolean }
   | { kind: "timeline" }
