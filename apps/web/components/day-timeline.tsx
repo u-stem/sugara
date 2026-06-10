@@ -1,7 +1,7 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext } from "@dnd-kit/sortable";
 import type { CrossDayEntry, ScheduleResponse, TripResponse } from "@sugara/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -30,11 +30,10 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { DROP_ZONE_ACTIVE } from "@/lib/colors";
+import { noShiftSortingStrategy } from "@/lib/dnd-sorting";
 import { compareByStartTime, formatDate } from "@/lib/format";
-
 import { useSelection } from "@/lib/hooks/selection-context";
 import { useMobile } from "@/lib/hooks/use-is-mobile";
-
 import type { TimelineItem } from "@/lib/merge-timeline";
 import { buildMergedTimeline, timelineSortableIds } from "@/lib/merge-timeline";
 import { queryKeys } from "@/lib/query-keys";
@@ -479,7 +478,7 @@ export function DayTimeline({
         </div>
       ) : (
         <div ref={setDroppableRef}>
-          <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+          <SortableContext items={sortableIds} strategy={noShiftSortingStrategy}>
             <div className="space-y-1.5">
               {merged.map((item, i) => {
                 const next = merged[i + 1];
