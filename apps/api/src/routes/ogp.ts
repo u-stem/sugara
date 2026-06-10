@@ -5,9 +5,12 @@ import { requireAuth } from "../middleware/auth";
 import type { AppEnv } from "../types";
 
 const ogpRoutes = new Hono<AppEnv>();
-ogpRoutes.use("*", requireAuth);
 
-ogpRoutes.get("/ogp", async (c) => {
+// requireAuth is attached per-route, NOT via use("*"): this router is mounted
+// under the broad "/api" prefix, so a wildcard middleware here would also run
+// for every /api/* sibling registered later — including /api/v1, whose Bearer
+// auth must never be preempted by the cookie-session requireAuth.
+ogpRoutes.get("/ogp", requireAuth, async (c) => {
   const url = c.req.query("url") ?? "";
   const parsed = ogpRequestSchema.safeParse({ url });
   if (!parsed.success) {
