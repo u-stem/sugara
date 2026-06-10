@@ -6,6 +6,7 @@ import {
   Download,
   FileText,
   HelpCircle,
+  KeyRound,
   Languages,
   MessageSquare,
   MoreHorizontal,
@@ -22,6 +23,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { ApiKeysSection } from "@/components/api-keys-section";
 import { EmailSection } from "@/components/email-section";
 import { NotificationPreferencesSection } from "@/components/notification-preferences-section";
 import { Button } from "@/components/ui/button";
@@ -67,13 +69,19 @@ const FeedbackDialog = dynamic(() =>
   import("@/components/feedback-dialog").then((mod) => mod.FeedbackDialog),
 );
 
-type Section = "notifications" | "account" | "other";
+type Section = "notifications" | "account" | "apiKeys" | "other";
 
-const SECTIONS = ["account", "notifications", "other"] as const satisfies readonly Section[];
+const SECTIONS = [
+  "account",
+  "notifications",
+  "apiKeys",
+  "other",
+] as const satisfies readonly Section[];
 
 const NAV_ITEM_KEYS = [
   { id: "account", labelKey: "account", Icon: Settings2 },
   { id: "notifications", labelKey: "notifications", Icon: Bell },
+  { id: "apiKeys", labelKey: "apiKeys", Icon: KeyRound },
   { id: "other", labelKey: "other", Icon: MoreHorizontal },
 ] as const satisfies readonly { id: Section; labelKey: string; Icon: React.ElementType }[];
 
@@ -145,6 +153,8 @@ export default function SettingsPage({
     switch (s) {
       case "notifications":
         return <NotificationPreferencesSection />;
+      case "apiKeys":
+        return <ApiKeysSection />;
       case "account":
         if (!user) return null;
         return (

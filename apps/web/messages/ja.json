@@ -1316,7 +1316,8 @@
     "privacyPolicy": "プライバシーポリシー",
     "emailVerified": "メールアドレスを設定しました。",
     "language": "言語",
-    "languageDescription": "表示言語を切り替えます"
+    "languageDescription": "表示言語を切り替えます",
+    "apiKeys": "API キー"
   },
   "profile": {
     "pageTitle": "プロフィール",
@@ -1937,6 +1938,38 @@
     "datePoll": "日程調整",
     "sharedPlan": "共有プラン",
     "userProfile": "{name} のプロフィール"
+  },
+  "apiKeys": {
+    "description": "外部のツールやスクリプトから自分の旅行データを読み取れるキーを発行できます",
+    "issueTitle": "新しいキーを発行",
+    "name": "名前",
+    "namePlaceholder": "例: マイスクリプト",
+    "expires": "有効期限",
+    "expires7d": "7 日",
+    "expires30d": "30 日",
+    "expires90d": "90 日",
+    "scopesLabel": "アクセスできるデータ",
+    "scopeTrips": "旅行",
+    "scopeExpenses": "費用",
+    "scopeArticles": "記事",
+    "scopeBookmarks": "ブックマーク",
+    "issue": "発行",
+    "issuing": "発行中...",
+    "scopeRequired": "1 つ以上のデータを選択してください",
+    "issuedTitle": "キーを発行しました",
+    "issuedDescription": "このキーは今だけ表示されます。安全な場所にメモしてください。",
+    "issuedWarning": "この画面を閉じると再表示できません",
+    "copied": "コピーしました",
+    "listTitle": "発行済みキー",
+    "listEmpty": "発行済みのキーはありません",
+    "expired": "期限切れ",
+    "deleteConfirmTitle": "このキーを削除しますか？",
+    "deleteConfirmDescription": "削除するとこのキーを使う連携はすぐに使えなくなります",
+    "deleteConfirm": "削除する",
+    "deleteSuccess": "API キーを削除しました",
+    "deleteFailed": "削除に失敗しました",
+    "deleteAriaLabel": "{name} を削除",
+    "issueFailed": "発行に失敗しました"
   },
   "shareTarget": {
     "title": "候補に追加",
