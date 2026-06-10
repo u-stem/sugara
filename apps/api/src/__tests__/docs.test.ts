@@ -69,12 +69,46 @@ describe("GET /api/_docs (Scalar UI)", () => {
     vi.clearAllMocks();
   });
 
-  it("returns 401 for unauthenticated requests", async () => {
+  // The UI is a browser page: failures redirect like the web app's protected
+  // pages (proxy.ts) instead of returning API-style JSON errors.
+  it("redirects unauthenticated requests with 302", async () => {
     mockGetSession.mockResolvedValue(null);
 
     const res = await app.request("/api/_docs");
 
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(302);
+  });
+
+  it("redirects unauthenticated requests to the login page", async () => {
+    mockGetSession.mockResolvedValue(null);
+
+    const res = await app.request("/api/_docs");
+
+    expect(res.headers.get("location")).toBe("/auth/login");
+  });
+
+  it("redirects guest users with 302", async () => {
+    mockGetSession.mockResolvedValue(GUEST_SESSION);
+
+    const res = await app.request("/api/_docs");
+
+    expect(res.status).toBe(302);
+  });
+
+  it("redirects guest users to home", async () => {
+    mockGetSession.mockResolvedValue(GUEST_SESSION);
+
+    const res = await app.request("/api/_docs");
+
+    expect(res.headers.get("location")).toBe("/home");
+  });
+
+  it("returns 200 for authenticated non-guest users", async () => {
+    mockGetSession.mockResolvedValue(AUTHED_SESSION);
+
+    const res = await app.request("/api/_docs");
+
+    expect(res.status).toBe(200);
   });
 });
 

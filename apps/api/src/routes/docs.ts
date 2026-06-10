@@ -1,6 +1,8 @@
 import { Scalar } from "@scalar/hono-api-reference";
+import type { Context, Next } from "hono";
 import { Hono } from "hono";
 import { generateSpecs } from "hono-openapi";
+import { auth } from "../lib/auth";
 import { requireAuth } from "../middleware/auth";
 import { requireNonGuest } from "../middleware/require-non-guest";
 import type { AppEnv } from "../types";
@@ -12,6 +14,25 @@ import { v1App } from "./v1/index";
 // and avoids any future accidental expansion if new public sub-paths are added.
 
 export const docsRoutes = new Hono<AppEnv>();
+
+// `in` narrowing keeps this free of type casts: Better Auth's inferred session
+// user type does not surface the isAnonymous additional field directly.
+function isGuestUser(user: object): boolean {
+  return "isAnonymous" in user && user.isAnonymous === true;
+}
+
+// Page-style guard for the Scalar UI. Browsers hitting this URL expect the
+// same behavior as the web app's protected pages (proxy.ts): redirect to the
+// login page when unauthenticated, instead of an API-style JSON 401. Guests
+// are sent to /home, mirroring the settings page which blocks guest access.
+// The spec endpoint below keeps JSON errors — it is fetched by the UI, not
+// navigated to.
+async function requireMemberPage(c: Context<AppEnv>, next: Next) {
+  const session = await auth.api.getSession({ headers: c.req.raw.headers });
+  if (!session) return c.redirect("/auth/login");
+  if (isGuestUser(session.user)) return c.redirect("/home");
+  return next();
+}
 
 const SPEC_OPTIONS: Parameters<typeof generateSpecs>[1] = {
   documentation: {
@@ -51,4 +72,4 @@ docsRoutes.get("/openapi.json", requireAuth, requireNonGuest, async (c) => {
 // cdn.jsdelivr.net (Scalar's CDN). This is an authenticated internal page,
 // not a public endpoint, so loading third-party assets from CDN is acceptable;
 // the CDN URL is not subject to the same CSP policy applied to the public web app.
-docsRoutes.get("/", requireAuth, requireNonGuest, Scalar({ url: "/api/_docs/openapi.json" }));
+docsRoutes.get("/", requireMemberPage, Scalar({ url: "/api/_docs/openapi.json" }));
