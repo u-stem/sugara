@@ -10,6 +10,13 @@ const START_LENGTH = 11;
 
 // Why hex over base64: the column is varchar(64) and a fixed-width hex digest is
 // trivially indexable and comparable. The raw key is never stored.
+//
+// Why unsalted SHA-256 and not bcrypt/argon2 (CodeQL js/insufficient-password-hash
+// flags this as a false positive): the input is a 256-bit CSPRNG token, not a
+// human password. Slow hashes exist to make brute-forcing low-entropy secrets
+// expensive; a 2^256 search space cannot be brute-forced regardless of hash
+// speed. A per-hash salt would also break the indexed equality lookup that
+// verifyApiKey relies on. Same scheme GitHub uses for PAT storage.
 export function hashApiKey(rawKey: string): string {
   return createHash("sha256").update(rawKey).digest("hex");
 }

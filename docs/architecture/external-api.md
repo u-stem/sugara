@@ -62,7 +62,7 @@ Web 設定画面から使う内部エンドポイント（Cookie 認証・本登
 
 有効期限の上限（90 日）とスコープのホワイトリスト検証はルート側 Zod スキーマが権威的に強制する。
 
-Web UI は設定画面の「API キー」タブ（`apps/web/components/api-keys-section.tsx`）。発行フォーム（名前・有効期限 7/30/90 日・スコープのチェックボックス。最小権限のため既定では未選択）、生キーの 1 回限り表示 + コピー、一覧（期限切れ Badge 表示）、削除確認ダイアログを提供する。E2E は `apps/web/e2e/api-keys.spec.ts`（発行 → v1 読み取り → スコープ外 403 → 失効 → 401 のライフサイクル）。
+Web UI は設定画面の「API キー」タブ（`apps/web/components/api-keys-section.tsx`）。発行フォーム（名前・有効期限 7/30/90 日・スコープのチェックボックス。最小権限のため既定では未選択）、生キーの 1 回限り表示 + コピー、一覧（期限切れ Badge 表示）、削除確認ダイアログを提供する。E2E は `apps/web/e2e/api-keys.spec.ts`（発行 → v1 読み取り → スコープ外 403 → 失効 → 401 のライフサイクル）。**E2E は CI では実行されない手動回帰用**（`bun run --filter @sugara/web test:e2e -- api-keys`。ローカル dev サーバー + ローカル DB 前提）。CI で機械検証されるのは v1 の単体・結合テストと `v1-mounting.test.ts`（合成 app 経由の横取り回帰）。
 
 ## レート制限
 
