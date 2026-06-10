@@ -120,9 +120,11 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 
 **spec の内容**: v1 の 7 エンドポイントのみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
 
-**Scalar UI のアセット**: Scalar の JS/CSS は `cdn.jsdelivr.net` から読み込む。認証済み内部ページのため、外部 CDN からのアセット読み込みは許容される（公開 Web アプリの CSP 対象外）。
+**Scalar UI のアセット**: `@scalar/api-reference` を `apps/web` の devDependency として固定バージョン管理する。`apps/web/scripts/copy-scalar-assets.ts` が dev サーバ起動時（`predev`）とビルド時（`prebuild`）に standalone バンドルを `apps/web/public/scalar/standalone.js` へコピーし、Next.js が同一オリジン（`/scalar/standalone.js`）から配信する。第三者オリジン依存ゼロ。生成物は `.gitignore` で除外済み（3.5 MB をリポジトリにコミットしない）。
 
-**実装**: `hono-openapi` の `describeRoute` を v1 の 7 ルートに追加してメタデータを付与し、`generateSpecs(v1App, ...)` で spec を生成。`@scalar/hono-api-reference` の `Scalar` ミドルウェアで UI を提供。
+**CSP**: `/api/_docs` のレスポンスに最小 CSP を付与する（`addDocsCsp` ミドルウェア）。同一オリジン配信後は外部オリジンが不要なため `connect-src 'self'` が主効果（万一のスクリプト注入でもデータ外部送信を遮断）。`script-src 'unsafe-inline'` は Scalar の inline 初期化スクリプト（`Scalar.createApiReference('#app', config)`）のために必要。
+
+**実装**: `hono-openapi` の `describeRoute` を v1 の 7 ルートに追加してメタデータを付与し、`generateSpecs(v1App, ...)` で spec を生成。`@scalar/hono-api-reference` の `Scalar` ミドルウェアで UI を提供。`Scalar({ cdn: "/scalar/standalone.js", withDefaultFonts: false })` で外部 CDN とフォントサービスへの依存を排除。
 
 ## 今後の課題
 

@@ -34,6 +34,46 @@ async function requireMemberPage(c: Context<AppEnv>, next: Next) {
   return next();
 }
 
+// Minimal Content-Security-Policy for the Scalar UI page.
+//
+// Directives and their rationale:
+//   script-src 'self' 'unsafe-inline'  — standalone.js from same origin;
+//     'unsafe-inline' required for Scalar's inline init script
+//     (Scalar.createApiReference('#app', config)).
+//   style-src 'self' 'unsafe-inline'   — inline <style> injected by the Hono
+//     integration (custom CSS theme variables).
+//   img-src 'self' data: blob:         — Scalar UI renders spec-defined image
+//     references; blob: covers dynamically generated previews.
+//   connect-src 'self'                 — KEY directive: restricts all XHR/fetch
+//     to same origin, blocking data exfiltration even if script is compromised.
+//   worker-src 'self' blob:            — Web workers spawned by the bundle.
+//   font-src 'self' data:              — withDefaultFonts:false disables
+//     fonts.scalar.com; data: covers any base64-embedded fonts in the bundle.
+//   object-src 'none'                  — no plugins (Flash etc.).
+//   base-uri 'self'                    — prevents <base> injection attacks.
+//   frame-ancestors 'none'             — no embedding in iframes.
+//   default-src 'self'                 — catch-all fallback.
+const DOCS_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "worker-src 'self' blob:",
+  "font-src 'self' data:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+// Middleware that attaches the CSP header before the Scalar handler runs.
+// c.header() registers the value in Hono's context header store, which is
+// merged into the Response when c.html() is called by Scalar.
+async function addDocsCsp(c: Context<AppEnv>, next: Next): Promise<void> {
+  c.header("Content-Security-Policy", DOCS_CSP);
+  await next();
+}
+
 const SPEC_OPTIONS: Parameters<typeof generateSpecs>[1] = {
   documentation: {
     info: { title: "sugara External API", version: "1.0.0" },
@@ -68,8 +108,33 @@ docsRoutes.get("/openapi.json", requireAuth, requireNonGuest, async (c) => {
 });
 
 // GET /api/_docs
-// Serves the Scalar API reference UI. The UI loads its JS/CSS from
-// cdn.jsdelivr.net (Scalar's CDN). This is an authenticated internal page,
-// not a public endpoint, so loading third-party assets from CDN is acceptable;
-// the CDN URL is not subject to the same CSP policy applied to the public web app.
-docsRoutes.get("/", requireMemberPage, Scalar({ url: "/api/_docs/openapi.json" }));
+// Serves the Scalar API reference UI.
+//
+// The standalone bundle (@scalar/api-reference, version pinned in apps/web
+// devDependencies) is self-hosted: apps/web/scripts/copy-scalar-assets.ts
+// copies it to public/scalar/standalone.js at dev/build time, and Next.js
+// serves it from the same origin as /scalar/standalone.js. Zero third-party
+// origin dependencies at runtime.
+//
+// withDefaultFonts:false suppresses the fonts.scalar.com link element that
+// the Scalar integration would otherwise inject, completing the same-origin
+// isolation: no external fetches at all once the page is loaded.
+//
+// addDocsCsp injects a Content-Security-Policy header (see DOCS_CSP above)
+// before Scalar writes the HTML response. connect-src 'self' is the critical
+// directive — it blocks data exfiltration to external hosts even if an attacker
+// somehow injects script into the page.
+docsRoutes.get(
+  "/",
+  requireMemberPage,
+  addDocsCsp,
+  Scalar({
+    url: "/api/_docs/openapi.json",
+    // Same-origin self-hosted bundle; no cdn.jsdelivr.net or any other
+    // third-party origin required. Version is fixed by the @scalar/api-reference
+    // devDependency in apps/web/package.json.
+    cdn: "/scalar/standalone.js",
+    // Disable fonts.scalar.com link injection to achieve full same-origin isolation.
+    withDefaultFonts: false,
+  }),
+);

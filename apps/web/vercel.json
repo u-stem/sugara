@@ -1,5 +1,5 @@
 {
-  "buildCommand": "sh -c 'cd ../.. && bun run db:migrate' && next build --webpack",
+  "buildCommand": "sh -c 'cd ../.. && bun run db:migrate' && bun run copy-scalar && next build --webpack",
   "framework": "nextjs",
   "fluid": true,
   "crons": [{ "path": "/api/cron/cleanup-guests", "schedule": "0 3 * * *" }],
