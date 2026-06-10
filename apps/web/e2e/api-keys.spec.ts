@@ -38,13 +38,11 @@ test.describe("API keys", () => {
     await expect(dialog.getByText("キーを発行しました")).toBeVisible();
     const rawKey = (await dialog.locator("code").innerText()).trim();
     expect(rawKey).toMatch(/^sk_/);
-    await page.screenshot({ path: "/tmp/apikeys-issued.png" });
     await dialog.getByRole("button", { name: "閉じる" }).click();
 
     // The list now shows the key (name + key prefix)
     await expect(page.getByText("e2e key")).toBeVisible();
     await expect(page.getByText(rawKey.slice(0, 11))).toBeVisible();
-    await page.screenshot({ path: "/tmp/apikeys-list.png" });
 
     // The key reads /api/v1 within its scope
     const ok = await request.get("/api/v1/trips", {

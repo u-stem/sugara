@@ -106,8 +106,10 @@ export function ApiKeysSection() {
       const data = await api<ApiKeyItem[]>("/api/api-keys");
       setKeys(data);
     } catch {
-      // Show empty state on failure — no actionable recovery from the UI.
+      // Keep the empty state but surface the failure — otherwise a network
+      // error reads as "you have no keys".
       setKeys([]);
+      toast.error(t("loadFailed"));
     } finally {
       setKeysLoading(false);
     }
@@ -173,7 +175,9 @@ export function ApiKeysSection() {
       setCopied(true);
       toast.success(t("copied"));
     } catch {
-      // clipboard API unavailable in non-secure context — fail silently
+      // Clipboard API can fail in non-secure contexts; the key stays visible
+      // in the dialog for manual copy, but tell the user the button didn't work.
+      toast.error(t("copyFailed"));
     }
   }
 
@@ -235,9 +239,9 @@ export function ApiKeysSection() {
               </Select>
             </div>
 
-            {/* Scopes */}
-            <div className="space-y-2">
-              <Label>{t("scopesLabel")}</Label>
+            {/* Scopes — fieldset/legend so the group label is announced by screen readers */}
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium leading-none">{t("scopesLabel")}</legend>
               <div className="space-y-2">
                 {API_KEY_SCOPES.map((scope) => (
                   <div key={scope} className="flex items-center gap-2">
@@ -258,7 +262,7 @@ export function ApiKeysSection() {
                   {scopeError}
                 </p>
               )}
-            </div>
+            </fieldset>
 
             <div className="flex justify-end">
               <Button type="submit" disabled={submitting || name.trim().length === 0}>

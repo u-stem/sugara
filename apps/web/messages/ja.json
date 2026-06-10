@@ -1969,6 +1969,8 @@
     "deleteSuccess": "API キーを削除しました",
     "deleteFailed": "削除に失敗しました",
     "deleteAriaLabel": "{name} を削除",
+    "loadFailed": "キー一覧の取得に失敗しました",
+    "copyFailed": "コピーできませんでした。表示されているキーを選択してコピーしてください",
     "issueFailed": "発行に失敗しました"
   },
   "shareTarget": {

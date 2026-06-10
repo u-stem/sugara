@@ -1969,6 +1969,8 @@
     "deleteSuccess": "API key deleted",
     "deleteFailed": "Failed to delete key",
     "deleteAriaLabel": "Delete {name}",
+    "loadFailed": "Failed to load your keys",
+    "copyFailed": "Copy failed. Select the key shown above and copy it manually",
     "issueFailed": "Failed to issue key"
   },
   "shareTarget": {
