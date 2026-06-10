@@ -126,9 +126,19 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 
 **実装**: `hono-openapi` の `describeRoute` を v1 の 7 ルートに追加してメタデータを付与し、`generateSpecs(v1App, ...)` で spec を生成。`@scalar/hono-api-reference` の `Scalar` ミドルウェアで UI を提供。`Scalar({ cdn: "/scalar/standalone.js", withDefaultFonts: false })` で外部 CDN とフォントサービスへの依存を排除。
 
+## MCP サーバ（apps/mcp）
+
+v1 REST を LLM（Claude Desktop / Claude Code 等）から扱うための MCP サーバ。`apps/mcp`（`private`、未公開）に置き、**stdio トランスポート**で動作する（LLM クライアントが子プロセスとして起動）。
+
+- 認証: API キーを環境変数 `SUGARA_API_KEY` で受け取り `Authorization: Bearer` で v1 を叩く。接続先は `SUGARA_API_URL`。生キーはログ・エラーに出さない
+- ツール: v1 の 7 エンドポイントに 1:1 対応する 7 つの read ツール（`list_trips` / `get_trip` / `list_trip_expenses` / `list_bookmark_lists` / `list_bookmarks` / `list_articles` / `get_article`）。入力は zod で境界検証（limit 1–100 / offset 0+ / uuid / scope enum）
+- エラー: v1 の `{ error: { code, message } }` を人間可読メッセージに写像（`isError: true`）
+- 読み取り専用・stdio のため公開ネットワーク面はなく、攻撃面は「キーを持つローカルプロセス」に限定
+- SDK: `@modelcontextprotocol/sdk`。実行はビルドせず `bun run src/index.ts`（モノレポの TS 直接実行規約に準拠）
+- セットアップ手順は `apps/mcp/README.md`
+
 ## 今後の課題
 
 - レート制限の具体値（IP 段の window/max）を実負荷に基づいて調整
 - キー ID 単位のレート制限・`X-RateLimit-*` ヘッダ（公開拡大時に後方互換追加）
 - 書き込み系スコープ（`trips:write` / `expenses:write`）の追加
-- MCP サーバによる LLM 連携（v1 REST を下層として薄くラップ）
