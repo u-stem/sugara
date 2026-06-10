@@ -423,6 +423,10 @@ v1App.get(
         description: "Paginated expense list",
         content: { "application/json": { schema: resolver(expenseListResponseSchema) } },
       },
+      400: {
+        description: "Invalid query parameters or invalid trip UUID",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
       401: {
         description: "Missing or invalid API key",
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
@@ -540,6 +544,10 @@ v1App.get(
       200: {
         description: "Paginated bookmark list collection",
         content: { "application/json": { schema: resolver(bookmarkListsResponseSchema) } },
+      },
+      400: {
+        description: "Invalid query parameters",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
       401: {
         description: "Missing or invalid API key",
@@ -765,6 +773,10 @@ v1App.get(
       200: {
         description: "Paginated article list (no content field)",
         content: { "application/json": { schema: resolver(articleListResponseSchema) } },
+      },
+      400: {
+        description: "Invalid query parameters",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
       401: {
         description: "Missing or invalid API key",

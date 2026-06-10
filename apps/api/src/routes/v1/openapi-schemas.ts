@@ -57,7 +57,8 @@ const tripMemberSchema = z.object({
 const scheduleItemSchema = z.object({
   id: z.string(),
   name: z.string(),
-  category: z.string().nullable(),
+  // DB: scheduleCategoryEnum("category").notNull() — always one of these six values.
+  category: z.enum(["sightseeing", "restaurant", "hotel", "transport", "activity", "other"]),
   startTime: z.string().nullable(),
   endTime: z.string().nullable(),
   address: z.string().nullable(),
@@ -66,7 +67,8 @@ const scheduleItemSchema = z.object({
 
 const tripDaySchema = z.object({
   dayNumber: z.number().int(),
-  date: z.string().nullable(),
+  // DB: date("date").notNull() — never null.
+  date: z.string(),
   schedules: z.array(scheduleItemSchema),
 });
 
@@ -92,13 +94,15 @@ const expenseMemberRefSchema = z.object({
 });
 
 const expenseSplitSchema = expenseMemberRefSchema.extend({
-  amount: z.number(),
+  // DB: integer("amount").notNull()
+  amount: z.number().int(),
 });
 
 const expenseItemSchema = z.object({
   id: z.string(),
   title: z.string(),
-  amount: z.number(),
+  // DB: integer("amount").notNull()
+  amount: z.number().int(),
   currency: z.string(),
   category: z.string().nullable(),
   date: z.string(), // ISO 8601 datetime (createdAt)
@@ -118,7 +122,8 @@ export const expenseListResponseSchema = z.object({
 const bookmarkListSummarySchema = z.object({
   id: z.string(),
   name: z.string(),
-  visibility: z.string(),
+  // DB: bookmarkListVisibilityEnum — "private" | "friends_only" | "public"
+  visibility: z.enum(["private", "friends_only", "public"]),
   sortOrder: z.number().int(),
   bookmarkCount: z.number().int(),
   createdAt: z.string(),
@@ -157,7 +162,8 @@ const articleSummarySchema = z.object({
   id: z.string(),
   title: z.string(),
   tags: z.array(z.string()),
-  visibility: z.string(),
+  // DB: articleVisibilityEnum — "private" | "friends_only" | "public"
+  visibility: z.enum(["private", "friends_only", "public"]),
   tripIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -177,7 +183,8 @@ export const articleDetailResponseSchema = z.object({
   title: z.string(),
   content: z.string(),
   tags: z.array(z.string()),
-  visibility: z.string(),
+  // DB: articleVisibilityEnum — "private" | "friends_only" | "public"
+  visibility: z.enum(["private", "friends_only", "public"]),
   tripIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),

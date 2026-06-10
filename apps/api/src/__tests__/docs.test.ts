@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 // vi.hoisted so that the mock factory runs before module resolution. Pattern
 // mirrors middleware.test.ts — mock lib/auth before importing the composed app.
 const { mockGetSession } = vi.hoisted(() => ({
@@ -151,9 +155,8 @@ describe("GET /api/_docs/openapi.json (OpenAPI spec)", () => {
     const res = await app.request("/api/_docs/openapi.json");
     const body = await res.json();
 
-    expect(Object.keys(body.paths as Record<string, unknown>)).toEqual(
-      expect.arrayContaining(EXPECTED_PATHS as unknown as string[]),
-    );
+    const paths = isRecord(body) && isRecord(body.paths) ? body.paths : {};
+    expect(Object.keys(paths)).toEqual(expect.arrayContaining([...EXPECTED_PATHS]));
   });
 
   it("defines bearerAuth in components.securitySchemes", async () => {
