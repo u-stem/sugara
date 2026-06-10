@@ -64,7 +64,7 @@ sugara の設定画面からAPIキーを発行してください。
 | 変数名 | 必須 | 説明 |
 |---|---|---|
 | `SUGARA_API_KEY` | ✓ | sugara の設定画面で発行した API キー (`sk_...`) |
-| `SUGARA_API_URL` | ✓ | API の URL (例: `https://sugara.app`、ローカルは `http://localhost:3000`) |
+| `SUGARA_API_URL` | ✓ | API の URL。`https://` 推奨。`http://` は `localhost` / `127.0.0.1` のみ許可 (例: `https://sugara.app`、ローカルは `http://localhost:3000`) |
 
 ## 注意事項
 

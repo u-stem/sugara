@@ -8,6 +8,28 @@ function makeResponse(body: unknown, status: number): Response {
   });
 }
 
+// Type guard helpers for inspecting recorded mock fetch calls without unsafe casts.
+
+function getFirstCallUrl(calls: Parameters<FetchLike>[]): string {
+  const first = calls[0];
+  if (first === undefined) throw new Error("no fetch calls recorded");
+  const [urlArg] = first;
+  return typeof urlArg === "string" ? urlArg : urlArg.toString();
+}
+
+function getFirstCallHeaders(calls: Parameters<FetchLike>[]): Record<string, string> {
+  const first = calls[0];
+  if (first === undefined) throw new Error("no fetch calls recorded");
+  const [, initArg] = first;
+  if (!initArg) throw new Error("no RequestInit in fetch call");
+  const { headers } = initArg;
+  if (typeof headers !== "object" || headers === null || Array.isArray(headers)) {
+    throw new Error("expected plain object headers, got something else");
+  }
+  // Safe: runtime checks above confirm it is a plain string-keyed object record
+  return headers as Record<string, string>;
+}
+
 describe("ApiClient", () => {
   let mockFetch: ReturnType<typeof vi.fn<FetchLike>>;
   let client: ApiClient;
@@ -26,9 +48,8 @@ describe("ApiClient", () => {
       await client.listTrips();
 
       // Assert
-      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-      const headers = init.headers as Record<string, string>;
-      expect(headers["Authorization"]).toBe("Bearer sk_test_key");
+      const headers = getFirstCallHeaders(mockFetch.mock.calls);
+      expect(headers.Authorization).toBe("Bearer sk_test_key");
     });
 
     it("does not include the API key in error messages on 401", async () => {
@@ -37,16 +58,30 @@ describe("ApiClient", () => {
         makeResponse({ error: { code: "unauthorized", message: "bad key" } }, 401),
       );
 
-      // Act
-      let errorMessage = "";
-      try {
-        await client.listTrips();
-      } catch (err) {
-        errorMessage = err instanceof Error ? err.message : "";
-      }
+      // Act + Assert: must throw AND the message must not expose the key
+      await expect(client.listTrips()).rejects.toThrow(
+        expect.objectContaining({ message: expect.not.stringContaining("sk_test_key") }),
+      );
+    });
 
-      // Assert
-      expect(errorMessage).not.toContain("sk_test_key");
+    it("does not include the API key in error messages on network failure", async () => {
+      // Arrange
+      mockFetch.mockRejectedValue(new TypeError("fetch failed"));
+
+      // Act + Assert
+      await expect(client.listTrips()).rejects.toThrow(
+        expect.objectContaining({ message: expect.not.stringContaining("sk_test_key") }),
+      );
+    });
+
+    it("does not include the API key in error messages on non-JSON 500", async () => {
+      // Arrange — non-JSON body causes safeParse to fail, falling back to "HTTP 500 error"
+      mockFetch.mockResolvedValue(new Response("Internal Server Error", { status: 500 }));
+
+      // Act + Assert
+      await expect(client.listTrips()).rejects.toThrow(
+        expect.objectContaining({ message: expect.not.stringContaining("sk_test_key") }),
+      );
     });
   });
 
@@ -149,7 +184,7 @@ describe("ApiClient", () => {
       await client.listTrips({ limit: 10 });
 
       // Assert
-      const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const url = getFirstCallUrl(mockFetch.mock.calls);
       expect(url).toContain("limit=10");
     });
 
@@ -161,7 +196,7 @@ describe("ApiClient", () => {
       await client.listTrips({ offset: 20 });
 
       // Assert
-      const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const url = getFirstCallUrl(mockFetch.mock.calls);
       expect(url).toContain("offset=20");
     });
 
@@ -173,7 +208,7 @@ describe("ApiClient", () => {
       await client.listTrips({ scope: "owned" });
 
       // Assert
-      const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const url = getFirstCallUrl(mockFetch.mock.calls);
       expect(url).toContain("scope=owned");
     });
   });

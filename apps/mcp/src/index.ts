@@ -13,7 +13,7 @@ async function main(): Promise<void> {
 
   const server = new McpServer({
     name: "sugara-mcp",
-    version: "1.0.0",
+    version: "0.0.0",
   });
 
   registerTools(server, client);

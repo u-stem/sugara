@@ -3,6 +3,9 @@ import { z } from "zod";
 import type { ApiClient } from "./client.js";
 
 // Exported raw shapes for testing (input schema validation can be checked against these)
+// Note: z.string().uuid() validates strict UUID v4 format, which is stricter than the
+// v1 API's guid() validator (which also accepts v1-v5). All IDs are v4-generated in
+// practice, so this extra strictness causes no real-world rejections.
 export const INPUT_SHAPES = {
   list_trips: {
     scope: z.enum(["owned", "shared"]).optional(),
