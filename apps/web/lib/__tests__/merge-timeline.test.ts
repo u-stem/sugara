@@ -286,6 +286,99 @@ describe("buildMergedTimeline", () => {
   });
 });
 
+describe("buildMergedTimeline with intermediate cross-day entries", () => {
+  function makeIntermediateEntry(overrides: Partial<ScheduleResponse> = {}): CrossDayEntry {
+    return { ...makeCrossDayEntry(overrides), crossDayPosition: "intermediate" };
+  }
+
+  it("pins intermediate entry before a null-startTime schedule (new schedule on a stay-over day)", () => {
+    // Bug repro: adding a schedule (no startTime) on an intermediate stay-over
+    // day must land below the 滞在中 entry, not above it.
+    const schedules = [makeSchedule({ id: "s-new", startTime: undefined })];
+    const crossDayEntries = [makeIntermediateEntry({ id: "hotel", endTime: "11:00" })];
+    expect(ids(buildMergedTimeline(schedules, crossDayEntries))).toEqual(["c-hotel", "s-new"]);
+  });
+
+  it("pins intermediate entry first even when a schedule starts before its endTime", () => {
+    // The endTime is the checkout time on the FINAL day; it must not position
+    // the entry on intermediate days.
+    const schedules = [makeSchedule({ id: "s-10", startTime: "10:00" })];
+    const crossDayEntries = [makeIntermediateEntry({ id: "hotel", endTime: "11:00" })];
+    expect(ids(buildMergedTimeline(schedules, crossDayEntries))).toEqual(["c-hotel", "s-10"]);
+  });
+
+  it("pins intermediate first while final entries still merge by endTime", () => {
+    const schedules = [makeSchedule({ id: "s-11", startTime: "11:00" })];
+    const crossDayEntries = [
+      makeCrossDayEntry({ id: "hotel-b", endTime: "10:00" }),
+      makeIntermediateEntry({ id: "hotel-a", endTime: "12:00" }),
+    ];
+    expect(ids(buildMergedTimeline(schedules, crossDayEntries))).toEqual([
+      "c-hotel-a",
+      "c-hotel-b",
+      "s-11",
+    ]);
+  });
+
+  it("places a new null-startTime schedule after schedules anchored to the intermediate entry", () => {
+    // User scenario: existing schedules were dragged below 滞在中 (anchor
+    // 'after'); a newly added schedule must append at the bottom.
+    const hotelId = "hotel";
+    const schedules = [
+      makeSchedule({
+        id: "anchored",
+        crossDayAnchor: "after",
+        crossDayAnchorSourceId: hotelId,
+        sortOrder: 0,
+      }),
+      makeSchedule({ id: "s-new", startTime: undefined, sortOrder: 1 }),
+    ];
+    const crossDayEntries = [makeIntermediateEntry({ id: hotelId, endTime: "11:00" })];
+    expect(ids(buildMergedTimeline(schedules, crossDayEntries))).toEqual([
+      "c-hotel",
+      "anchored",
+      "s-new",
+    ]);
+  });
+
+  it("keeps anchor='before' schedules above the pinned intermediate entry", () => {
+    const hotelId = "hotel";
+    const schedules = [
+      makeSchedule({
+        id: "b1",
+        crossDayAnchor: "before",
+        crossDayAnchorSourceId: hotelId,
+        sortOrder: 0,
+      }),
+      makeSchedule({ id: "plain", startTime: undefined, sortOrder: 1 }),
+    ];
+    const crossDayEntries = [makeIntermediateEntry({ id: hotelId, endTime: "11:00" })];
+    expect(ids(buildMergedTimeline(schedules, crossDayEntries))).toEqual([
+      "b1",
+      "c-hotel",
+      "plain",
+    ]);
+  });
+
+  it("keeps multiple intermediate entries in source order at the top", () => {
+    const schedules = [makeSchedule({ id: "s1", startTime: undefined })];
+    const crossDayEntries = [
+      makeIntermediateEntry({ id: "hotel-day1", endTime: "11:00" }),
+      makeIntermediateEntry({ id: "hotel-day2", endTime: "10:00" }),
+    ];
+    expect(ids(buildMergedTimeline(schedules, crossDayEntries))).toEqual([
+      "c-hotel-day1",
+      "c-hotel-day2",
+      "s1",
+    ]);
+  });
+
+  it("returns only the intermediate entry when schedules is empty", () => {
+    const crossDayEntries = [makeIntermediateEntry({ id: "hotel", endTime: "11:00" })];
+    expect(ids(buildMergedTimeline([], crossDayEntries))).toEqual(["c-hotel"]);
+  });
+});
+
 describe("buildMergedTimeline with cross-day anchors", () => {
   function makeAnchoredSchedule(
     id: string,
