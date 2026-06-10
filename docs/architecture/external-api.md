@@ -103,10 +103,30 @@ v1 は独立した Hono インスタンス（`v1App`）として `app.route("/ap
 
 v1 のマウントは**全内部ルーターより先**に置く。Hono は登録順にハンドラを実行するため、後段マウントだと兄弟ルーターの wildcard middleware（例: `/api` 直下にマウントされたルーターの `use("*", requireAuth)`）が v1 の Bearer 認証より先に走り、Cookie 認証の応答で横取りされる（実際に発生した回帰。`v1-mounting.test.ts` が合成済み `app` 経由で再発を検出する）。加えて `v1App` 末尾の catch-all が未知の `/api/v1` パスを v1 形式の `404 not_found` で終端し、親側へのフォールスルーを構造的に断つ。
 
+## OpenAPI ドキュメント
+
+v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
+
+**マウント先**: `/api/_docs`（`/api/v1` の外）
+
+`/api/v1` は 100% Bearer 認証のドメインとして不変にするため、Cookie 認証が必要なドキュメントエンドポイントは別プレフィックスにマウントする。
+
+| パス | 概要 |
+|---|---|
+| `/api/_docs/openapi.json` | OpenAPI 3.1 spec（JSON） |
+| `/api/_docs` | Scalar UI（API リファレンス） |
+
+**認証**: `requireAuth` + `requireNonGuest`（Cookie セッション + 本登録ユーザー限定）。ゲストアカウントや未認証ユーザーには公開しない。
+
+**spec の内容**: v1 の 7 エンドポイントのみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
+
+**Scalar UI のアセット**: Scalar の JS/CSS は `cdn.jsdelivr.net` から読み込む。認証済み内部ページのため、外部 CDN からのアセット読み込みは許容される（公開 Web アプリの CSP 対象外）。
+
+**実装**: `hono-openapi` の `describeRoute` を v1 の 7 ルートに追加してメタデータを付与し、`generateSpecs(v1App, ...)` で spec を生成。`@scalar/hono-api-reference` の `Scalar` ミドルウェアで UI を提供。
+
 ## 今後の課題
 
 - レート制限の具体値（IP 段の window/max）を実負荷に基づいて調整
-- OpenAPI spec（`/api/_docs`）および Scalar UI の整備
 - キー ID 単位のレート制限・`X-RateLimit-*` ヘッダ（公開拡大時に後方互換追加）
 - 書き込み系スコープ（`trips:write` / `expenses:write`）の追加
 - MCP サーバによる LLM 連携（v1 REST を下層として薄くラップ）

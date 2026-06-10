@@ -16,6 +16,7 @@ import { candidateRoutes } from "./routes/candidates";
 import { cronRoutes } from "./routes/cron";
 import { directionsRoutes } from "./routes/directions";
 import { discordWebhookRoutes } from "./routes/discord-webhook";
+import { docsRoutes } from "./routes/docs";
 import { exchangeRateRoutes } from "./routes/exchange-rate";
 import { expenseRoutes } from "./routes/expenses";
 import { faqRoutes } from "./routes/faqs";
@@ -126,5 +127,10 @@ app.route("/", adminRoutes);
 app.route("/", faqRoutes);
 app.route("/", announcementRoutes);
 app.route("/api/api-keys", apiKeyRoutes);
+
+// _docs is mounted after all internal routers. It has no interference with v1
+// (different prefix) and its per-route requireAuth + requireNonGuest guards mean
+// no wildcard auth can leak out to siblings.
+app.route("/api/_docs", docsRoutes);
 
 export { app };

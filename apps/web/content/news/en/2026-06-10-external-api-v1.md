@@ -24,4 +24,8 @@ Go to the "API Keys" tab in Settings to issue, list, and delete API keys. When i
 - Changing or resetting your password revokes all your issued API keys for security
 - Guest accounts cannot use this feature
 
+### API reference
+
+While logged in, open `/api/_docs` to browse the list of available APIs and try them out interactively.
+
 Please send us your feedback from the Settings page.
