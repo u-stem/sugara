@@ -899,6 +899,7 @@ export default function TripDetailPage() {
                 collisionDetection={dnd.collisionDetection}
                 onDragStart={dnd.handleDragStart}
                 onDragOver={dnd.handleDragOver}
+                onDragMove={dnd.handleDragMove}
                 onDragEnd={dnd.handleDragEnd}
                 accessibility={{ announcements: dndAnnouncements }}
               >

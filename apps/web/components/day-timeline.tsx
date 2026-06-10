@@ -1,7 +1,7 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext } from "@dnd-kit/sortable";
 import type { CrossDayEntry, ScheduleResponse, TripResponse } from "@sugara/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -30,11 +30,11 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { DROP_ZONE_ACTIVE } from "@/lib/colors";
+import { noShiftSortingStrategy } from "@/lib/dnd-sorting";
+import { indicatorGapIndex } from "@/lib/drop-position";
 import { compareByStartTime, formatDate } from "@/lib/format";
-
 import { useSelection } from "@/lib/hooks/selection-context";
 import { useMobile } from "@/lib/hooks/use-is-mobile";
-
 import type { TimelineItem } from "@/lib/merge-timeline";
 import { buildMergedTimeline, timelineSortableIds } from "@/lib/merge-timeline";
 import { queryKeys } from "@/lib/query-keys";
@@ -200,19 +200,26 @@ export function DayTimeline({
   const scheduleIndexById = useMemo(() => new Map(schedules.map((s, i) => [s.id, i])), [schedules]);
 
   const inlineIndicator = <DndInsertIndicator />;
-  // Indicator side mirrors `upperHalf` from the drag-over event so the blue
-  // line renders on the same edge the drop will actually land on.
-  const overlayIndicator = (
-    <DndInsertIndicator overlay position={overUpperHalf ? "top" : "bottom"} />
+  // The hovered card + upperHalf pair is normalized to a gap index so that
+  // "lower half of item i" and "upper half of item i+1" — which drop into the
+  // same position — render the line at one canonical spot instead of two.
+  const insertGapIndex = useMemo(
+    () => indicatorGapIndex(sortableIds, overScheduleId ?? null, overUpperHalf),
+    [sortableIds, overScheduleId, overUpperHalf],
   );
 
   function renderItem(item: TimelineItem, i: number, opts?: { selectable?: boolean }) {
     const isFirst = i === 0;
     const isLast = i === merged.length - 1;
 
-    const sortableId =
-      item.type === "crossDay" ? `cross-${item.entry.schedule.id}` : item.schedule.id;
-    const showInsertIndicator = overScheduleId != null && sortableId === overScheduleId;
+    // Gap k renders above item k; the "after the last item" gap (k === length)
+    // renders on the bottom edge of the last item.
+    const overlayIndicator =
+      insertGapIndex === i ? (
+        <DndInsertIndicator overlay position="top" />
+      ) : isLast && insertGapIndex === merged.length ? (
+        <DndInsertIndicator overlay position="bottom" />
+      ) : null;
 
     if (item.type === "crossDay") {
       const {
@@ -226,7 +233,7 @@ export function DayTimeline({
         totalDays != null ? totalDays - sourceDayNumber : maxEndDayOffset;
       return (
         <div key={`cross-${s.id}`} className="relative">
-          {showInsertIndicator && overlayIndicator}
+          {overlayIndicator}
           <ScheduleItem
             {...s}
             tripId={tripId}
@@ -260,7 +267,7 @@ export function DayTimeline({
 
     return (
       <div key={schedule.id} className="relative">
-        {showInsertIndicator && overlayIndicator}
+        {overlayIndicator}
         <ScheduleItem
           {...schedule}
           tripId={tripId}
@@ -479,7 +486,7 @@ export function DayTimeline({
         </div>
       ) : (
         <div ref={setDroppableRef}>
-          <SortableContext items={sortableIds} strategy={verticalListSortingStrategy}>
+          <SortableContext items={sortableIds} strategy={noShiftSortingStrategy}>
             <div className="space-y-1.5">
               {merged.map((item, i) => {
                 const next = merged[i + 1];

@@ -2,6 +2,7 @@ import {
   type CollisionDetection,
   closestCorners,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
   MouseSensor,
@@ -27,8 +28,9 @@ import {
   computeScheduleReorderResult,
   type DropTarget,
   isOverUpperHalf,
+  timelineEdge,
 } from "@/lib/drop-position";
-import { buildMergedTimeline } from "@/lib/merge-timeline";
+import { buildMergedTimeline, timelineSortableIds } from "@/lib/merge-timeline";
 
 type ActiveDragItem = {
   id: string;
@@ -64,6 +66,7 @@ const TOUCH_SENSOR_OPTIONS = {
 function buildDropTarget(
   event: DragEndEvent,
   savedLastOverZone: "timeline" | "candidates" | null,
+  headSortableId: string | null,
 ): DropTarget {
   const { over, activatorEvent, delta } = event;
   if (!over) {
@@ -87,6 +90,17 @@ function buildDropTarget(
   }
   const overType = over.data.current?.type as string | undefined;
   if (overType === "timeline" || overType === "candidates") {
+    // The wrapper wins the collision when the pointer is outside every card.
+    // Above the list that means "insert at the head" — resolve to the first
+    // sortable's upper half so the drop shares the schedule-target semantics
+    // (insert index and crossDay anchor inference) with the indicator.
+    if (
+      overType === "timeline" &&
+      headSortableId != null &&
+      timelineEdge(activatorEvent, delta.y, over.rect) === "head"
+    ) {
+      return { kind: "schedule", overId: headSortableId, upperHalf: true };
+    }
     return { kind: "timeline" };
   }
   if (overType === "schedule" || overType === "candidate") {
@@ -177,7 +191,21 @@ export function useTripDragAndDrop({
     setLocalCandidates([...candidates]);
   }
 
-  function handleDragOver(event: DragOverEvent) {
+  // First sortable id of the merged timeline (crossDay entries included) —
+  // the target the "drag above the list" head case resolves to.
+  function firstTimelineSortableId(): string | null {
+    const merged = buildMergedTimeline(localSchedules ?? schedules, crossDayEntries);
+    const ids = timelineSortableIds(merged);
+    return ids.length > 0 ? ids[0] : null;
+  }
+
+  // Shared by onDragOver and onDragMove. dnd-kit fires onDragOver only when
+  // the over target CHANGES — moving the pointer within the same droppable
+  // (e.g. lifting it above the list while the timeline wrapper stays the
+  // over target, or crossing a card's midline) emits no onDragOver. The
+  // position-dependent state (upperHalf, head/tail edge) therefore must also
+  // be re-evaluated from onDragMove, which fires on every movement.
+  function updateOverState(event: DragOverEvent | DragMoveEvent) {
     const { over, activatorEvent, delta } = event;
     if (!over) {
       // Keep overScheduleId so the insert indicator doesn't jump to the
@@ -187,13 +215,25 @@ export function useTripDragAndDrop({
     }
     const overType = over.data.current?.type as string | undefined;
     if (overType === "schedule" || overType === "timeline") {
-      // Only update overScheduleId when hovering a specific schedule.
-      // When hovering the timeline droppable (gap between items), keep the
-      // previous value so the insert indicator doesn't briefly jump to the
-      // bottom of the list.
       if (overType === "schedule") {
         setOverScheduleId(String(over.id));
         setOverUpperHalf(isOverUpperHalf(activatorEvent, delta.y, over.rect));
+      } else {
+        // The timeline wrapper wins the collision only when the pointer is
+        // outside every card. Above the list = the head gap; below = the
+        // append-at-end inline indicator (overScheduleId null). "inside"
+        // (a gap the wrapper stole) keeps the previous, more specific value
+        // so the indicator doesn't briefly jump while crossing gaps.
+        const edge = timelineEdge(activatorEvent, delta.y, over.rect);
+        if (edge === "head") {
+          const headId = firstTimelineSortableId();
+          if (headId != null) {
+            setOverScheduleId(headId);
+            setOverUpperHalf(true);
+          }
+        } else if (edge === "tail") {
+          setOverScheduleId(null);
+        }
       }
       setOverCandidateId(null);
       setLastOverZone("timeline");
@@ -208,6 +248,14 @@ export function useTripDragAndDrop({
       setOverCandidateId(null);
       setLastOverZone(null);
     }
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    updateOverState(event);
+  }
+
+  function handleDragMove(event: DragMoveEvent) {
+    updateOverState(event);
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -248,7 +296,7 @@ export function useTripDragAndDrop({
         const activeIdx = currentSchedules.findIndex((s) => s.id === activeId);
         if (activeIdx === -1) return;
 
-        const target = buildDropTarget(event, savedLastOverZone);
+        const target = buildDropTarget(event, savedLastOverZone, firstTimelineSortableId());
         const reorderResult = computeScheduleReorderResult(
           currentSchedules,
           crossDayEntries,
@@ -368,7 +416,7 @@ export function useTripDragAndDrop({
 
         setLocalCandidates(currentCandidates.filter((c) => c.id !== active.id));
 
-        const target = buildDropTarget(event, savedLastOverZone);
+        const target = buildDropTarget(event, savedLastOverZone, firstTimelineSortableId());
         const { insertIndex: insertIdx, anchor } = computeCandidateDropResult(
           currentSchedules,
           crossDayEntries,
@@ -609,6 +657,7 @@ export function useTripDragAndDrop({
     localCandidates: localCandidates ?? candidates,
     handleDragStart,
     handleDragOver,
+    handleDragMove,
     handleDragEnd,
     reorderSchedule,
     reorderCandidate,
