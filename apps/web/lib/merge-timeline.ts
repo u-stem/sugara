@@ -37,7 +37,7 @@ export function buildMergedTimeline(
   const validSourceIds = new Set(crossDayEntries.map((e) => e.schedule.id));
 
   const intermediateEntries = crossDayEntries.filter((e) => e.crossDayPosition === "intermediate");
-  const finalEntries = crossDayEntries.filter((e) => e.crossDayPosition !== "intermediate");
+  const finalEntries = crossDayEntries.filter((e) => e.crossDayPosition === "final");
 
   const anchoredBefore: ScheduleResponse[] = [];
   const anchoredAfter: ScheduleResponse[] = [];
