@@ -275,6 +275,120 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
     expect(result.current.overScheduleId).toBe("s2");
   });
 
+  it("targets the first item's upper half when pointer is above the timeline zone", () => {
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+
+    // Pointer above the timeline zone top (clientY 50 < rect.top 100)
+    act(() => {
+      result.current.handleDragOver({
+        active: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "timeline",
+          data: { current: { type: "timeline" } },
+          rect: { width: 800, height: 400, top: 100, left: 0, bottom: 500, right: 800 },
+          disabled: false,
+        },
+        collisions: null,
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointermove", { clientY: 50 }),
+      } as Parameters<typeof result.current.handleDragOver>[0]);
+    });
+
+    expect(result.current.overScheduleId).toBe("s1");
+    expect(result.current.overUpperHalf).toBe(true);
+  });
+
+  it("clears overScheduleId when pointer is below the timeline zone", () => {
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+
+    // Hover a card first so overScheduleId is non-null
+    act(() => {
+      result.current.handleDragOver({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { width: 800, height: 100, top: 300, left: 0, bottom: 400, right: 800 },
+          disabled: false,
+        },
+        collisions: null,
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointermove", { clientY: 350 }),
+      } as Parameters<typeof result.current.handleDragOver>[0]);
+    });
+    expect(result.current.overScheduleId).toBe("s2");
+
+    // Pointer below the timeline zone bottom (clientY 600 > rect.bottom 500)
+    act(() => {
+      result.current.handleDragOver({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "timeline",
+          data: { current: { type: "timeline" } },
+          rect: { width: 800, height: 400, top: 100, left: 0, bottom: 500, right: 800 },
+          disabled: false,
+        },
+        collisions: null,
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointermove", { clientY: 600 }),
+      } as Parameters<typeof result.current.handleDragOver>[0]);
+    });
+
+    expect(result.current.overScheduleId).toBeNull();
+  });
+
   it("keeps overScheduleId when over becomes null during drag", () => {
     const { result } = renderHook(() =>
       useTripDragAndDrop({

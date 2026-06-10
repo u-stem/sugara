@@ -8,6 +8,7 @@ import {
   type DropTarget,
   indicatorGapIndex,
   isOverUpperHalf,
+  timelineEdge,
 } from "../drop-position";
 
 function makeSchedule(overrides: Partial<ScheduleResponse> = {}): ScheduleResponse {
@@ -558,6 +559,37 @@ describe("computeScheduleReorderResult returns anchor info for crossDay drops", 
     const result = computeScheduleReorderResult([s0, sOther], [hotelEarly], "sOther", target);
     expect(result).not.toBeNull();
     expect(result?.anchor).toEqual({ anchor: null, anchorSourceId: null });
+  });
+});
+
+describe("timelineEdge", () => {
+  const rect = { top: 100, bottom: 500 };
+
+  it("returns head when the pointer is above the zone top", () => {
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 50 }), 0, rect)).toBe("head");
+  });
+
+  it("returns tail when the pointer is below the zone bottom", () => {
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 600 }), 0, rect)).toBe("tail");
+  });
+
+  it("returns inside when the pointer is within the zone", () => {
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 300 }), 0, rect)).toBe("inside");
+  });
+
+  it("offsets the activation position by the drag delta", () => {
+    // Grabbed at y=300 (inside), dragged up by 250 → now above the top.
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 300 }), -250, rect)).toBe(
+      "head",
+    );
+  });
+
+  it("returns null when the rect is missing", () => {
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 50 }), 0, null)).toBeNull();
+  });
+
+  it("returns null when the activator event has no pointer position", () => {
+    expect(timelineEdge(null, 0, rect)).toBeNull();
   });
 });
 

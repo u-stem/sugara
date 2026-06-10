@@ -1,16 +1,9 @@
 import type { CrossDayEntry, ScheduleResponse } from "@sugara/shared";
 import { buildMergedTimeline, type TimelineItem, timelineSortableIds } from "./merge-timeline";
 
-/**
- * Determine whether the pointer currently sits in the upper half of the
- * drop target's bounding rect. Works with pointer, mouse, and touch events.
- */
-export function isOverUpperHalf(
-  activatorEvent: Event | null,
-  deltaY: number,
-  overRect: { top: number; height: number } | null | undefined,
-): boolean {
-  if (!overRect || !activatorEvent) return false;
+/** Current pointer Y = activation position + drag delta. Works with pointer, mouse, and touch events. */
+function resolvePointerY(activatorEvent: Event | null, deltaY: number): number | null {
+  if (!activatorEvent) return null;
   let startY: number | null = null;
   const ev = activatorEvent as PointerEvent | MouseEvent | TouchEvent;
   if ("clientY" in ev && typeof ev.clientY === "number") {
@@ -18,10 +11,44 @@ export function isOverUpperHalf(
   } else if ("touches" in ev && ev.touches?.[0]) {
     startY = ev.touches[0].clientY;
   }
-  if (startY == null) return false;
-  const currentY = startY + deltaY;
+  if (startY == null) return null;
+  return startY + deltaY;
+}
+
+/**
+ * Determine whether the pointer currently sits in the upper half of the
+ * drop target's bounding rect.
+ */
+export function isOverUpperHalf(
+  activatorEvent: Event | null,
+  deltaY: number,
+  overRect: { top: number; height: number } | null | undefined,
+): boolean {
+  if (!overRect) return false;
+  const currentY = resolvePointerY(activatorEvent, deltaY);
+  if (currentY == null) return false;
   const midY = overRect.top + overRect.height / 2;
   return currentY < midY;
+}
+
+/**
+ * Locate the pointer relative to the timeline zone rect. The wrapper
+ * droppable wins the collision only when the pointer is outside every card —
+ * above the list ("head", insert at the top), below it ("tail", append at the
+ * end), or in a gap the wrapper happened to steal ("inside", where callers
+ * should keep their previous, more specific target).
+ */
+export function timelineEdge(
+  activatorEvent: Event | null,
+  deltaY: number,
+  rect: { top: number; bottom: number } | null | undefined,
+): "head" | "tail" | "inside" | null {
+  if (!rect) return null;
+  const currentY = resolvePointerY(activatorEvent, deltaY);
+  if (currentY == null) return null;
+  if (currentY < rect.top) return "head";
+  if (currentY > rect.bottom) return "tail";
+  return "inside";
 }
 
 /**
