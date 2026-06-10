@@ -45,6 +45,7 @@ import { v1App } from "../routes/v1/index";
 // ---------------------------------------------------------------------------
 
 const TRIP_ID = "cccccccc-0000-0000-0000-000000000001";
+const TRIP_ID_2 = "cccccccc-0000-0000-0000-000000000002";
 const LIST_ID = "eeeeeeee-0000-0000-0000-000000000001";
 // USER_ID_1 < USER_ID_2 lexicographically → memberNo 1 and 2 respectively
 const USER_ID_1 = "aaaaaaaa-0000-0000-0000-000000000001";
@@ -76,6 +77,190 @@ function mockCountQuery(total: number) {
     }),
   });
 }
+
+// Mocks the three sequential db.select() calls made by GET /trips:
+//   1. count query  → .from().where()
+//   2. trip rows    → .from().innerJoin().where().orderBy().limit().offset()
+//   3. member count → .from().where().groupBy()
+type TripListRow = {
+  id: string;
+  title: string;
+  startDate: string | null;
+  endDate: string | null;
+  currency: string;
+  role: string;
+  updatedAt: Date;
+};
+
+function mockTripListQueries({
+  countTotal,
+  tripRows,
+  memberCountRows,
+}: {
+  countTotal: number;
+  tripRows: TripListRow[];
+  memberCountRows: { tripId: string; memberCount: number }[];
+}) {
+  const countChain = {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([{ total: countTotal }]),
+    }),
+  };
+  const tripsChain = {
+    from: vi.fn().mockReturnValue({
+      innerJoin: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              offset: vi.fn().mockResolvedValue(tripRows),
+            }),
+          }),
+        }),
+      }),
+    }),
+  };
+  const mcChain = {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        groupBy: vi.fn().mockResolvedValue(memberCountRows),
+      }),
+    }),
+  };
+  mockDbSelect
+    .mockReturnValueOnce(countChain)
+    .mockReturnValueOnce(tripsChain)
+    .mockReturnValueOnce(mcChain);
+}
+
+// ---------------------------------------------------------------------------
+// Trip list — GET /trips
+// ---------------------------------------------------------------------------
+
+describe("GET /trips", () => {
+  const tripListRow1: TripListRow = {
+    id: TRIP_ID,
+    title: "Tokyo Trip",
+    startDate: "2026-06-01",
+    endDate: "2026-06-05",
+    currency: "JPY",
+    role: "owner",
+    updatedAt: new Date("2026-06-10T00:00:00Z"),
+  };
+
+  const tripListRow2: TripListRow = {
+    id: TRIP_ID_2,
+    title: "Osaka Trip",
+    startDate: "2026-07-01",
+    endDate: null,
+    currency: "JPY",
+    role: "editor",
+    updatedAt: new Date("2026-07-01T00:00:00Z"),
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 401 when Authorization header is missing", async () => {
+    const res = await v1App.request("/trips");
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "unauthorized", message: expect.any(String) } });
+  });
+
+  it("returns paginated trip list with correct shape when scope is omitted", async () => {
+    setupValidKey();
+    mockTripListQueries({
+      countTotal: 1,
+      tripRows: [tripListRow1],
+      memberCountRows: [{ tripId: TRIP_ID, memberCount: 3 }],
+    });
+
+    const res = await v1App.request("/trips", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].id).toBe(TRIP_ID);
+    expect(body.data[0].title).toBe("Tokyo Trip");
+    expect(body.data[0].role).toBe("owner");
+    expect(body.pagination).toEqual({ limit: 50, offset: 0, total: 1 });
+  });
+
+  it("returns owner-role trips when scope=owned", async () => {
+    setupValidKey();
+    mockTripListQueries({
+      countTotal: 1,
+      tripRows: [tripListRow1],
+      memberCountRows: [{ tripId: TRIP_ID, memberCount: 2 }],
+    });
+
+    const res = await v1App.request("/trips?scope=owned", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data[0].role).toBe("owner");
+  });
+
+  it("returns non-owner trips when scope=shared", async () => {
+    setupValidKey();
+    mockTripListQueries({
+      countTotal: 1,
+      tripRows: [tripListRow2],
+      memberCountRows: [{ tripId: TRIP_ID_2, memberCount: 3 }],
+    });
+
+    const res = await v1App.request("/trips?scope=shared", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data[0].role).toBe("editor");
+  });
+
+  it("attaches memberCount from the member count subquery", async () => {
+    setupValidKey();
+    mockTripListQueries({
+      countTotal: 1,
+      tripRows: [tripListRow1],
+      memberCountRows: [{ tripId: TRIP_ID, memberCount: 5 }],
+    });
+
+    const res = await v1App.request("/trips", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data[0].memberCount).toBe(5);
+  });
+
+  it("reflects custom limit, offset, and total in the pagination object", async () => {
+    setupValidKey();
+    mockTripListQueries({
+      countTotal: 20,
+      tripRows: [tripListRow1, tripListRow2],
+      memberCountRows: [
+        { tripId: TRIP_ID, memberCount: 2 },
+        { tripId: TRIP_ID_2, memberCount: 1 },
+      ],
+    });
+
+    const res = await v1App.request("/trips?limit=2&offset=10", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.pagination).toEqual({ limit: 2, offset: 10, total: 20 });
+  });
+
+  it("returns 400 for an invalid scope value", async () => {
+    setupValidKey();
+
+    const res = await v1App.request("/trips?scope=invalid", { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "invalid_request", message: expect.any(String) } });
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Trip detail — GET /trips/:id
