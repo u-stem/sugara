@@ -610,3 +610,13 @@ v1App.get("/articles/:id", requireApiKey("articles:read"), async (c) => {
     updatedAt: article.updatedAt.toISOString(),
   });
 });
+
+// ---------- Catch-all ----------
+//
+// Terminal handler for any /api/v1 path not matched above. Without it, an
+// unknown v1 path would fall through the mount into the parent app's chain
+// (sibling routers' middleware, global notFound) and answer with an internal
+// error shape. This keeps the entire /api/v1 namespace self-contained.
+v1App.all("*", () => {
+  throw new ApiV1Error(404, "not_found", "Not found");
+});

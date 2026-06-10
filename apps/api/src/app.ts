@@ -77,6 +77,14 @@ app.get("/api/health", (c) => {
   return c.json({ status: "ok" });
 });
 
+// v1 is mounted BEFORE all internal routers. Hono runs matching handlers in
+// registration order, so mounting v1 first guarantees no sibling router's
+// wildcard middleware (e.g. a use("*", requireAuth) under the "/api" prefix)
+// can run ahead of v1's Bearer auth and intercept /api/v1 requests with the
+// internal cookie-auth response. v1's own catch-all terminates every /api/v1
+// path, so nothing falls through to the routers below.
+app.route("/api/v1", v1App);
+
 app.route("/", authRoutes);
 app.route("/api/trips", tripRoutes);
 app.route("/api/trips", patternRoutes);
@@ -118,6 +126,5 @@ app.route("/", adminRoutes);
 app.route("/", faqRoutes);
 app.route("/", announcementRoutes);
 app.route("/api/api-keys", apiKeyRoutes);
-app.route("/api/v1", v1App);
 
 export { app };
