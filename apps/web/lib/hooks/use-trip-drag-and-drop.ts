@@ -2,6 +2,7 @@ import {
   type CollisionDetection,
   closestCorners,
   type DragEndEvent,
+  type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
   MouseSensor,
@@ -198,7 +199,13 @@ export function useTripDragAndDrop({
     return ids.length > 0 ? ids[0] : null;
   }
 
-  function handleDragOver(event: DragOverEvent) {
+  // Shared by onDragOver and onDragMove. dnd-kit fires onDragOver only when
+  // the over target CHANGES — moving the pointer within the same droppable
+  // (e.g. lifting it above the list while the timeline wrapper stays the
+  // over target, or crossing a card's midline) emits no onDragOver. The
+  // position-dependent state (upperHalf, head/tail edge) therefore must also
+  // be re-evaluated from onDragMove, which fires on every movement.
+  function updateOverState(event: DragOverEvent | DragMoveEvent) {
     const { over, activatorEvent, delta } = event;
     if (!over) {
       // Keep overScheduleId so the insert indicator doesn't jump to the
@@ -241,6 +248,14 @@ export function useTripDragAndDrop({
       setOverCandidateId(null);
       setLastOverZone(null);
     }
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    updateOverState(event);
+  }
+
+  function handleDragMove(event: DragMoveEvent) {
+    updateOverState(event);
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -642,6 +657,7 @@ export function useTripDragAndDrop({
     localCandidates: localCandidates ?? candidates,
     handleDragStart,
     handleDragOver,
+    handleDragMove,
     handleDragEnd,
     reorderSchedule,
     reorderCandidate,

@@ -322,6 +322,74 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
     expect(result.current.overUpperHalf).toBe(true);
   });
 
+  it("resolves head via onDragMove when pointer rises above the zone without an over change", () => {
+    // dnd-kit fires onDragOver only when the over target changes. Moving the
+    // pointer above the list while the timeline wrapper stays the over target
+    // emits onDragMove only — the head state must be reachable from there.
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+
+    const timelineOver = {
+      id: "timeline",
+      data: { current: { type: "timeline" } },
+      rect: { width: 800, height: 400, top: 100, left: 0, bottom: 500, right: 800 },
+      disabled: false,
+    };
+
+    // over flips to the wrapper while the pointer is still inside it → keep
+    act(() => {
+      result.current.handleDragOver({
+        active: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: timelineOver,
+        collisions: null,
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointermove", { clientY: 150 }),
+      } as Parameters<typeof result.current.handleDragOver>[0]);
+    });
+    expect(result.current.overScheduleId).toBeNull();
+
+    // pointer rises above the zone top; over unchanged → only onDragMove fires
+    act(() => {
+      result.current.handleDragMove({
+        active: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: timelineOver,
+        collisions: null,
+        delta: { x: 0, y: -100 },
+        activatorEvent: new PointerEvent("pointermove", { clientY: 150 }),
+      } as Parameters<typeof result.current.handleDragMove>[0]);
+    });
+
+    expect(result.current.overScheduleId).toBe("s1");
+    expect(result.current.overUpperHalf).toBe(true);
+  });
+
   it("clears overScheduleId when pointer is below the timeline zone", () => {
     const { result } = renderHook(() =>
       useTripDragAndDrop({
