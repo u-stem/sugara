@@ -1,12 +1,14 @@
 import { isValidAvatarUrl } from "@sugara/shared";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { createAuthMiddleware } from "better-auth/api";
 import { anonymous } from "better-auth/plugins";
 import { username } from "better-auth/plugins/username";
 import { eq } from "drizzle-orm";
 import nodemailer from "nodemailer";
 import { db } from "../db/index";
 import * as schema from "../db/schema";
+import { handleAfterChangePassword } from "./auth-hooks";
 import {
   GUEST_EMAIL_DOMAIN,
   SEVEN_DAYS_MS,
@@ -63,6 +65,12 @@ export const auth = betterAuth({
     // Revoke all API keys on password reset. A compromised password could have
     // been used to create API keys; rotating the password must also invalidate
     // any long-lived tokens derived from that session.
+    //
+    // Fail-closed: no try-catch here. If revocation fails, the reset handler
+    // throws and Better Auth surfaces a 500. The password itself will already
+    // have been changed at that point, but silently swallowing the revocation
+    // failure would let long-lived tokens survive — we treat that as worse
+    // than requiring the user to retry. Intentionally no try-catch.
     onPasswordReset: async ({ user }) => {
       await revokeApiKeysByUserId(user.id);
     },
@@ -211,4 +219,13 @@ export const auth = betterAuth({
     username({ minUsernameLength: USERNAME_MIN_LENGTH, maxUsernameLength: USERNAME_MAX_LENGTH }),
   ],
   trustedOrigins: [env.FRONTEND_URL],
+  // POST /change-password (authenticated settings-page flow) does not fire
+  // onPasswordReset, so we hook it here to revoke API keys on successful
+  // password change. See auth-hooks.ts for the full rationale and fail-closed
+  // policy (no try-catch — revocation failure surfaces as 500).
+  hooks: {
+    after: createAuthMiddleware(async (ctx) => {
+      await handleAfterChangePassword(ctx);
+    }),
+  },
 });
