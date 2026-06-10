@@ -58,3 +58,4 @@ graph LR
 
 - **Better Auth** によるメール/パスワード認証
 - ゲストアカウント: 旅行1件まで、フレンド/ブックマーク/記事/グループは利用不可
+- **外部 API（v1）**: API キー（Bearer）認証。スクリプト・CLI・ローカル LLM 向け読み取り専用 REST API。詳細は [docs/architecture/external-api.md](external-api.md) を参照
