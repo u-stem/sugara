@@ -65,9 +65,11 @@ export function fromMinorUnits(minorAmount: number, currency: CurrencyCode): num
 }
 
 // Input step for an amount field: one minor unit expressed in major units (e.g. "0.01" for USD, "1" for JPY).
+// toFixed keeps the value in plain decimal notation; naive division would yield
+// exponent notation ("1e-7") for high-decimal currencies, which is invalid as an input step.
 export function getAmountInputStep(currency: CurrencyCode): string {
   const { decimals } = CURRENCIES[currency];
-  return decimals > 0 ? (1 / 10 ** decimals).toString() : "1";
+  return decimals > 0 ? (10 ** -decimals).toFixed(decimals) : "1";
 }
 
 // Converts fromMinor units of fromCurrency to minor units of baseCurrency.
