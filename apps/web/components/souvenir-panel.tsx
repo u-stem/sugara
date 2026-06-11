@@ -57,7 +57,7 @@ import {
 import { SelectionIndicator } from "@/components/ui/selection-indicator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { api, getApiErrorMessage } from "@/lib/api";
+import { api, apiVoid, getApiErrorMessage } from "@/lib/api";
 import { SELECTED_RING } from "@/lib/colors";
 import { isSafeUrl, stripProtocol } from "@/lib/format";
 import { queryKeys } from "@/lib/query-keys";
@@ -106,25 +106,36 @@ export function SouvenirPanel({ tripId, addOpen, onAddOpenChange }: SouvenirPane
       queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
     },
     onError: (err) => {
-      toast.error(getApiErrorMessage(err, tm("souvenirSaveFailed")));
+      toast.error(
+        getApiErrorMessage(err, tm("souvenirSaveFailed"), {
+          notFound: tm("souvenirSaveFailed"),
+        }),
+      );
     },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => api(`/api/trips/${tripId}/souvenirs/${id}`, { method: "DELETE" }),
+    mutationFn: (id: string) =>
+      apiVoid(`/api/trips/${tripId}/souvenirs/${id}`, { method: "DELETE" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
       setDeleteTarget(null);
     },
     onError: (err) => {
-      toast.error(getApiErrorMessage(err, tm("souvenirDeleteFailed")));
+      // Localize 404 (already deleted in another tab/session) instead of
+      // surfacing the English server message
+      toast.error(
+        getApiErrorMessage(err, tm("souvenirDeleteFailed"), {
+          notFound: tm("souvenirDeleteFailed"),
+        }),
+      );
     },
   });
 
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: string[]) =>
       Promise.all(
-        ids.map((id) => api(`/api/trips/${tripId}/souvenirs/${id}`, { method: "DELETE" })),
+        ids.map((id) => apiVoid(`/api/trips/${tripId}/souvenirs/${id}`, { method: "DELETE" })),
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
@@ -133,7 +144,11 @@ export function SouvenirPanel({ tripId, addOpen, onAddOpenChange }: SouvenirPane
       setBulkDeleteOpen(false);
     },
     onError: (err) => {
-      toast.error(getApiErrorMessage(err, tm("souvenirDeleteFailed")));
+      toast.error(
+        getApiErrorMessage(err, tm("souvenirDeleteFailed"), {
+          notFound: tm("souvenirDeleteFailed"),
+        }),
+      );
     },
   });
 

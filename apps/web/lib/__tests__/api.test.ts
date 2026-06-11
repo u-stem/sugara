@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, api, apiVoid } from "../api";
+import { ApiError, api, apiVoid, getApiErrorMessage } from "../api";
 
 const mockFetch = vi.fn();
 
@@ -141,6 +141,25 @@ describe("ApiError", () => {
     const error = new ApiError("invalid", 400, "VALIDATION", { f: ["x"] });
     expect(error.code).toBe("VALIDATION");
     expect(error.details).toEqual({ f: ["x"] });
+  });
+});
+
+describe("getApiErrorMessage", () => {
+  it("returns the fallback for internal guard errors with non-error statuses", () => {
+    const guardError = new ApiError(
+      "Expected JSON body from /api/x but got 204 No Content. Use apiVoid() for endpoints that return no body.",
+      204,
+    );
+
+    expect(getApiErrorMessage(guardError, "削除に失敗しました")).toBe("削除に失敗しました");
+  });
+
+  it("returns the notFound message for 404 when provided", () => {
+    const error = new ApiError("Souvenir not found", 404);
+
+    expect(getApiErrorMessage(error, "fallback", { notFound: "対象が見つかりません" })).toBe(
+      "対象が見つかりません",
+    );
   });
 });
 

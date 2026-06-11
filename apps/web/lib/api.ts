@@ -111,6 +111,9 @@ export function getApiErrorMessage(
   opts?: { badRequest?: string; conflict?: string; notFound?: string },
 ): string {
   if (err instanceof ApiError) {
+    // ApiError with a non-error status comes from internal client guards
+    // (e.g. the 204 type-lie check) and carries a developer-facing message
+    if (err.status < 400) return fallback;
     if (err.status === 400) return opts?.badRequest ?? err.message;
     if (err.status === 409) return opts?.conflict ?? err.message;
     if (err.status === 404) return opts?.notFound ?? err.message;
