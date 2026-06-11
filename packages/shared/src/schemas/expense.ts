@@ -1,11 +1,38 @@
 import { z } from "zod";
-import { currencyCodeSchema, toMinorUnits } from "../currency";
+import { type CurrencyCode, currencyCodeSchema, toMinorUnits } from "../currency";
 import { MAX_EXPENSES_PER_TRIP, MAX_LINE_ITEMS_PER_EXPENSE } from "../limits";
 
 export const EXPENSE_TITLE_MAX_LENGTH = 200;
 
 export const expenseSplitTypeSchema = z.enum(["equal", "custom", "itemized"]);
 export type ExpenseSplitType = z.infer<typeof expenseSplitTypeSchema>;
+
+// Compare in minor units so that e.g. 6.25 + 6.25 === 12.50 for USD
+// (floating-point addition of major units would lose precision).
+export function splitsTotalMatchesAmount(data: {
+  splitType: ExpenseSplitType;
+  splits: ReadonlyArray<{ amount?: number }>;
+  currency: CurrencyCode;
+  amount: number;
+}): boolean {
+  if (data.splitType === "custom" || data.splitType === "itemized") {
+    const splitMinor = data.splits.reduce(
+      (sum, s) => sum + toMinorUnits(s.amount ?? 0, data.currency),
+      0,
+    );
+    return splitMinor === toMinorUnits(data.amount, data.currency);
+  }
+  return true;
+}
+
+// Equal splits are stored in the trip currency; custom/itemized splits in the expense currency.
+export function getSplitDisplayCurrency(
+  splitType: ExpenseSplitType,
+  tripCurrency: CurrencyCode,
+  expenseCurrency: CurrencyCode,
+): CurrencyCode {
+  return splitType === "equal" ? tripCurrency : expenseCurrency;
+}
 
 export const expenseCategorySchema = z.enum([
   "transportation",
@@ -60,21 +87,10 @@ export const createExpenseSchema = z
     },
     { message: "Custom splits require amount for each member", path: ["splits"] },
   )
-  .refine(
-    (data) => {
-      if (data.splitType === "custom" || data.splitType === "itemized") {
-        // Compare in minor units so that e.g. 6.25 + 6.25 === 12.50 for USD
-        // (floating-point addition of major units would lose precision).
-        const splitMinor = data.splits.reduce(
-          (sum, s) => sum + toMinorUnits(s.amount ?? 0, data.currency),
-          0,
-        );
-        return splitMinor === toMinorUnits(data.amount, data.currency);
-      }
-      return true;
-    },
-    { message: "Split amounts must equal total amount", path: ["splits"] },
-  )
+  .refine((data) => splitsTotalMatchesAmount(data), {
+    message: "Split amounts must equal total amount",
+    path: ["splits"],
+  })
   .refine(
     (data) => {
       if (data.splitType === "itemized") {
