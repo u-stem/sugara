@@ -14,6 +14,7 @@ import { ERROR_MSG } from "../lib/constants";
 import { areFriends } from "../lib/friends";
 import { hasChanges } from "../lib/has-changes";
 import { getParam, isValidUuid } from "../lib/params";
+import { getNextSortOrder } from "../lib/sort-order";
 import { requireAuth } from "../middleware/auth";
 import { optionalAuth } from "../middleware/optional-auth";
 import { requireNonGuest } from "../middleware/require-non-guest";
@@ -172,6 +173,15 @@ articleRoutes.post("/", requireNonGuest, async (c) => {
       return null;
     }
 
+    // MAX+1, not COUNT: deleting a non-last article leaves a gap, and a
+    // COUNT-based value would collide with an existing sortOrder (#137).
+    const sortOrder = await getNextSortOrder(
+      tx,
+      articles.sortOrder,
+      articles,
+      eq(articles.ownerId, user.id),
+    );
+
     const [result] = await tx
       .insert(articles)
       .values({
@@ -180,7 +190,7 @@ articleRoutes.post("/", requireNonGuest, async (c) => {
         content: parsed.data.content,
         tags: parsed.data.tags,
         visibility: parsed.data.visibility,
-        sortOrder: articleCount,
+        sortOrder,
       })
       .returning();
 
