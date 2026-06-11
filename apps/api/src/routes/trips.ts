@@ -1,10 +1,4 @@
-import type { CurrencyCode } from "@sugara/shared";
-import {
-  createTripSchema,
-  createTripWithPollSchema,
-  STATUS_LABELS,
-  updateTripSchema,
-} from "@sugara/shared";
+import { createTripSchema, createTripWithPollSchema, updateTripSchema } from "@sugara/shared";
 import { and, count, desc, eq, getTableColumns, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
@@ -34,8 +28,9 @@ import {
   uploadCoverImage,
   validateCoverImage,
 } from "../lib/storage";
-import { createInitialTripDays, generateDateRange, syncTripDays } from "../lib/trip-days";
+import { createInitialTripDays } from "../lib/trip-days";
 import { resolveTripLimit } from "../lib/trip-limit";
+import { updateTripCore } from "../lib/trip-service";
 import { requireAuth } from "../middleware/auth";
 import { requireTripAccess } from "../middleware/require-trip-access";
 import type { AppEnv } from "../types";
@@ -376,143 +371,32 @@ tripRoutes.patch("/:id", requireTripAccess("editor", "id"), async (c) => {
     return c.json({ error: parsed.error.flatten() }, 400);
   }
 
-  const { startDate: newStart, endDate: newEnd, ...otherFields } = parsed.data;
+  const result = await updateTripCore(tripId, user.id, parsed.data);
 
-  const currentTrip = await db.query.trips.findFirst({
-    where: eq(trips.id, tripId),
-  });
-  if (!currentTrip) {
-    return c.json({ error: ERROR_MSG.TRIP_NOT_FOUND }, 404);
-  }
-
-  const effectiveStart = newStart ?? currentTrip.startDate;
-  const effectiveEnd = newEnd ?? currentTrip.endDate;
-  const datesChanged =
-    effectiveStart !== currentTrip.startDate || effectiveEnd !== currentTrip.endDate;
-
-  if (datesChanged) {
-    // Validate cross-field constraint when only one date is sent
-    if (effectiveStart && effectiveEnd && effectiveEnd < effectiveStart) {
-      return c.json(
-        {
-          error: {
-            fieldErrors: { endDate: [ERROR_MSG.DATE_ORDER] },
-            formErrors: [],
+  if (!result.ok) {
+    switch (result.error) {
+      case "not_found":
+        return c.json({ error: ERROR_MSG.TRIP_NOT_FOUND }, 404);
+      case "date_order":
+        return c.json(
+          {
+            error: {
+              fieldErrors: { endDate: [ERROR_MSG.DATE_ORDER] },
+              formErrors: [],
+            },
           },
-        },
-        400,
-      );
-    }
-
-    // Reject date changes that reduce the number of days
-    if (effectiveStart && effectiveEnd && currentTrip.startDate && currentTrip.endDate) {
-      const currentDayCount = generateDateRange(currentTrip.startDate, currentTrip.endDate).length;
-      const newDayCount = generateDateRange(effectiveStart, effectiveEnd).length;
-      if (newDayCount < currentDayCount) {
+          400,
+        );
+      case "days_reduced":
         return c.json({ error: ERROR_MSG.TRIP_DAYS_REDUCED }, 400);
-      }
+      case "has_expenses":
+        return c.json({ error: ERROR_MSG.TRIP_HAS_EXPENSES }, 409);
+      case "conflict":
+        return c.json({ error: ERROR_MSG.CONFLICT }, 409);
     }
   }
 
-  // Build update payload with only changed fields
-  const updatePayload: Partial<typeof trips.$inferInsert> = {};
-  if (otherFields.title !== undefined && otherFields.title !== currentTrip.title) {
-    updatePayload.title = otherFields.title;
-  }
-  if (
-    otherFields.destination !== undefined &&
-    otherFields.destination !== currentTrip.destination
-  ) {
-    updatePayload.destination = otherFields.destination;
-  }
-  if (otherFields.status !== undefined && otherFields.status !== currentTrip.status) {
-    updatePayload.status = otherFields.status;
-  }
-  if (
-    otherFields.coverImageUrl !== undefined &&
-    otherFields.coverImageUrl !== currentTrip.coverImageUrl
-  ) {
-    updatePayload.coverImageUrl = otherFields.coverImageUrl;
-  }
-  if (
-    otherFields.coverImagePosition !== undefined &&
-    otherFields.coverImagePosition !== currentTrip.coverImagePosition
-  ) {
-    updatePayload.coverImagePosition = otherFields.coverImagePosition;
-  }
-  if (
-    otherFields.currency !== undefined &&
-    otherFields.currency !== (currentTrip.currency as CurrencyCode)
-  ) {
-    // Reject currency change when trip already has expenses (amounts are in minor units)
-    const [{ count: expenseCount }] = await db
-      .select({ count: count() })
-      .from(expenses)
-      .where(eq(expenses.tripId, tripId));
-    if (expenseCount > 0) {
-      return c.json({ error: ERROR_MSG.TRIP_HAS_EXPENSES }, 409);
-    }
-    updatePayload.currency = otherFields.currency;
-  }
-  if (datesChanged) {
-    if (effectiveStart !== currentTrip.startDate) updatePayload.startDate = effectiveStart;
-    if (effectiveEnd !== currentTrip.endDate) updatePayload.endDate = effectiveEnd;
-  }
-
-  if (Object.keys(updatePayload).length === 0) {
-    return c.json(currentTrip);
-  }
-
-  let updated: typeof currentTrip | null | undefined;
-
-  if (datesChanged && effectiveStart && effectiveEnd) {
-    updated = await db.transaction(async (tx) => {
-      // Re-verify trip dates inside transaction to prevent TOCTOU
-      const current = await tx.query.trips.findFirst({
-        where: eq(trips.id, tripId),
-        columns: { startDate: true, endDate: true },
-      });
-      if (
-        current?.startDate !== currentTrip.startDate ||
-        current?.endDate !== currentTrip.endDate
-      ) {
-        return null;
-      }
-      await syncTripDays(tx, tripId, effectiveStart, effectiveEnd);
-      const [result] = await tx
-        .update(trips)
-        .set({ ...updatePayload, updatedAt: new Date() })
-        .where(eq(trips.id, tripId))
-        .returning();
-      return result;
-    });
-
-    if (!updated) {
-      return c.json({ error: ERROR_MSG.CONFLICT }, 409);
-    }
-  } else {
-    const [result] = await db
-      .update(trips)
-      .set({ ...updatePayload, updatedAt: new Date() })
-      .where(eq(trips.id, tripId))
-      .returning();
-    updated = result;
-
-    if (!updated) {
-      return c.json({ error: ERROR_MSG.TRIP_NOT_FOUND }, 404);
-    }
-  }
-
-  logActivity({
-    tripId,
-    userId: user.id,
-    action: "updated",
-    entityType: "trip",
-    entityName: updated.title,
-    detail: updatePayload.status ? `ステータス: ${STATUS_LABELS[updatePayload.status]}` : undefined,
-  });
-
-  return c.json(updated);
+  return c.json(result.trip);
 });
 
 // Duplicate trip (any member can duplicate, new trip is owned by current user)
