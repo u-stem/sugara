@@ -12,28 +12,6 @@ cd "${CLAUDE_PROJECT_DIR:-.}"
 
 LOG_FILE="${CLAUDE_PROJECT_DIR:-.}/.claude/failure-log.jsonl"
 
-# Gate 1: refuse to stop while unresolved lint/type errors are logged. This runs BEFORE the
-# test-skip escape (SUGARA_SKIP_POST_STOP_TEST) because that escape is about skipping tests, not
-# about ignoring known lint/type failures. Escape hatch for this gate: SUGARA_IGNORE_FAILURE_LOG=1.
-if [ "${SUGARA_IGNORE_FAILURE_LOG:-0}" != "1" ] && [ -s "$LOG_FILE" ]; then
-  # awk counts records correctly even when the final line lacks a trailing newline;
-  # `wc -l` would underreport by 1 in that case and confuse the user.
-  count=$(awk 'END{print NR}' "$LOG_FILE")
-  cat >&2 <<EOF
-[Harness] 未解決の failure が ${count} 件残っています (.claude/failure-log.jsonl)
-セッション終了前に以下を実施してください:
-  1. 'bun run check && bun run check-types' が zero error で通ることを確認
-  2. zero error を確認できたら 'rm .claude/failure-log.jsonl' でクリア
-  3. 本当に無視する場合のみ SUGARA_IGNORE_FAILURE_LOG=1 を設定
-EOF
-  exit 2
-fi
-
-# Short-circuit test execution when requested (e.g. long debug sessions, interactive work).
-if [ "${SUGARA_SKIP_POST_STOP_TEST:-0}" = "1" ]; then
-  exit 0
-fi
-
 # failure-log.jsonl is CURRENT state (not append-only history): drop the stale entry for this
 # package+category before recording fresh state, so a now-passing package clears its prior
 # failure and gate 1 stays accurate. Mirrors post-edit.sh; kept self-contained (no call out to
@@ -57,6 +35,47 @@ prune_log() {
     rm -f "$tmp"
   fi
 }
+
+# Self-heal logged test failures before gate 1 evaluates. post-edit.sh only prunes
+# check/check-types entries, so a since-fixed test failure has no other prune path and would
+# deadlock gate 1: the entry survives every stop, while the permission classifier denies the
+# model rm/jq on this log. Pruning happens ONLY after re-running the package's tests and seeing
+# them pass, so the gate's audit intent (never stop with a real unresolved failure) is preserved.
+if [ "${SUGARA_IGNORE_FAILURE_LOG:-0}" != "1" ] && [ -s "$LOG_FILE" ]; then
+  while IFS= read -r pkg; do
+    # Guard the literal "null" jq emits for entries missing the pkg field.
+    if [ -z "$pkg" ] || [ "$pkg" = "null" ]; then continue; fi
+    # </dev/null detaches the test runner from the loop's stdin; otherwise it could
+    # consume lines destined for `read` via the inherited process-substitution pipe.
+    if bun run --filter "$pkg" test </dev/null >/dev/null 2>&1; then
+      prune_log "test" "$pkg"
+    fi
+  done < <(jq -r 'select(.category == "test") | .pkg' "$LOG_FILE" 2>/dev/null | sort -u)
+fi
+
+# Gate 1: refuse to stop while unresolved lint/type errors are logged. This runs BEFORE the
+# test-skip escape (SUGARA_SKIP_POST_STOP_TEST) because that escape is about skipping tests, not
+# about ignoring known lint/type failures. Escape hatch for this gate: SUGARA_IGNORE_FAILURE_LOG=1.
+if [ "${SUGARA_IGNORE_FAILURE_LOG:-0}" != "1" ] && [ -s "$LOG_FILE" ]; then
+  # awk counts records correctly even when the final line lacks a trailing newline;
+  # `wc -l` would underreport by 1 in that case and confuse the user.
+  count=$(awk 'END{print NR}' "$LOG_FILE")
+  cat >&2 <<EOF
+[Harness] 未解決の failure が ${count} 件残っています (.claude/failure-log.jsonl)
+セッション終了前に以下を実施してください:
+  1. 'bun run check && bun run check-types' が zero error で通ることを確認
+  2. zero error を確認できたら 'rm .claude/failure-log.jsonl' でクリア
+  3. 本当に無視する場合のみ SUGARA_IGNORE_FAILURE_LOG=1 を設定
+EOF
+  exit 2
+fi
+
+# Short-circuit gate 2's changed-package test runs when requested (e.g. long debug sessions,
+# interactive work). Note: the test-entry self-heal above still runs — unblocking a resolved
+# failure takes priority over skipping tests; use SUGARA_IGNORE_FAILURE_LOG=1 to bypass gate 1.
+if [ "${SUGARA_SKIP_POST_STOP_TEST:-0}" = "1" ]; then
+  exit 0
+fi
 
 # Append a fresh failure entry with the same {ts, pkg, category, error} schema post-edit.sh uses.
 append_failure() {
