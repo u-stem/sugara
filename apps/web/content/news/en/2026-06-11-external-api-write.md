@@ -1,14 +1,14 @@
 ---
 title: "Create and update via the external API"
 date: "2026-06-11"
-summary: "The external API (v1) and the MCP server now support creating and updating trips, schedules, expenses, bookmarks, and articles."
+summary: "The external API (v1) now supports creating and updating trips, schedules, expenses, bookmarks, and articles."
 ---
 
 ## New features
 
 ### Create and update via the external API
 
-The external API (v1), previously read-only, now supports creating and updating data:
+The recently added external API (v1) now supports creating and updating data in addition to reading:
 
 - Create and update trips, and add or update schedules for each day
 - Record and update expenses
@@ -23,10 +23,6 @@ When issuing an API key, you can now choose "read" and "create & update" access 
 
 - Existing keys keep working as read-only. Issue a new key to use write access
 - Writing to a shared trip requires the "editor" role or higher in that trip
-
-### Write tools for the MCP server
-
-The MCP server also gained tools for creating and updating data, so AI assistants like Claude can build itineraries and record expenses directly.
 
 The API reference (open `/api/_docs` while logged in) covers the new endpoints as well.
 
