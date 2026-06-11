@@ -89,6 +89,7 @@ export const ERROR_MSG = {
   LIMIT_EXPENSES: "Expense limit reached",
   EXPENSE_SPLIT_MISMATCH: "Split amounts must equal total amount",
   EXPENSE_SPLIT_AMOUNT_MISMATCH: "Split amounts do not match the new total",
+  EXPENSE_AMOUNT_BELOW_MINOR_UNIT: "Amount is too small to represent in this currency",
   EXPENSE_PAYER_NOT_MEMBER: "Payer must be a trip member",
   EXPENSE_SPLIT_USER_NOT_MEMBER: "Split users must be trip members",
   NOTIFICATION_NOT_FOUND: "Notification not found",

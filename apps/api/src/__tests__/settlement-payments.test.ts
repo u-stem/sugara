@@ -55,6 +55,7 @@ vi.mock("../lib/settlement", () => ({
 }));
 
 import { logActivity } from "../lib/activity-logger";
+import { toSettlementExpenses } from "../lib/settlement";
 import { settlementPaymentRoutes, unsettledSummaryRoutes } from "../routes/settlement-payments";
 import { createTestApp, TEST_USER } from "./test-helpers";
 
@@ -254,6 +255,42 @@ describe("Unsettled summary routes", () => {
       const res = await makeUnsettledApp().request(`/api/users/other-user/unsettled-summary`);
 
       expect(res.status).toBe(403);
+    });
+
+    it("routes expense data through toSettlementExpenses for foreign-currency custom splits", async () => {
+      // Before the fix the unsettled summary used a raw mapping (no toSettlementExpenses call),
+      // causing foreign custom/itemized splits to be passed without trip-currency conversion.
+      // This test verifies the fix: toSettlementExpenses must be called with the full expense
+      // data including splitType so it can dispatch resolveBurdens correctly.
+      mockDbQuery.tripMembers.findMany
+        .mockResolvedValueOnce([
+          { userId: fromUserId, trip: { id: tripId, title: "Trip", currency: "JPY" } },
+        ])
+        .mockResolvedValueOnce([
+          { userId: fromUserId, user: { id: fromUserId, name: "From" } },
+          { userId: toUserId, user: { id: toUserId, name: "To" } },
+        ]);
+      mockDbQuery.expenses.findMany.mockResolvedValue([
+        {
+          id: "exp-1",
+          paidByUserId: fromUserId,
+          splitType: "custom",
+          amount: 1250,
+          baseAmount: 1400,
+          splits: [
+            { userId: fromUserId, amount: 625 },
+            { userId: toUserId, amount: 625 },
+          ],
+        },
+      ]);
+      mockDbQuery.settlementPayments.findMany.mockResolvedValue([]);
+
+      const res = await makeUnsettledApp().request(`/api/users/${fromUserId}/unsettled-summary`);
+
+      expect(res.status).toBe(200);
+      expect(vi.mocked(toSettlementExpenses)).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ splitType: "custom" })]),
+      );
     });
   });
 });

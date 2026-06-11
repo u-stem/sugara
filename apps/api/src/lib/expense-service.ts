@@ -30,7 +30,8 @@ export type CreateExpenseResult =
   | { ok: false; error: "exchange_rate_required" }
   | { ok: false; error: "limit_reached" }
   | { ok: false; error: "payer_not_member" }
-  | { ok: false; error: "split_user_not_member" };
+  | { ok: false; error: "split_user_not_member" }
+  | { ok: false; error: "amount_below_minor_unit" };
 
 export type UpdateExpenseResult =
   | { ok: true; expense: ExpenseRow }
@@ -39,7 +40,8 @@ export type UpdateExpenseResult =
   | { ok: false; error: "payer_not_member" }
   | { ok: false; error: "split_user_not_member" }
   | { ok: false; error: "split_amount_mismatch" }
-  | { ok: false; error: "itemized_no_line_items" };
+  | { ok: false; error: "itemized_no_line_items" }
+  | { ok: false; error: "amount_below_minor_unit" };
 
 /**
  * Core business logic for creating an expense.
@@ -114,6 +116,23 @@ export async function createExpenseCore(
 
   if (lineItems?.some((item) => item.memberIds.some((id) => !memberIds.has(id)))) {
     return { ok: false, error: "split_user_not_member" };
+  }
+
+  // Guard against positive amounts that round to 0 minor units (e.g. $0.004 → 0 cents).
+  // An explicit split amount of 0 is allowed as a zero-burden participant.
+  if (splitType !== "equal") {
+    for (const s of splits) {
+      if (s.amount !== undefined && s.amount > 0 && toMinorUnits(s.amount, currency) === 0) {
+        return { ok: false, error: "amount_below_minor_unit" };
+      }
+    }
+  }
+  if (lineItems) {
+    for (const item of lineItems) {
+      if (toMinorUnits(item.amount, currency) === 0) {
+        return { ok: false, error: "amount_below_minor_unit" };
+      }
+    }
   }
 
   // Calculate split amounts for equal type (use baseAmount for settlement consistency).
@@ -291,6 +310,23 @@ export async function updateExpenseCore(
     }
   }
 
+  // Guard against positive amounts that round to 0 minor units (e.g. $0.004 → 0 cents).
+  // An explicit split amount of 0 is allowed as a zero-burden participant.
+  if (splits && (updateFields.splitType ?? existing.splitType) !== "equal") {
+    for (const s of splits) {
+      if (s.amount !== undefined && s.amount > 0 && toMinorUnits(s.amount, finalCurrency) === 0) {
+        return { ok: false, error: "amount_below_minor_unit" };
+      }
+    }
+  }
+  if (lineItems) {
+    for (const item of lineItems) {
+      if (toMinorUnits(item.amount, finalCurrency) === 0) {
+        return { ok: false, error: "amount_below_minor_unit" };
+      }
+    }
+  }
+
   // When only amount changes (no splits provided), verify existing splits still sum correctly.
   // Without this check, the expense amount and split totals would become inconsistent.
   if (updateFields.amount !== undefined && !splits) {
@@ -303,34 +339,19 @@ export async function updateExpenseCore(
     }
   }
 
-  // When only splits change (no amount provided), verify new splits sum matches existing amount.
-  // "equal" is skipped because calculateEqualSplit recalculates amounts from existing.amount.
-  if (splits && updateFields.amount === undefined) {
+  // When splits change, verify the new split total matches the effective expense amount in minor units.
+  // "equal" is skipped: calculateEqualSplit recomputes amounts from the stored total.
+  if (splits) {
     const effectiveSplitType = updateFields.splitType ?? existing.splitType;
     if (effectiveSplitType === "custom" || effectiveSplitType === "itemized") {
-      // Convert each split's major-unit input to minor units before comparing with
-      // the stored minor-unit amount; avoids ~100x mismatches for non-JPY currencies.
+      // Use the incoming minor amount when amount is also being updated; otherwise fall back to the
+      // existing stored minor-unit amount. This covers "splits-only" and "amount+splits" in one check.
+      const expectedMinor = minorAmount ?? existing.amount;
       const splitsTotal = splits.reduce(
         (sum, s) => sum + toMinorUnits(s.amount ?? 0, finalCurrency),
         0,
       );
-      if (splitsTotal !== existing.amount) {
-        return { ok: false, error: "split_amount_mismatch" };
-      }
-    }
-  }
-
-  // When both amount and splits are updated together, verify minor-unit consistency.
-  // This check was previously a schema refine but cannot live there because the existing
-  // expense currency is unavailable to the schema for partial updates.
-  if (splits && minorAmount !== undefined) {
-    const effectiveSplitType = updateFields.splitType ?? existing.splitType;
-    if (effectiveSplitType === "custom" || effectiveSplitType === "itemized") {
-      const splitsTotal = splits.reduce(
-        (sum, s) => sum + toMinorUnits(s.amount ?? 0, finalCurrency),
-        0,
-      );
-      if (splitsTotal !== minorAmount) {
+      if (splitsTotal !== expectedMinor) {
         return { ok: false, error: "split_amount_mismatch" };
       }
     }

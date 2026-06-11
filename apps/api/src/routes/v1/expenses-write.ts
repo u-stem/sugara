@@ -215,6 +215,12 @@ expensesWriteApp.post(
             throw new ApiV1Error(400, "invalid_request", "paidByMemberNo is not a trip member");
           case "split_user_not_member":
             throw new ApiV1Error(400, "invalid_request", "A splits memberNo is not a trip member");
+          case "amount_below_minor_unit":
+            throw new ApiV1Error(
+              400,
+              "invalid_request",
+              "Amount is too small to represent in this currency",
+            );
         }
       }
 
@@ -419,6 +425,12 @@ expensesWriteApp.patch(
               400,
               "invalid_request",
               "Itemized split requires at least one line item",
+            );
+          case "amount_below_minor_unit":
+            throw new ApiV1Error(
+              400,
+              "invalid_request",
+              "Amount is too small to represent in this currency",
             );
         }
       }

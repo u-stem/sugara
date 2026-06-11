@@ -493,6 +493,52 @@ describe("Expense routes", () => {
       expect(res.status).toBe(400);
     });
 
+    it("returns 400 when lineItem amount rounds to 0 minor units", async () => {
+      // $0.004 rounds to 0 cents in minor units; the service must reject it so that
+      // a positive major-unit input cannot silently be stored as a zero-cent line item.
+      mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: userId1 }]);
+      mockCountQuery(0);
+
+      const res = await makeApp().request(`/api/trips/${tripId}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Coffee",
+          amount: 0.004,
+          currency: "USD",
+          exchangeRate: 150,
+          paidByUserId: userId1,
+          splitType: "itemized",
+          splits: [{ userId: userId1, amount: 0.004 }],
+          lineItems: [{ name: "Coffee", amount: 0.004, memberIds: [userId1] }],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when custom split amount rounds to 0 minor units", async () => {
+      // $0.001 rounds to 0 cents; the service must reject it before DB insert.
+      mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: userId1 }]);
+      mockCountQuery(0);
+
+      const res = await makeApp().request(`/api/trips/${tripId}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Coffee",
+          amount: 0.001,
+          currency: "USD",
+          exchangeRate: 150,
+          paidByUserId: userId1,
+          splitType: "custom",
+          splits: [{ userId: userId1, amount: 0.001 }],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
     it("returns 400 when paidByUserId is not a member", async () => {
       mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: userId2 }]);
       mockCountQuery(0);

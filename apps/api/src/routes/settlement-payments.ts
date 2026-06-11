@@ -225,11 +225,17 @@ unsettledSummaryRoutes.get("/:userId/unsettled-summary", async (c) => {
 
   for (const { trip, expenseList, members, payments } of tripResults) {
     const memberInfos = members.map((m) => ({ id: m.user.id, name: m.user.name }));
-    const expenseData = expenseList.map((e) => ({
-      paidByUserId: e.paidByUserId,
-      amount: e.baseAmount ?? e.amount,
-      splits: e.splits.map((s) => ({ userId: s.userId, amount: s.amount })),
-    }));
+    // toSettlementExpenses converts foreign custom/itemized splits to trip-currency burdens,
+    // matching the computation used by the POST settlement-payment validation (lines above).
+    const expenseData = toSettlementExpenses(
+      expenseList.map((e) => ({
+        paidByUserId: e.paidByUserId,
+        splitType: e.splitType,
+        amount: e.amount,
+        baseAmount: e.baseAmount,
+        splits: e.splits.map((s) => ({ userId: s.userId, amount: s.amount })),
+      })),
+    );
 
     const settlement = calculateSettlement(expenseData, memberInfos);
 

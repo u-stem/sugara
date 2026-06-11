@@ -1,6 +1,17 @@
 import type { CurrencyCode } from "@sugara/shared";
 import { fromMinorUnits, toMinorUnits } from "@sugara/shared";
 
+/**
+ * Compare two major-unit amounts for equality in minor-unit space.
+ * Direct === on major units is unreliable: IEEE 754 float addition (e.g.
+ * 0.1 + 0.1 + 0.1) does not produce exactly 0.3, so splitting $0.10 three
+ * ways would always show a false mismatch. Converting to minor units first
+ * rounds to integers, eliminating the rounding error.
+ */
+export function minorUnitsEqual(a: number, b: number, currency: CurrencyCode): boolean {
+  return toMinorUnits(a, currency) === toMinorUnits(b, currency);
+}
+
 export type ExpenseLineItem = {
   id: string;
   name: string;

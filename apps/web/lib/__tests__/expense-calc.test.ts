@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateItemizedSplits, type ExpenseLineItem } from "../expense-calc";
+import { calculateItemizedSplits, type ExpenseLineItem, minorUnitsEqual } from "../expense-calc";
 
 describe("calculateItemizedSplits", () => {
   const memberA = "00000000-0000-0000-0000-000000000001";
@@ -78,5 +78,27 @@ describe("calculateItemizedSplits", () => {
     expect(map.get(memberA)).toBe(3.0);
     expect(map.get(memberB)).toBe(2.99);
     expect(result.reduce((s, r) => s + r.amount, 0)).toBeCloseTo(5.99, 10);
+  });
+});
+
+describe("minorUnitsEqual", () => {
+  it("returns true when IEEE 754 float addition equals the target in minor units", () => {
+    // Without minor-unit comparison: 0.1 + 0.1 + 0.1 === 0.30000000000000004 !== 0.3
+    // This is the exact false-positive mismatch scenario the function is designed to fix.
+    const floatSum = 0.1 + 0.1 + 0.1;
+    expect(floatSum === 0.3).toBe(false); // confirm the raw float is indeed not equal
+    expect(minorUnitsEqual(floatSum, 0.3, "USD")).toBe(true);
+  });
+
+  it("returns false when amounts differ by at least one minor unit", () => {
+    expect(minorUnitsEqual(0.31, 0.3, "USD")).toBe(false);
+  });
+
+  it("returns true for equal JPY amounts (no sub-unit)", () => {
+    expect(minorUnitsEqual(1000, 1000, "JPY")).toBe(true);
+  });
+
+  it("returns false for differing JPY amounts", () => {
+    expect(minorUnitsEqual(1001, 1000, "JPY")).toBe(false);
   });
 });
