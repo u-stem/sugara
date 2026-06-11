@@ -262,8 +262,6 @@ export function DayTimeline({
     // slice is O(n-k) instead of filter O(n); valid because schedules is in sortOrder order
     const schedulesAfter = scheduleIdx >= 0 ? schedules.slice(scheduleIdx + 1) : [];
     const isReorderable = isMobile && reorderMode && !disabled;
-    const reorderFirst = scheduleIdx === 0;
-    const reorderLast = scheduleIdx === schedules.length - 1;
 
     return (
       <div key={schedule.id} className="relative">
@@ -274,8 +272,8 @@ export function DayTimeline({
           dayId={dayId}
           patternId={patternId}
           date={date}
-          isFirst={isReorderable ? reorderFirst : isFirst}
-          isLast={isReorderable ? reorderLast : isLast}
+          isFirst={isFirst}
+          isLast={isLast}
           onDelete={() => handleDelete(schedule.id)}
           onUpdate={onRefresh}
           onUnassign={
@@ -443,7 +441,7 @@ export function DayTimeline({
                 variant="outline"
                 size="sm"
                 className="h-9"
-                disabled={schedules.length <= 1}
+                disabled={merged.length <= 1}
                 onClick={() => {
                   sel.exit();
                   setReorderMode(true);
