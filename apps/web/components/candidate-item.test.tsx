@@ -96,6 +96,8 @@ describe("CandidateItem transport cost", () => {
   });
 });
 
+// jsdom doesn't simulate pointer-events hit-testing, so these assert the CSS class
+// (inherited by descendant links) rather than actual click suppression.
 describe("CandidateItem reorder link tap guard", () => {
   function renderReorderable(overrides: Partial<CandidateResponse> = {}) {
     renderWithIntl(

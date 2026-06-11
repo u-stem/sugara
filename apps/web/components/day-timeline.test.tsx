@@ -151,6 +151,8 @@ describe("DayTimeline mobile reorder with cross-day entries", () => {
   });
 });
 
+// jsdom doesn't simulate pointer-events hit-testing, so these assert the CSS class
+// (inherited by descendant links) rather than actual click suppression.
 describe("DayTimeline mobile reorder link tap guard", () => {
   it("disables pointer events on the address link while reordering", () => {
     renderTimeline({
