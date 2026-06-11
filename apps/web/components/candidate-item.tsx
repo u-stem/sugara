@@ -171,7 +171,7 @@ export const CandidateItem = memo(function CandidateItem({
             rel="noopener noreferrer"
             className={cn(
               "flex w-fit max-w-full items-center gap-1.5 text-xs text-blue-600 hover:underline dark:text-blue-400",
-              selectable && "pointer-events-none",
+              (selectable || reorderable) && "pointer-events-none",
             )}
           >
             <MapPin className="h-3 w-3 shrink-0 text-muted-foreground/70" />
@@ -198,7 +198,7 @@ export const CandidateItem = memo(function CandidateItem({
               <span
                 className={cn(
                   "flex w-fit max-w-full items-center gap-1.5 text-xs text-muted-foreground",
-                  selectable && "pointer-events-none",
+                  (selectable || reorderable) && "pointer-events-none",
                 )}
               >
                 <Route className="h-3 w-3 shrink-0 text-muted-foreground/70" />
@@ -232,7 +232,7 @@ export const CandidateItem = memo(function CandidateItem({
             rel="noopener noreferrer"
             className={cn(
               "flex w-fit max-w-full items-center gap-1.5 text-xs text-blue-600 hover:underline dark:text-blue-400",
-              selectable && "pointer-events-none",
+              (selectable || reorderable) && "pointer-events-none",
             )}
           >
             <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground/70" />

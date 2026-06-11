@@ -175,7 +175,9 @@ export const TransportItem = memo(function TransportItem({
             timeStr={timeStr}
           />
           {(routeStr || costStr || urls.length > 0 || memo) && (
-            <div className={cn("mt-1 space-y-1", selectable && "pointer-events-none")}>
+            <div
+              className={cn("mt-1 space-y-1", (selectable || reorderable) && "pointer-events-none")}
+            >
               {routeStr && (
                 <span
                   className="flex w-fit max-w-full items-center gap-1.5 text-xs text-muted-foreground"
