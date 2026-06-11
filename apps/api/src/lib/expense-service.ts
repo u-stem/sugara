@@ -25,8 +25,10 @@ import { calculateEqualSplit } from "./settlement";
 
 type ExpenseRow = typeof expenses.$inferSelect;
 
+type SplitRow = { userId: string; amount: number };
+
 export type CreateExpenseResult =
-  | { ok: true; expense: ExpenseRow }
+  | { ok: true; expense: ExpenseRow; splits: SplitRow[] }
   | { ok: false; error: "exchange_rate_required" }
   | { ok: false; error: "limit_reached" }
   | { ok: false; error: "payer_not_member" }
@@ -34,7 +36,7 @@ export type CreateExpenseResult =
   | { ok: false; error: "amount_below_minor_unit" };
 
 export type UpdateExpenseResult =
-  | { ok: true; expense: ExpenseRow }
+  | { ok: true; expense: ExpenseRow; splits?: SplitRow[] }
   | { ok: false; error: "not_found" }
   | { ok: false; error: "exchange_rate_required" }
   | { ok: false; error: "payer_not_member" }
@@ -42,6 +44,14 @@ export type UpdateExpenseResult =
   | { ok: false; error: "split_amount_mismatch" }
   | { ok: false; error: "itemized_no_line_items" }
   | { ok: false; error: "amount_below_minor_unit" };
+
+// Options shared by create and update operations.
+// When memberIds is provided, the service skips its own DB member query and
+// uses the supplied set directly — callers that already fetched members for
+// other purposes (e.g. building a memberNoMap) can avoid a redundant round-trip.
+type ExpenseCoreOptions = {
+  memberIds?: ReadonlySet<string>;
+};
 
 /**
  * Core business logic for creating an expense.
@@ -55,6 +65,7 @@ export async function createExpenseCore(
   userId: string,
   actorName: string,
   input: z.infer<typeof createExpenseSchema>,
+  options?: ExpenseCoreOptions,
 ): Promise<CreateExpenseResult> {
   const {
     title,
@@ -99,11 +110,18 @@ export async function createExpenseCore(
     return { ok: false, error: "limit_reached" };
   }
 
-  // Verify all users are trip members
-  const members = await db.query.tripMembers.findMany({
-    where: eq(tripMembers.tripId, tripId),
-  });
-  const memberIds = new Set(members.map((m) => m.userId));
+  // Verify all users are trip members.
+  // When the caller already fetched members for another purpose (e.g. building
+  // a memberNoMap), they can pass the set via options to skip this round-trip.
+  const memberIds: ReadonlySet<string> =
+    options?.memberIds ??
+    new Set(
+      (
+        await db.query.tripMembers.findMany({
+          where: eq(tripMembers.tripId, tripId),
+        })
+      ).map((m) => m.userId),
+    );
 
   if (!memberIds.has(paidByUserId)) {
     return { ok: false, error: "payer_not_member" };
@@ -221,7 +239,11 @@ export async function createExpenseCore(
     }),
   });
 
-  return { ok: true, expense: result };
+  return {
+    ok: true,
+    expense: result,
+    splits: splits.map((s, i) => ({ userId: s.userId, amount: splitAmounts[i] })),
+  };
 }
 
 /**
@@ -234,6 +256,7 @@ export async function updateExpenseCore(
   expenseId: string,
   userId: string,
   input: z.infer<typeof updateExpenseSchema>,
+  options?: ExpenseCoreOptions,
 ): Promise<UpdateExpenseResult> {
   const existing = await db.query.expenses.findFirst({
     where: eq(expenses.id, expenseId),
@@ -292,10 +315,15 @@ export async function updateExpenseCore(
 
   // Verify member constraints when paidByUserId, splits, or lineItems change
   if (updateFields.paidByUserId || splits || lineItems) {
-    const members = await db.query.tripMembers.findMany({
-      where: eq(tripMembers.tripId, tripId),
-    });
-    const memberIds = new Set(members.map((m) => m.userId));
+    const memberIds: ReadonlySet<string> =
+      options?.memberIds ??
+      new Set(
+        (
+          await db.query.tripMembers.findMany({
+            where: eq(tripMembers.tripId, tripId),
+          })
+        ).map((m) => m.userId),
+      );
 
     if (updateFields.paidByUserId && !memberIds.has(updateFields.paidByUserId)) {
       return { ok: false, error: "payer_not_member" };
@@ -365,6 +393,10 @@ export async function updateExpenseCore(
     }
   }
 
+  // Captured inside the transaction and returned to callers that already hold
+  // the memberNoMap so they can skip a second DB round-trip for serialization.
+  // Undefined when splits were not modified in this update.
+  let computedSplits: SplitRow[] | undefined;
   const updated = await db.transaction(async (tx) => {
     const [result] = await tx
       .update(expenses)
@@ -382,6 +414,8 @@ export async function updateExpenseCore(
           ? calculateEqualSplit(effectiveBaseAmount, splits.length)
           : splits.map((s) => toMinorUnits(s.amount ?? 0, finalCurrency));
 
+      // Capture for the return value before the DB operations consume the arrays.
+      computedSplits = splits.map((s, i) => ({ userId: s.userId, amount: splitAmounts[i] }));
       await tx.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
       await tx.insert(expenseSplits).values(
         splits.map((s, i) => ({
@@ -447,5 +481,5 @@ export async function updateExpenseCore(
     detail,
   });
 
-  return { ok: true, expense: updated };
+  return { ok: true, expense: updated, splits: computedSplits };
 }

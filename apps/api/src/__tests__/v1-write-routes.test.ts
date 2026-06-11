@@ -34,6 +34,7 @@ const {
     trips: { findFirst: vi.fn() },
     tripMembers: { findMany: vi.fn() },
     expenses: { findFirst: vi.fn(), findMany: vi.fn() },
+    expenseSplits: { findMany: vi.fn() },
     bookmarkLists: { findFirst: vi.fn(), findMany: vi.fn() },
     bookmarks: { findFirst: vi.fn(), findMany: vi.fn() },
     articles: { findFirst: vi.fn(), findMany: vi.fn() },
@@ -409,18 +410,20 @@ describe("POST /trips/:tripId/expenses", () => {
     });
     mockDbQuery.tripMembers.findMany.mockResolvedValue(MEMBER_ROWS);
     mockDbQuery.users.findFirst.mockResolvedValue({ name: "Alice" });
-    mockCreateExpenseCore.mockResolvedValue({ ok: true, expense: { id: EXPENSE_ID } });
-    // fetchExpenseForResponse: contains paidByUserId and splits.userId internally,
-    // but resolveMemberRef converts them to { memberNo, displayName } in the DTO
-    mockDbQuery.expenses.findFirst.mockResolvedValue({
-      id: EXPENSE_ID,
-      title: "Dinner",
-      amount: 1000,
-      currency: "JPY",
-      category: "meals",
-      paidByUserId: USER_ID_1,
-      createdAt: new Date("2026-06-01T18:00:00Z"),
-      paidByUser: { name: "Alice" },
+    // createExpenseCore returns the inserted row and splits; the route builds the
+    // response in memory and serializeExpenseDto converts internal userIds to
+    // { memberNo, displayName } refs (no re-SELECT).
+    mockCreateExpenseCore.mockResolvedValue({
+      ok: true,
+      expense: {
+        id: EXPENSE_ID,
+        title: "Dinner",
+        amount: 1000,
+        currency: "JPY",
+        category: "meals",
+        paidByUserId: USER_ID_1,
+        createdAt: new Date("2026-06-01T18:00:00Z"),
+      },
       splits: [
         { userId: USER_ID_1, amount: 500 },
         { userId: USER_ID_2, amount: 500 },
@@ -580,7 +583,67 @@ describe("PATCH /trips/:id error mapping", () => {
 // PATCH /trips/:tripId/expenses/:expenseId — amount/splits consistency
 // ---------------------------------------------------------------------------
 
-describe("PATCH expense with both amount and splits", () => {
+describe("PATCH expense response construction", () => {
+  const UPDATED_EXPENSE = {
+    id: EXPENSE_ID,
+    title: "Dinner",
+    amount: 1000,
+    currency: "JPY",
+    category: "meals",
+    paidByUserId: USER_ID_1,
+    createdAt: new Date("2026-06-01T18:00:00Z"),
+  };
+
+  it("builds the response from the service result without re-selecting splits when splits were updated", async () => {
+    // Arrange — updateExpenseCore returns the rewritten splits in memory
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripMembers.findMany.mockResolvedValue(MEMBER_ROWS);
+    mockUpdateExpenseCore.mockResolvedValue({
+      ok: true,
+      expense: UPDATED_EXPENSE,
+      splits: [
+        { userId: USER_ID_1, amount: 500 },
+        { userId: USER_ID_2, amount: 500 },
+      ],
+    });
+
+    // Act
+    const res = await jsonPatch(`/trips/${TRIP_ID}/expenses/${EXPENSE_ID}`, {
+      splitType: "equal",
+      splits: [{ memberNo: 1 }, { memberNo: 2 }],
+    });
+    const body = await res.json();
+
+    // Assert — splits come from the service result, no fallback SELECT
+    expect(res.status).toBe(200);
+    expect(mockDbQuery.expenseSplits.findMany).not.toHaveBeenCalled();
+    expect(body.splits).toEqual([
+      { memberNo: 1, displayName: "Alice", amount: 500 },
+      { memberNo: 2, displayName: "Bob", amount: 500 },
+    ]);
+  });
+
+  it("falls back to selecting splits when the update did not modify them", async () => {
+    // Arrange — title-only update: result.splits is undefined
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripMembers.findMany.mockResolvedValue(MEMBER_ROWS);
+    mockUpdateExpenseCore.mockResolvedValue({ ok: true, expense: UPDATED_EXPENSE });
+    mockDbQuery.expenseSplits.findMany.mockResolvedValue([{ userId: USER_ID_1, amount: 1000 }]);
+
+    // Act
+    const res = await jsonPatch(`/trips/${TRIP_ID}/expenses/${EXPENSE_ID}`, {
+      title: "Dinner",
+    });
+    const body = await res.json();
+
+    // Assert — splits are fetched once and serialized to memberNo refs
+    expect(res.status).toBe(200);
+    expect(mockDbQuery.expenseSplits.findMany).toHaveBeenCalledTimes(1);
+    expect(body.splits).toEqual([{ memberNo: 1, displayName: "Alice", amount: 1000 }]);
+  });
+
   it("returns 400 when custom split amounts do not sum to the new amount (service validation)", async () => {
     // Arrange — validation moved to service layer (schema refine removed).
     // The service returns split_amount_mismatch which maps to 400 invalid_request.

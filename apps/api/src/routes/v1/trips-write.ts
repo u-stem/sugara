@@ -11,7 +11,7 @@ import { count, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { db } from "../../db";
-import { dayPatterns, schedules, tripDays, tripMembers, trips, users } from "../../db/schema";
+import { dayPatterns, schedules, tripDays, tripMembers, trips } from "../../db/schema";
 import { logActivity } from "../../lib/activity-logger";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { notifyTripMembersExcluding } from "../../lib/notifications";
@@ -22,7 +22,8 @@ import { resolveTripLimit } from "../../lib/trip-limit";
 import { updateTripCore } from "../../lib/trip-service";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
-import { uuidSchema, withTripAccess } from "./shared";
+import { serializeScheduleDto, serializeTripDto } from "./serializers";
+import { getActorName, uuidSchema, withTripAccess } from "./shared";
 import {
   v1CreateScheduleSchema,
   v1CreateTripSchema,
@@ -33,66 +34,6 @@ import {
 } from "./write-schemas";
 
 export const tripsWriteApp = new Hono<V1Env>();
-
-// ---------------------------------------------------------------------------
-// Helper: fetch the calling user's display name for notifications
-// ---------------------------------------------------------------------------
-
-async function getActorName(userId: string): Promise<string> {
-  const row = await db.query.users.findFirst({
-    where: eq(users.id, userId),
-    columns: { name: true },
-  });
-  return row?.name ?? "Unknown";
-}
-
-// ---------------------------------------------------------------------------
-// Helper: serialize a trip row to the v1 external DTO (no ownerId / cover image)
-// ---------------------------------------------------------------------------
-
-type TripRow = typeof trips.$inferSelect;
-
-function serializeTripDto(trip: TripRow) {
-  return {
-    id: trip.id,
-    title: trip.title,
-    destination: trip.destination ?? null,
-    startDate: trip.startDate ?? null,
-    endDate: trip.endDate ?? null,
-    currency: trip.currency,
-    status: trip.status,
-    createdAt: trip.createdAt.toISOString(),
-    updatedAt: trip.updatedAt.toISOString(),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Helper: serialize a schedule row to the v1 external DTO
-// ---------------------------------------------------------------------------
-
-type ScheduleRow = typeof schedules.$inferSelect;
-
-function serializeScheduleDto(s: ScheduleRow) {
-  return {
-    id: s.id,
-    name: s.name,
-    category: s.category,
-    startTime: s.startTime ?? null,
-    endTime: s.endTime ?? null,
-    address: s.address ?? null,
-    memo: s.memo ?? null,
-    urls: s.urls,
-    departurePlace: s.departurePlace ?? null,
-    arrivalPlace: s.arrivalPlace ?? null,
-    transportMethod: s.transportMethod ?? null,
-    cost: s.cost ?? null,
-    color: s.color,
-    endDayOffset: s.endDayOffset ?? null,
-    sortOrder: s.sortOrder,
-    createdAt: s.createdAt.toISOString(),
-    updatedAt: s.updatedAt.toISOString(),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // POST /trips

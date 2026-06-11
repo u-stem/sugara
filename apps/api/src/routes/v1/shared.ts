@@ -1,9 +1,22 @@
 import type { MemberRole } from "@sugara/shared";
 import { canEdit } from "@sugara/shared";
+import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { z } from "zod";
+import { db } from "../../db";
+import { users } from "../../db/schema";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { checkTripAccess } from "../../lib/permissions";
+
+// Fetches the display name for a user, used for notification payloads.
+// Returns "Unknown" when the user row is not found (defensive fallback).
+export async function getActorName(userId: string): Promise<string> {
+  const row = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+    columns: { name: true },
+  });
+  return row?.name ?? "Unknown";
+}
 
 // Shared UUID schema used across all v1 routes.
 // z.guid() validates the 8-4-4-4-12 hex GUID format without enforcing UUID

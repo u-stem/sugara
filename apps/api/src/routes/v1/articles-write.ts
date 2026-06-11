@@ -14,6 +14,7 @@ import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors
 import { getNextSortOrder } from "../../lib/sort-order";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
+import { serializeArticleDto } from "./serializers";
 import { uuidSchema } from "./shared";
 import {
   v1ArticleWriteResponseSchema,
@@ -22,25 +23,6 @@ import {
 } from "./write-schemas";
 
 export const articlesWriteApp = new Hono<V1Env>();
-
-// ---------------------------------------------------------------------------
-// Serializer
-// ---------------------------------------------------------------------------
-
-type ArticleRow = typeof articles.$inferSelect;
-
-function serializeArticleDto(article: ArticleRow, tripIds: string[]) {
-  return {
-    id: article.id,
-    title: article.title,
-    content: article.content,
-    tags: article.tags,
-    visibility: article.visibility,
-    tripIds,
-    createdAt: article.createdAt.toISOString(),
-    updatedAt: article.updatedAt.toISOString(),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // POST /articles

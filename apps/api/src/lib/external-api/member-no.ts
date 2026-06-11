@@ -18,15 +18,36 @@ export function buildMemberNoMap(members: ReadonlyArray<{ userId: string }>): Ma
   return map;
 }
 
-// Looks up a userId by its 1-indexed memberNo.
-// Returns undefined when the memberNo is not present in the map
-// (e.g. the caller supplied an out-of-range or invalid number).
-export function resolveMemberNoToUserId(
+// MemberRef represents a reference to a trip member in v1 API responses.
+// When the member is present in the trip's membership list, both memberNo and
+// displayName are included. When that invariant is broken (e.g. a member was
+// removed outside the normal flow), only displayName is returned as a
+// defensive fallback. See design doc §4.3 defensive fallback note.
+export type MemberRef = { memberNo: number; displayName: string } | { displayName: string };
+
+// Resolves a userId to its MemberRef for v1 API response serialization.
+// Single source of truth shared by read (index.ts) and write (expenses-write.ts) routes.
+export function resolveMemberRef(
   memberNoMap: Map<string, number>,
-  memberNo: number,
-): string | undefined {
-  for (const [userId, no] of memberNoMap) {
-    if (no === memberNo) return userId;
+  nameMap: Map<string, string>,
+  userId: string,
+): MemberRef {
+  const memberNo = memberNoMap.get(userId);
+  const displayName = nameMap.get(userId) ?? "Unknown";
+  if (memberNo !== undefined) {
+    return { memberNo, displayName };
   }
-  return undefined;
+  // Defensive fallback: invariant broken — include displayName only
+  return { displayName };
+}
+
+// Builds a memberNo → userId reverse lookup map from the given memberNoMap.
+// The resulting map supports O(1) userId resolution by memberNo, replacing
+// the O(n) linear scan over the forward map.
+export function invertMemberNoMap(memberNoMap: Map<string, number>): Map<number, string> {
+  const inverted = new Map<number, string>();
+  for (const [userId, memberNo] of memberNoMap) {
+    inverted.set(memberNo, userId);
+  }
+  return inverted;
 }
