@@ -26,13 +26,15 @@ const currencyEnum = z.enum([
 // Shared sub-schemas for expense splits/line-items (memberNo-based, not userId-based).
 const splitItemShape = z.object({
   memberNo: z.number().int().positive(),
-  // amount is required for custom/itemized splitType; optional for equal
-  amount: z.number().int().min(0).optional(),
+  // amount in major units (e.g. 6.25 = $6.25); required for custom/itemized, optional for equal.
+  // The service converts to minor units before DB write.
+  amount: z.number().min(0).optional(),
 });
 
 const lineItemShape = z.object({
   name: z.string().min(1).max(200),
-  amount: z.number().int().min(1),
+  // amount in major units (e.g. 12.50 = $12.50); the service converts to minor units before DB write.
+  amount: z.number().positive(),
   // which members share this line item — at least one
   memberNos: z.array(z.number().int().positive()).min(1),
 });

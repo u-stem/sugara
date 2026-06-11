@@ -67,6 +67,7 @@ write は read を**含意しない**（最小権限。read と write は独立�
 **書き込みの入力**:
 - リクエストスキーマは `packages/shared` の内部スキーマから派生した v1 専用形（`apps/api/src/routes/v1/write-schemas.ts`）。`coverImageUrl` 等の内部 Storage 参照や楽観ロック用フィールドは外部に公開しない
 - 費用の支払者・分割は `paidByMemberNo` / `splits[].memberNo` で指定し、サーバ側で userId に逆引きする。不明な memberNo は `400 invalid_request`
+- 費用金額（`amount`）・分割金額（`splits[].amount`）・明細金額（`lineItems[].amount`）はすべて **major units**（例: USD なら $12.50 を `12.5` として送る）。サーバ側で minor units（例: 1250 cents）に変換して DB に保存する。分割合計は minor units 換算後に `amount` の minor units と一致しなければならない（`split_amount_mismatch`）
 - memberNo はメンバー増減で振り直されるため、書き込み直前に `GET /trips/:id` で最新の対応を確認すること
 - 作成は `201`、更新は `200`。レスポンスは read 系と同じ外部 DTO（memberNo + displayName、内部 UUID 非公開）
 - 共有ロジック: 旅行更新・費用作成/更新は内部 API と同一のサービス関数（`apps/api/src/lib/trip-service.ts` / `expense-service.ts`）を経由し、検証・通知・アクティビティログの挙動を揃える

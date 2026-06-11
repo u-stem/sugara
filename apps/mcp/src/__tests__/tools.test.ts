@@ -363,6 +363,34 @@ describe("create_expense input schema", () => {
     // Assert
     expect(result.success).toBe(true);
   });
+
+  it("accepts decimal split amount for non-JPY currency", () => {
+    // Splits use major units (e.g. 6.25 = $6.25), so decimals must be allowed.
+    const result = schema.safeParse({
+      ...validBase,
+      currency: "USD",
+      splitType: "custom" as const,
+      splits: [
+        { memberNo: 1, amount: 6.25 },
+        { memberNo: 2, amount: 6.25 },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts decimal line item amount for non-JPY currency", () => {
+    // Line items also use major units.
+    const result = schema.safeParse({
+      ...validBase,
+      currency: "USD",
+      splitType: "itemized" as const,
+      splits: [{ memberNo: 1, amount: 12.5 }],
+      lineItems: [{ name: "Pasta", amount: 12.5, memberNos: [1] }],
+    });
+
+    expect(result.success).toBe(true);
+  });
 });
 
 describe("update_expense input schema", () => {

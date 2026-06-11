@@ -1,7 +1,7 @@
 "use client";
 
 import type { ExpensesResponse, TripResponse } from "@sugara/shared";
-import { toCurrencyCode } from "@sugara/shared";
+import { fromMinorUnits, toCurrencyCode } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, CheckCheck, Download, X } from "lucide-react";
 import Link from "next/link";
@@ -54,14 +54,17 @@ const FORMAT_LABELS: Record<ExportFormat, string> = {
   ics: "iCal (.ics)",
 };
 
+// Convert API response amounts (minor units) to major units for spreadsheet cells.
+// Equal splits are stored in trip currency; custom/itemized use the expense currency.
 function toExpenseExportData(
   data: ExpensesResponse,
   translateCategory?: (key: string) => string,
 ): ExpenseExportData {
+  const tripCurrency = data.tripCurrency;
   return {
     expenses: data.expenses.map((e) => ({
       title: e.title,
-      amount: e.amount,
+      amount: fromMinorUnits(e.amount, e.currency),
       paidByName: e.paidByUser.name,
       splitType: e.splitType,
       category: e.category
@@ -69,18 +72,21 @@ function toExpenseExportData(
           ? translateCategory(e.category)
           : e.category
         : null,
-      splits: e.splits.map((s) => ({ name: s.user.name, amount: s.amount })),
+      splits: e.splits.map((s) => ({
+        name: s.user.name,
+        amount: fromMinorUnits(s.amount, e.splitType === "equal" ? tripCurrency : e.currency),
+      })),
     })),
     settlement: {
-      totalAmount: data.settlement.totalAmount,
+      totalAmount: fromMinorUnits(data.settlement.totalAmount, tripCurrency),
       balances: data.settlement.balances.map((b) => ({
         name: b.name,
-        net: b.net,
+        net: fromMinorUnits(b.net, tripCurrency),
       })),
       transfers: data.settlement.transfers.map((t) => ({
         fromName: t.from.name,
         toName: t.to.name,
-        amount: t.amount,
+        amount: fromMinorUnits(t.amount, tripCurrency),
       })),
     },
   };

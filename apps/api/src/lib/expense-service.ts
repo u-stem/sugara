@@ -116,11 +116,13 @@ export async function createExpenseCore(
     return { ok: false, error: "split_user_not_member" };
   }
 
-  // Calculate split amounts for equal type (use baseAmount for settlement consistency)
+  // Calculate split amounts for equal type (use baseAmount for settlement consistency).
+  // For custom/itemized, convert each split's major-unit amount to minor units so that
+  // storage matches the minor-unit convention used by expenses.amount.
   const splitAmounts =
     splitType === "equal"
       ? calculateEqualSplit(baseAmount ?? minorAmount, splits.length)
-      : splits.map((s) => s.amount ?? 0);
+      : splits.map((s) => toMinorUnits(s.amount ?? 0, currency));
 
   const result = await db.transaction(async (tx) => {
     const [expense] = await tx
@@ -153,7 +155,8 @@ export async function createExpenseCore(
           lineItems.map((item, i) => ({
             expenseId: expense.id,
             name: item.name,
-            amount: item.amount,
+            // Convert major-unit input to minor units for consistent DB storage.
+            amount: toMinorUnits(item.amount, currency),
             sortOrder: i,
           })),
         )
@@ -305,8 +308,29 @@ export async function updateExpenseCore(
   if (splits && updateFields.amount === undefined) {
     const effectiveSplitType = updateFields.splitType ?? existing.splitType;
     if (effectiveSplitType === "custom" || effectiveSplitType === "itemized") {
-      const splitsTotal = splits.reduce((sum, s) => sum + (s.amount ?? 0), 0);
+      // Convert each split's major-unit input to minor units before comparing with
+      // the stored minor-unit amount; avoids ~100x mismatches for non-JPY currencies.
+      const splitsTotal = splits.reduce(
+        (sum, s) => sum + toMinorUnits(s.amount ?? 0, finalCurrency),
+        0,
+      );
       if (splitsTotal !== existing.amount) {
+        return { ok: false, error: "split_amount_mismatch" };
+      }
+    }
+  }
+
+  // When both amount and splits are updated together, verify minor-unit consistency.
+  // This check was previously a schema refine but cannot live there because the existing
+  // expense currency is unavailable to the schema for partial updates.
+  if (splits && minorAmount !== undefined) {
+    const effectiveSplitType = updateFields.splitType ?? existing.splitType;
+    if (effectiveSplitType === "custom" || effectiveSplitType === "itemized") {
+      const splitsTotal = splits.reduce(
+        (sum, s) => sum + toMinorUnits(s.amount ?? 0, finalCurrency),
+        0,
+      );
+      if (splitsTotal !== minorAmount) {
         return { ok: false, error: "split_amount_mismatch" };
       }
     }
@@ -335,7 +359,7 @@ export async function updateExpenseCore(
       const splitAmounts =
         finalSplitType === "equal"
           ? calculateEqualSplit(effectiveBaseAmount, splits.length)
-          : splits.map((s) => s.amount ?? 0);
+          : splits.map((s) => toMinorUnits(s.amount ?? 0, finalCurrency));
 
       await tx.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
       await tx.insert(expenseSplits).values(
@@ -356,7 +380,7 @@ export async function updateExpenseCore(
             lineItems.map((item, i) => ({
               expenseId,
               name: item.name,
-              amount: item.amount,
+              amount: toMinorUnits(item.amount, finalCurrency),
               sortOrder: i,
             })),
           )

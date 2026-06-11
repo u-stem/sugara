@@ -1,5 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { updateExpenseSchema } from "../schemas/expense";
+import { createExpenseSchema, updateExpenseSchema } from "../schemas/expense";
+
+// USD decimal-amount splits (the bug: .int() rejects 6.25 and major-unit comparison fails)
+describe("createExpenseSchema with non-JPY decimal amounts", () => {
+  it("accepts USD amount 12.5 with custom splits summing to 12.5", () => {
+    // Arrange
+    const input = {
+      title: "Dinner",
+      amount: 12.5,
+      paidByUserId: "550e8400-e29b-41d4-a716-446655440000",
+      splitType: "custom",
+      currency: "USD",
+      splits: [
+        { userId: "550e8400-e29b-41d4-a716-446655440000", amount: 6.25 },
+        { userId: "550e8400-e29b-41d4-a716-446655440001", amount: 6.25 },
+      ],
+    };
+
+    // Act
+    const result = createExpenseSchema.safeParse(input);
+
+    // Assert
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects USD amount 12.5 when custom splits do not sum to 12.5 in minor units", () => {
+    // Arrange — 6.25 + 6.30 = 12.55 ≠ 12.50 (1255 ≠ 1250 minor units)
+    const input = {
+      title: "Dinner",
+      amount: 12.5,
+      paidByUserId: "550e8400-e29b-41d4-a716-446655440000",
+      splitType: "custom",
+      currency: "USD",
+      splits: [
+        { userId: "550e8400-e29b-41d4-a716-446655440000", amount: 6.25 },
+        { userId: "550e8400-e29b-41d4-a716-446655440001", amount: 6.3 },
+      ],
+    };
+
+    // Act
+    const result = createExpenseSchema.safeParse(input);
+
+    // Assert
+    expect(result.success).toBe(false);
+  });
+});
 
 describe("updateExpenseSchema", () => {
   it("rejects splitType without splits", () => {
