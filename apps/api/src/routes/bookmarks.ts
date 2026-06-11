@@ -15,6 +15,7 @@ import { ERROR_MSG } from "../lib/constants";
 import { hasChanges } from "../lib/has-changes";
 import { getParam } from "../lib/params";
 import { checkTripAccess } from "../lib/permissions";
+import { getNextSortOrder } from "../lib/sort-order";
 import { requireAuth } from "../middleware/auth";
 import { requireNonGuest } from "../middleware/require-non-guest";
 import type { AppEnv } from "../types";
@@ -63,6 +64,16 @@ bookmarkRoutes.post("/:listId/bookmarks", async (c) => {
       return null;
     }
 
+    // MAX+1, not COUNT: deleting a non-last bookmark leaves a gap, and a
+    // COUNT-based value would collide with an existing sortOrder (#143).
+    // The batch path below (from-schedules) already numbers this way.
+    const sortOrder = await getNextSortOrder(
+      tx,
+      bookmarks.sortOrder,
+      bookmarks,
+      eq(bookmarks.listId, listId),
+    );
+
     const [result] = await tx
       .insert(bookmarks)
       .values({
@@ -70,7 +81,7 @@ bookmarkRoutes.post("/:listId/bookmarks", async (c) => {
         name: parsed.data.name,
         memo: parsed.data.memo ?? null,
         urls: parsed.data.urls,
-        sortOrder: bmCount,
+        sortOrder,
       })
       .returning();
 

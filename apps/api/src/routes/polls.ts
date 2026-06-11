@@ -28,6 +28,7 @@ import { createNotification, notifyArticleOwnersOnMemberAdded } from "../lib/not
 import { getParam } from "../lib/params";
 import { findPollAsEditor, findPollAsOwner, findPollAsParticipant } from "../lib/poll-access";
 import { generateShareToken, shareExpiresAt } from "../lib/share-token";
+import { getNextSortOrder } from "../lib/sort-order";
 import { createInitialTripDays } from "../lib/trip-days";
 import { requireAuth } from "../middleware/auth";
 import type { AppEnv } from "../types";
@@ -274,39 +275,62 @@ pollRoutes.post("/:pollId/options", async (c) => {
   if (!poll) return c.json({ error: ERROR_MSG.POLL_NOT_FOUND }, 404);
   if (poll.status !== "open") return c.json({ error: ERROR_MSG.POLL_NOT_OPEN }, 400);
 
-  const [optionCount] = await db
-    .select({ count: count() })
-    .from(schedulePollOptions)
-    .where(eq(schedulePollOptions.pollId, pollId));
-  if (optionCount.count >= MAX_OPTIONS_PER_POLL) {
-    return c.json({ error: ERROR_MSG.LIMIT_POLL_OPTIONS }, 409);
-  }
+  // Limit check, duplicate check, and insert share one transaction so that a
+  // concurrent request cannot slip past the limit between the check and the insert.
+  const result = await db.transaction(async (tx) => {
+    const [optionCount] = await tx
+      .select({ count: count() })
+      .from(schedulePollOptions)
+      .where(eq(schedulePollOptions.pollId, pollId));
+    if (optionCount.count >= MAX_OPTIONS_PER_POLL) {
+      return { error: ERROR_MSG.LIMIT_POLL_OPTIONS };
+    }
 
-  const [duplicate] = await db
-    .select({ id: schedulePollOptions.id })
-    .from(schedulePollOptions)
-    .where(
-      and(
-        eq(schedulePollOptions.pollId, pollId),
-        eq(schedulePollOptions.startDate, parsed.data.startDate),
-        eq(schedulePollOptions.endDate, parsed.data.endDate),
-      ),
+    const [duplicate] = await tx
+      .select({ id: schedulePollOptions.id })
+      .from(schedulePollOptions)
+      .where(
+        and(
+          eq(schedulePollOptions.pollId, pollId),
+          eq(schedulePollOptions.startDate, parsed.data.startDate),
+          eq(schedulePollOptions.endDate, parsed.data.endDate),
+        ),
+      );
+    if (duplicate) {
+      return { error: ERROR_MSG.POLL_OPTION_DUPLICATE };
+    }
+
+    // MAX+1, not COUNT: deleting a non-last option leaves a gap, and a
+    // COUNT-based value would collide with an existing sortOrder (#143).
+    const sortOrder = await getNextSortOrder(
+      tx,
+      schedulePollOptions.sortOrder,
+      schedulePollOptions,
+      eq(schedulePollOptions.pollId, pollId),
     );
-  if (duplicate) {
-    return c.json({ error: ERROR_MSG.POLL_OPTION_DUPLICATE }, 409);
+
+    const [option] = await tx
+      .insert(schedulePollOptions)
+      .values({
+        pollId,
+        startDate: parsed.data.startDate,
+        endDate: parsed.data.endDate,
+        sortOrder,
+      })
+      .returning();
+
+    await tx
+      .update(schedulePolls)
+      .set({ updatedAt: new Date() })
+      .where(eq(schedulePolls.id, pollId));
+
+    return { option };
+  });
+
+  if ("error" in result) {
+    return c.json({ error: result.error }, 409);
   }
-
-  const [option] = await db
-    .insert(schedulePollOptions)
-    .values({
-      pollId,
-      startDate: parsed.data.startDate,
-      endDate: parsed.data.endDate,
-      sortOrder: optionCount.count,
-    })
-    .returning();
-
-  await db.update(schedulePolls).set({ updatedAt: new Date() }).where(eq(schedulePolls.id, pollId));
+  const { option } = result;
 
   logActivity({
     tripId: poll.tripId,
