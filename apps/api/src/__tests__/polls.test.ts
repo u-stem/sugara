@@ -147,20 +147,25 @@ describe("Poll routes", () => {
           where: vi.fn().mockResolvedValue([]),
         }),
       });
-
-      mockDbInsert.mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([
-            {
-              id: "new-opt",
-              pollId: "poll-1",
-              startDate: "2026-02-05",
-              endDate: "2026-02-07",
-              sortOrder: 1,
-            },
-          ]),
+      // Third select: COALESCE(MAX(sortOrder), -1) for gap-safe numbering (#143)
+      mockDbSelect.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ max: 1 }]),
         }),
       });
+
+      const insertValues = vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([
+          {
+            id: "new-opt",
+            pollId: "poll-1",
+            startDate: "2026-02-05",
+            endDate: "2026-02-07",
+            sortOrder: 2,
+          },
+        ]),
+      });
+      mockDbInsert.mockReturnValue({ values: insertValues });
 
       mockDbUpdate.mockReturnValue({
         set: vi.fn().mockReturnValue({
@@ -179,6 +184,8 @@ describe("Poll routes", () => {
       });
 
       expect(res.status).toBe(201);
+      // MAX(sortOrder)=1 → next option gets 2 (gap-safe MAX+1, not COUNT)
+      expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ sortOrder: 2 }));
     });
   });
 

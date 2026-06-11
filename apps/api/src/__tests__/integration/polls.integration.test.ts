@@ -170,6 +170,30 @@ describe("Polls Integration", () => {
     expect(poll.myParticipantId).toBeTruthy();
   });
 
+  it("assigns a non-colliding sortOrder to an option added after deleting a middle option", async () => {
+    // Arrange: options A/B/C get sortOrder 0/1/2; deleting B leaves a gap
+    const { pollId, poll } = await createTripWithPoll(app, {
+      pollOptions: [
+        { startDate: "2025-07-01", endDate: "2025-07-03" },
+        { startDate: "2025-07-10", endDate: "2025-07-12" },
+        { startDate: "2025-07-20", endDate: "2025-07-22" },
+      ],
+    });
+    const middle = poll.options[1];
+    await app.request(`/api/polls/${pollId}/options/${middle.id}`, { method: "DELETE" });
+
+    // Act
+    const res = await app.request(
+      `/api/polls/${pollId}/options`,
+      json({ startDate: "2025-08-01", endDate: "2025-08-03" }),
+    );
+    const option = await res.json();
+
+    // Assert: MAX+1, not COUNT (COUNT=2 would collide with option C's sortOrder)
+    expect(res.status).toBe(201);
+    expect(option.sortOrder).toBe(3);
+  });
+
   it("updates poll note", async () => {
     const { pollId } = await createTripWithPoll(app);
 
