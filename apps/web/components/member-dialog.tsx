@@ -131,7 +131,11 @@ export function MemberDialog({
       setUserId("");
       invalidateMembers();
     } catch (err) {
-      const message = getApiErrorMessage(err, tm("memberAddFailed"));
+      const message = getApiErrorMessage(err, tm("memberAddFailed"), {
+        badRequest: tm("invalidUserId"),
+        notFound: tm("userNotFound"),
+        conflict: tm("memberAlready"),
+      });
       toast.error(message);
     } finally {
       setAdding(false);
@@ -148,7 +152,11 @@ export function MemberDialog({
       toast.success(tm("memberAdded"));
       invalidateMembers();
     } catch (err) {
-      const message = getApiErrorMessage(err, tm("memberAddFailed"));
+      const message = getApiErrorMessage(err, tm("memberAddFailed"), {
+        badRequest: tm("invalidUserId"),
+        notFound: tm("userNotFound"),
+        conflict: tm("memberAlready"),
+      });
       toast.error(message);
     } finally {
       setAdding(false);

@@ -106,29 +106,21 @@ export function SouvenirPanel({ tripId, addOpen, onAddOpenChange }: SouvenirPane
       queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
     },
     onError: (err) => {
-      toast.error(
-        getApiErrorMessage(err, tm("souvenirSaveFailed"), {
-          notFound: tm("souvenirSaveFailed"),
-        }),
-      );
+      toast.error(getApiErrorMessage(err, tm("souvenirSaveFailed")));
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
       apiVoid(`/api/trips/${tripId}/souvenirs/${id}`, { method: "DELETE" }),
-    onSuccess: () => {
+    onSettled: () => {
+      // Refresh regardless of outcome: a 404 means the item was already
+      // deleted elsewhere, so the list still needs to drop the ghost row
       queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
       setDeleteTarget(null);
     },
     onError: (err) => {
-      // Localize 404 (already deleted in another tab/session) instead of
-      // surfacing the English server message
-      toast.error(
-        getApiErrorMessage(err, tm("souvenirDeleteFailed"), {
-          notFound: tm("souvenirDeleteFailed"),
-        }),
-      );
+      toast.error(getApiErrorMessage(err, tm("souvenirDeleteFailed")));
     },
   });
 
@@ -137,18 +129,17 @@ export function SouvenirPanel({ tripId, addOpen, onAddOpenChange }: SouvenirPane
       Promise.all(
         ids.map((id) => apiVoid(`/api/trips/${tripId}/souvenirs/${id}`, { method: "DELETE" })),
       ),
-    onSuccess: () => {
+    onSettled: () => {
+      // Promise.all rejects on the first failure while sibling deletes may
+      // have already succeeded; invalidate on settle so the list reflects
+      // whatever was actually removed
       queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
       setSelectedIds(new Set());
       setSelectMode(false);
       setBulkDeleteOpen(false);
     },
     onError: (err) => {
-      toast.error(
-        getApiErrorMessage(err, tm("souvenirDeleteFailed"), {
-          notFound: tm("souvenirDeleteFailed"),
-        }),
-      );
+      toast.error(getApiErrorMessage(err, tm("souvenirDeleteFailed")));
     },
   });
 

@@ -161,6 +161,44 @@ describe("getApiErrorMessage", () => {
       "対象が見つかりません",
     );
   });
+
+  it("never exposes the raw English server message for 404 without opts", () => {
+    const error = new ApiError("Souvenir not found", 404);
+
+    expect(getApiErrorMessage(error, "削除に失敗しました")).toBe("削除に失敗しました");
+  });
+
+  it("never exposes the raw English server message for 400 without opts", () => {
+    const error = new ApiError("Invalid request body", 400);
+
+    expect(getApiErrorMessage(error, "保存に失敗しました")).toBe("保存に失敗しました");
+  });
+
+  it("never exposes the raw English server message for 409 without opts", () => {
+    const error = new ApiError("Already a member", 409);
+
+    expect(getApiErrorMessage(error, "追加に失敗しました")).toBe("追加に失敗しました");
+  });
+
+  it("returns the conflict message for 409 when provided", () => {
+    const error = new ApiError("Already a member", 409);
+
+    expect(getApiErrorMessage(error, "fallback", { conflict: "すでにメンバーです" })).toBe(
+      "すでにメンバーです",
+    );
+  });
+
+  it("never exposes the raw English server message for 403", () => {
+    const error = new ApiError("Forbidden", 403);
+
+    expect(getApiErrorMessage(error, "権限がありません")).toBe("権限がありません");
+  });
+
+  it("returns the fallback for non-ApiError errors instead of technical messages", () => {
+    const error = new TypeError("Failed to fetch");
+
+    expect(getApiErrorMessage(error, "通信に失敗しました")).toBe("通信に失敗しました");
+  });
 });
 
 describe("fetchApi error shape parsing", () => {

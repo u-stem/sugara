@@ -103,7 +103,12 @@ export async function apiVoid(path: string, options: FetchOptions = {}): Promise
 
 /**
  * Extract a user-facing error message from an unknown catch value.
- * Handles ApiError (conflict / not-found) with dedicated messages.
+ *
+ * Server-originated messages (ApiError.message) and JS runtime messages
+ * (Error.message) are developer-facing and English-only, so they are never
+ * shown to users. Callers supply a localized {@link fallback} and may pass
+ * per-status overrides; when no override matches, the localized fallback is
+ * returned. This guarantees the user always sees a translated message.
  */
 export function getApiErrorMessage(
   err: unknown,
@@ -111,16 +116,9 @@ export function getApiErrorMessage(
   opts?: { badRequest?: string; conflict?: string; notFound?: string },
 ): string {
   if (err instanceof ApiError) {
-    // ApiError with a non-error status comes from internal client guards
-    // (e.g. the 204 type-lie check) and carries a developer-facing message
-    if (err.status < 400) return fallback;
-    if (err.status === 400) return opts?.badRequest ?? err.message;
-    if (err.status === 409) return opts?.conflict ?? err.message;
-    if (err.status === 404) return opts?.notFound ?? err.message;
-    // Server errors (5xx) may contain technical details; use fallback instead
-    if (err.status >= 500) return fallback;
-    return err.message;
+    if (err.status === 400) return opts?.badRequest ?? fallback;
+    if (err.status === 409) return opts?.conflict ?? fallback;
+    if (err.status === 404) return opts?.notFound ?? fallback;
   }
-  if (err instanceof Error) return err.message;
   return fallback;
 }
