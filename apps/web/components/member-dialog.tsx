@@ -109,6 +109,13 @@ export function MemberDialog({
   const invalidateMembers = () =>
     queryClient.invalidateQueries({ queryKey: queryKeys.trips.members(tripId) });
 
+  const memberAddErrorMessage = (err: unknown) =>
+    getApiErrorMessage(err, tm("memberAddFailed"), {
+      badRequest: tm("invalidUserId"),
+      notFound: tm("userNotFound"),
+      conflict: tm("memberAlready"),
+    });
+
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setAdding(true);
@@ -131,12 +138,7 @@ export function MemberDialog({
       setUserId("");
       invalidateMembers();
     } catch (err) {
-      const message = getApiErrorMessage(err, tm("memberAddFailed"), {
-        badRequest: tm("invalidUserId"),
-        notFound: tm("userNotFound"),
-        conflict: tm("memberAlready"),
-      });
-      toast.error(message);
+      toast.error(memberAddErrorMessage(err));
     } finally {
       setAdding(false);
     }
@@ -152,12 +154,7 @@ export function MemberDialog({
       toast.success(tm("memberAdded"));
       invalidateMembers();
     } catch (err) {
-      const message = getApiErrorMessage(err, tm("memberAddFailed"), {
-        badRequest: tm("invalidUserId"),
-        notFound: tm("userNotFound"),
-        conflict: tm("memberAlready"),
-      });
-      toast.error(message);
+      toast.error(memberAddErrorMessage(err));
     } finally {
       setAdding(false);
     }

@@ -144,6 +144,7 @@ export default function SpTripMembersPage() {
     } catch (err) {
       toast.error(
         getApiErrorMessage(err, tm("memberAddFailed"), {
+          notFound: tm("userNotFound"),
           conflict: tm("memberAlready"),
         }),
       );

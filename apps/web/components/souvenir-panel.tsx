@@ -57,7 +57,7 @@ import {
 import { SelectionIndicator } from "@/components/ui/selection-indicator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { api, apiVoid, getApiErrorMessage } from "@/lib/api";
+import { ApiError, api, apiVoid, getApiErrorMessage } from "@/lib/api";
 import { SELECTED_RING } from "@/lib/colors";
 import { isSafeUrl, stripProtocol } from "@/lib/format";
 import { queryKeys } from "@/lib/query-keys";
@@ -102,7 +102,9 @@ export function SouvenirPanel({ tripId, addOpen, onAddOpenChange }: SouvenirPane
         method: "PATCH",
         body: JSON.stringify({ isPurchased }),
       }),
-    onSuccess: () => {
+    onSettled: () => {
+      // Refresh even on failure: a 404 means the item was deleted in another
+      // session and the stale row must drop out of the list
       queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
     },
     onError: (err) => {
@@ -110,36 +112,46 @@ export function SouvenirPanel({ tripId, addOpen, onAddOpenChange }: SouvenirPane
     },
   });
 
+  // A 404 means the item was already deleted in another tab/session — the
+  // desired end state is reached, so treat it as success instead of showing
+  // a failure toast for a row that is about to disappear from the list
+  const deleteSouvenir = async (id: string) => {
+    try {
+      await apiVoid(`/api/trips/${tripId}/souvenirs/${id}`, { method: "DELETE" });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return;
+      throw err;
+    }
+  };
+
   const deleteMutation = useMutation({
-    mutationFn: (id: string) =>
-      apiVoid(`/api/trips/${tripId}/souvenirs/${id}`, { method: "DELETE" }),
-    onSettled: () => {
-      // Refresh regardless of outcome: a 404 means the item was already
-      // deleted elsewhere, so the list still needs to drop the ghost row
-      queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
+    mutationFn: deleteSouvenir,
+    onSuccess: () => {
       setDeleteTarget(null);
     },
     onError: (err) => {
       toast.error(getApiErrorMessage(err, tm("souvenirDeleteFailed")));
     },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
+    },
   });
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: (ids: string[]) =>
-      Promise.all(
-        ids.map((id) => apiVoid(`/api/trips/${tripId}/souvenirs/${id}`, { method: "DELETE" })),
-      ),
-    onSettled: () => {
-      // Promise.all rejects on the first failure while sibling deletes may
-      // have already succeeded; invalidate on settle so the list reflects
-      // whatever was actually removed
-      queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
+    mutationFn: (ids: string[]) => Promise.all(ids.map(deleteSouvenir)),
+    onSuccess: () => {
       setSelectedIds(new Set());
       setSelectMode(false);
       setBulkDeleteOpen(false);
     },
     onError: (err) => {
       toast.error(getApiErrorMessage(err, tm("souvenirDeleteFailed")));
+    },
+    onSettled: () => {
+      // Promise.all rejects on the first failure while sibling deletes may
+      // have already succeeded; invalidate on settle so the list reflects
+      // whatever was actually removed. Selection stays so the user can retry
+      queryClient.invalidateQueries({ queryKey: queryKeys.souvenirs.list(tripId) });
     },
   });
 

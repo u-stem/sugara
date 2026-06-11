@@ -4,6 +4,7 @@ import {
   BOOKMARK_LIST_NAME_MAX_LENGTH,
   type BookmarkListResponse,
   type BookmarkListVisibility,
+  MAX_BOOKMARK_LISTS_PER_USER,
 } from "@sugara/shared";
 import { Plus, X } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -71,7 +72,11 @@ export function CreateBookmarkListDialog({
       handleOpenChange(false);
       onCreated();
     } catch (err) {
-      toast.error(getApiErrorMessage(err, tm("bookmarkListCreateFailed") as string));
+      toast.error(
+        getApiErrorMessage(err, tm("bookmarkListCreateFailed") as string, {
+          conflict: tm("limitBookmarkLists", { max: MAX_BOOKMARK_LISTS_PER_USER }) as string,
+        }),
+      );
     } finally {
       setSubmitting(false);
     }

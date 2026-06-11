@@ -1248,6 +1248,8 @@
     "updated": "Discord通知を更新しました",
     "deleted": "Discord通知を削除しました",
     "invalidUrl": "Discord Webhook URLを入力してください",
+    "saveFailed": "Discord通知の設定に失敗しました",
+    "updateFailed": "Discord通知の更新に失敗しました",
     "unreachableUrl": "Webhook URLに接続できません",
     "alreadyExists": "この旅行にはすでにWebhookが設定されています",
     "typeMemberAdded": "メンバー追加",

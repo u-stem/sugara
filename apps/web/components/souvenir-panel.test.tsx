@@ -97,18 +97,35 @@ function makeItem(overrides: Partial<SouvenirItem> & Pick<SouvenirItem, "id">): 
 const fetchMock = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>();
 
 function listFetchCount(): number {
-  return fetchMock.mock.calls.filter((call) => (call[1]?.method ?? "GET") === "GET").length;
+  return fetchMock.mock.calls.filter(
+    (call) => (call[1]?.method ?? "GET") === "GET" && call[0].endsWith("/souvenirs"),
+  ).length;
 }
 
-function stubFetch(items: SouvenirItem[]) {
-  fetchMock.mockImplementation(async (_url: string, init?: RequestInit) => {
+function deleteFetchCount(): number {
+  return fetchMock.mock.calls.filter((call) => call[1]?.method === "DELETE").length;
+}
+
+function stubFetch(items: SouvenirItem[], deleteResponse: (url: string) => Response = ok204) {
+  fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
     if (init?.method === "DELETE") {
-      return new Response(null, { status: 204 });
+      return deleteResponse(url);
     }
     return new Response(JSON.stringify({ items }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+  });
+}
+
+function ok204(): Response {
+  return new Response(null, { status: 204 });
+}
+
+function jsonError(status: number, message: string): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { "Content-Type": "application/json" },
   });
 }
 
@@ -158,6 +175,7 @@ describe("SouvenirPanel delete", () => {
     await waitFor(() => {
       expect(listFetchCount()).toBeGreaterThanOrEqual(2);
     });
+    expect(deleteFetchCount()).toBe(1);
   });
 
   it("does not surface an error toast when deletion succeeds with 204", async () => {
@@ -168,6 +186,19 @@ describe("SouvenirPanel delete", () => {
     await deleteFirstItem();
 
     // Wait for the mutation to settle (success invalidates and refetches the list).
+    await waitFor(() => {
+      expect(listFetchCount()).toBeGreaterThanOrEqual(2);
+    });
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+  });
+
+  it("treats a 404 on delete as success because the item is already gone", async () => {
+    stubFetch([makeItem({ id: "s1" })], () => jsonError(404, "Souvenir not found"));
+    renderPanel();
+    await screen.findByText("イカ飯");
+
+    await deleteFirstItem();
+
     await waitFor(() => {
       expect(listFetchCount()).toBeGreaterThanOrEqual(2);
     });
@@ -188,6 +219,27 @@ describe("SouvenirPanel delete", () => {
     await waitFor(() => {
       expect(listFetchCount()).toBeGreaterThanOrEqual(2);
     });
+    expect(deleteFetchCount()).toBe(2);
     expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
+  });
+
+  it("refetches the list and shows a localized toast when a bulk delete partially fails", async () => {
+    stubFetch([makeItem({ id: "s1" }), makeItem({ id: "s2", name: "木彫りの熊" })], (url) =>
+      url.endsWith("/s2") ? jsonError(500, "Internal Server Error") : ok204(),
+    );
+    renderPanel();
+    await screen.findByText("イカ飯");
+
+    fireEvent.click(screen.getByRole("button", { name: "選択" }));
+    fireEvent.click(screen.getByRole("button", { name: "全選択" }));
+    fireEvent.click(screen.getByRole("button", { name: "削除" }));
+    const confirmButtons = screen.getAllByRole("button", { name: "削除する" });
+    fireEvent.click(confirmButtons[1]);
+
+    // onSettled must refetch so the successfully deleted sibling drops out
+    await waitFor(() => {
+      expect(listFetchCount()).toBeGreaterThanOrEqual(2);
+    });
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith("お土産の削除に失敗しました");
   });
 });

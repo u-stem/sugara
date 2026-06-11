@@ -1,3 +1,5 @@
+import { reportError } from "@/lib/report-error";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export class ApiError extends Error {
@@ -84,10 +86,14 @@ export async function api<T>(path: string, options: FetchOptions = {}): Promise<
   const res = await fetchApi(path, options);
 
   if (res.status === 204) {
-    throw new ApiError(
+    const guardError = new ApiError(
       `Expected JSON body from ${path} but got 204 No Content. Use apiVoid() for endpoints that return no body.`,
       204,
     );
+    // The user only sees a localized fallback toast (getApiErrorMessage never
+    // surfaces this message), so report it or the misuse stays invisible
+    reportError(guardError);
+    throw guardError;
   }
 
   return res.json();

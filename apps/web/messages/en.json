@@ -1248,6 +1248,8 @@
     "updated": "Discord notifications updated",
     "deleted": "Discord notifications deleted",
     "invalidUrl": "Please enter a Discord Webhook URL",
+    "saveFailed": "Failed to save Discord notification settings",
+    "updateFailed": "Failed to update Discord notification settings",
     "unreachableUrl": "Cannot connect to Webhook URL",
     "alreadyExists": "A webhook is already configured for this trip",
     "typeMemberAdded": "Member added",
