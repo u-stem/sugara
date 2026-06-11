@@ -11,6 +11,7 @@ import { describeRoute, resolver } from "hono-openapi";
 import { db } from "../../db";
 import { articles, articleTrips } from "../../db/schema";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
+import { getNextSortOrder } from "../../lib/sort-order";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
 import { uuidSchema } from "./shared";
@@ -107,6 +108,15 @@ articlesWriteApp.post(
         return null;
       }
 
+      // MAX+1, not COUNT: deleting a non-last article leaves a gap, and a
+      // COUNT-based value would collide with an existing sortOrder (#137).
+      const sortOrder = await getNextSortOrder(
+        tx,
+        articles.sortOrder,
+        articles,
+        eq(articles.ownerId, userId),
+      );
+
       const [created] = await tx
         .insert(articles)
         .values({
@@ -115,7 +125,7 @@ articlesWriteApp.post(
           content: parsed.data.content,
           tags: parsed.data.tags,
           visibility: parsed.data.visibility,
-          sortOrder: articleCount,
+          sortOrder,
         })
         .returning();
 

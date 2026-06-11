@@ -40,7 +40,7 @@ vi.mock("../../lib/notifications", () => ({
 }));
 
 import { eq } from "drizzle-orm";
-import { expenses, tripDays, tripMembers } from "../../db/schema";
+import { articles, expenses, tripDays, tripMembers } from "../../db/schema";
 import { v1App } from "../../routes/v1/index";
 import { cleanupTables, createTestUser, getTestDb, teardownTestDb } from "./setup";
 
@@ -321,5 +321,44 @@ describe("v1 write routes integration", () => {
     expect(patchRes.status).toBe(409);
     const body = await patchRes.json();
     expect(body.error.code).toBe("conflict");
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /articles — sortOrder must not collide after a deletion gap (#137)
+  // -------------------------------------------------------------------------
+
+  it("POST /articles assigns a non-colliding sortOrder after an earlier article is deleted", async () => {
+    // Arrange: 3 articles (sortOrder 0, 1, 2), then delete the first
+    apiKey = { ...apiKey, scopes: ["articles:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const createdIds: string[] = [];
+    for (const title of ["First", "Second", "Third"]) {
+      const res = await v1App.request("/articles", {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      expect(res.status).toBe(201);
+      createdIds.push((await res.json()).id);
+    }
+
+    const db = getTestDb();
+    await db.delete(articles).where(eq(articles.id, createdIds[0]));
+
+    // Act: create a new article into the gap
+    const res = await v1App.request("/articles", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Fourth" }),
+    });
+    expect(res.status).toBe(201);
+
+    // Assert: all remaining sortOrders are unique
+    const rows = await db.query.articles.findMany({
+      where: eq(articles.ownerId, userId),
+    });
+    const sortOrders = rows.map((r) => r.sortOrder);
+    expect(new Set(sortOrders).size).toBe(sortOrders.length);
   });
 });
