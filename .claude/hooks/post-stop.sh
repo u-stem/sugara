@@ -43,8 +43,11 @@ prune_log() {
 # them pass, so the gate's audit intent (never stop with a real unresolved failure) is preserved.
 if [ "${SUGARA_IGNORE_FAILURE_LOG:-0}" != "1" ] && [ -s "$LOG_FILE" ]; then
   while IFS= read -r pkg; do
-    [ -z "$pkg" ] && continue
-    if bun run --filter "$pkg" test >/dev/null 2>&1; then
+    # Guard the literal "null" jq emits for entries missing the pkg field.
+    if [ -z "$pkg" ] || [ "$pkg" = "null" ]; then continue; fi
+    # </dev/null detaches the test runner from the loop's stdin; otherwise it could
+    # consume lines destined for `read` via the inherited process-substitution pipe.
+    if bun run --filter "$pkg" test </dev/null >/dev/null 2>&1; then
       prune_log "test" "$pkg"
     fi
   done < <(jq -r 'select(.category == "test") | .pkg' "$LOG_FILE" 2>/dev/null | sort -u)
@@ -67,7 +70,9 @@ EOF
   exit 2
 fi
 
-# Short-circuit test execution when requested (e.g. long debug sessions, interactive work).
+# Short-circuit gate 2's changed-package test runs when requested (e.g. long debug sessions,
+# interactive work). Note: the test-entry self-heal above still runs — unblocking a resolved
+# failure takes priority over skipping tests; use SUGARA_IGNORE_FAILURE_LOG=1 to bypass gate 1.
 if [ "${SUGARA_SKIP_POST_STOP_TEST:-0}" = "1" ]; then
   exit 0
 fi
