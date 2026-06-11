@@ -6,7 +6,9 @@ import {
   computeScheduleReorderIndex,
   computeScheduleReorderResult,
   type DropTarget,
+  indicatorGapIndex,
   isOverUpperHalf,
+  timelineEdge,
 } from "../drop-position";
 
 function makeSchedule(overrides: Partial<ScheduleResponse> = {}): ScheduleResponse {
@@ -557,5 +559,66 @@ describe("computeScheduleReorderResult returns anchor info for crossDay drops", 
     const result = computeScheduleReorderResult([s0, sOther], [hotelEarly], "sOther", target);
     expect(result).not.toBeNull();
     expect(result?.anchor).toEqual({ anchor: null, anchorSourceId: null });
+  });
+});
+
+describe("timelineEdge", () => {
+  const rect = { top: 100, bottom: 500 };
+
+  it("returns head when the pointer is above the zone top", () => {
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 50 }), 0, rect)).toBe("head");
+  });
+
+  it("returns tail when the pointer is below the zone bottom", () => {
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 600 }), 0, rect)).toBe("tail");
+  });
+
+  it("returns inside when the pointer is within the zone", () => {
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 300 }), 0, rect)).toBe("inside");
+  });
+
+  it("offsets the activation position by the drag delta", () => {
+    // Grabbed at y=300 (inside), dragged up by 250 → now above the top.
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 300 }), -250, rect)).toBe(
+      "head",
+    );
+  });
+
+  it("returns null when the rect is missing", () => {
+    expect(timelineEdge(new PointerEvent("pointermove", { clientY: 50 }), 0, null)).toBeNull();
+  });
+
+  it("returns null when the activator event has no pointer position", () => {
+    expect(timelineEdge(null, 0, rect)).toBeNull();
+  });
+});
+
+describe("indicatorGapIndex", () => {
+  const ids = ["s1", "s2", "s3"];
+
+  it("maps upper half of an item to the gap above it", () => {
+    expect(indicatorGapIndex(ids, "s2", true)).toBe(1);
+  });
+
+  it("maps lower half of an item to the gap below it", () => {
+    expect(indicatorGapIndex(ids, "s1", false)).toBe(1);
+  });
+
+  it("collapses lower half of item i and upper half of item i+1 into the same gap", () => {
+    // The user-visible bug: these two hover states drop into the same
+    // position but used to render the line at two different spots.
+    expect(indicatorGapIndex(ids, "s1", false)).toBe(indicatorGapIndex(ids, "s2", true));
+  });
+
+  it("maps lower half of the last item to the after-end gap", () => {
+    expect(indicatorGapIndex(ids, "s3", false)).toBe(3);
+  });
+
+  it("returns null when overId is null", () => {
+    expect(indicatorGapIndex(ids, null, true)).toBeNull();
+  });
+
+  it("returns null when overId is not in the list", () => {
+    expect(indicatorGapIndex(ids, "missing", true)).toBeNull();
   });
 });

@@ -22,7 +22,7 @@ export function getTestDb() {
 export async function cleanupTables() {
   const db = getTestDb();
   await db.execute(
-    sql`TRUNCATE schedule_poll_responses, schedule_poll_participants, schedule_poll_options, schedule_polls, schedules, day_patterns, trip_days, trip_members, trips, verifications, accounts, sessions, users CASCADE`,
+    sql`TRUNCATE schedule_poll_responses, schedule_poll_participants, schedule_poll_options, schedule_polls, schedules, day_patterns, trip_days, trip_members, trips, api_keys, verifications, accounts, sessions, users CASCADE`,
   );
 }
 

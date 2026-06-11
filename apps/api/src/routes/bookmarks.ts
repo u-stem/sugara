@@ -9,7 +9,8 @@ import {
 import { and, count, eq, inArray, max } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
-import { bookmarkLists, bookmarks, schedules } from "../db/schema";
+import { bookmarks, schedules } from "../db/schema";
+import { verifyListOwnership } from "../lib/bookmark-ownership";
 import { ERROR_MSG } from "../lib/constants";
 import { hasChanges } from "../lib/has-changes";
 import { getParam } from "../lib/params";
@@ -21,14 +22,6 @@ import type { AppEnv } from "../types";
 const bookmarkRoutes = new Hono<AppEnv>();
 bookmarkRoutes.use("*", requireAuth);
 bookmarkRoutes.use("*", requireNonGuest);
-
-async function verifyListOwnership(listId: string, userId: string) {
-  const list = await db.query.bookmarkLists.findFirst({
-    where: eq(bookmarkLists.id, listId),
-  });
-  if (!list || list.userId !== userId) return null;
-  return list;
-}
 
 // List bookmarks
 bookmarkRoutes.get("/:listId/bookmarks", async (c) => {

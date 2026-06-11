@@ -421,6 +421,31 @@ const JA_FAQS = [
       "Webhook URLが無効になると自動的に通知が停止します。旅行のメニューからDiscord通知の状態を確認し、必要に応じてURLを再設定してください。",
     sortOrder: 106,
   },
+  // ---- External API ----
+  {
+    question: "外部APIとは何ができますか？",
+    answer:
+      "設定画面で発行した API キーを使うと、スクリプトやツールから自分の旅行データを読み取れます。旅行の一覧・詳細（日程・メンバーを含む）、費用、ブックマーク、自分が作成した記事を取得できます。現在は読み取りのみに対応しており、データの作成・変更・削除はできません。",
+    sortOrder: 110,
+  },
+  {
+    question: "API キーはどこで発行・削除できますか？",
+    answer:
+      "設定画面の「API キー」タブから発行・一覧表示・削除ができます。キーは発行時に 1 回だけ表示されます。再表示はできないため、必ずコピーして安全な場所に保管してください。削除するとすぐに無効になります。ゲストアカウントでは利用できません。",
+    sortOrder: 111,
+  },
+  {
+    question: "API キーの有効期限と注意点を教えてください",
+    answer:
+      "キーを発行するときに有効期限を設定します。最長 90 日です。期限が切れたキーは自動的に無効になります。また、パスワードを変更・リセットすると、セキュリティのために発行済みの API キーはすべて無効になります。定期的に不要なキーを削除することをおすすめします。",
+    sortOrder: 112,
+  },
+  {
+    question: "API の仕様（エンドポイント一覧）はどこで見られますか？",
+    answer:
+      "設定画面でログインした状態で /api/_docs を開くと、API リファレンスが表示されます。エンドポイントの一覧・パラメータ・レスポンスの形式を確認でき、ブラウザ上で試すこともできます。ゲストアカウントでは利用できません。",
+    sortOrder: 113,
+  },
 ];
 
 const EN_FAQS = [
@@ -829,6 +854,31 @@ const EN_FAQS = [
     answer:
       "If the Webhook URL becomes invalid, notifications are automatically paused. Check the Discord notification settings from the trip menu and reconfigure the URL if needed.",
     sortOrder: 106,
+  },
+  // ---- External API ----
+  {
+    question: "What can I do with the external API?",
+    answer:
+      "By using an API key issued from your Settings, you can read your own travel data from scripts or tools. Available data includes trip list and details (schedules and members), expenses, bookmark lists, and articles you have written. Write operations (creating, editing, or deleting data) are not currently supported.",
+    sortOrder: 110,
+  },
+  {
+    question: "Where can I issue or delete API keys?",
+    answer:
+      "Go to the 'API Keys' tab in Settings to issue, list, and delete API keys. The raw key is shown only once at the time of issue — copy and save it somewhere safe, as it cannot be shown again. Deleting a key revokes it immediately. Guest accounts cannot use this feature.",
+    sortOrder: 111,
+  },
+  {
+    question: "What is the expiry limit for API keys, and what should I watch out for?",
+    answer:
+      "You set the expiry when issuing a key. The maximum lifetime is 90 days. Expired keys are automatically invalidated. Changing or resetting your password also revokes all your issued API keys for security. It is good practice to delete unused keys regularly.",
+    sortOrder: 112,
+  },
+  {
+    question: "Where can I view the API specification (endpoint list)?",
+    answer:
+      "Open /api/_docs while logged in to see the API reference. It lists all endpoints with their parameters and response shapes, and you can try requests directly in the browser. Guest accounts cannot access this page.",
+    sortOrder: 113,
   },
 ];
 

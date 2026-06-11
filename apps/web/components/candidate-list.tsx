@@ -1,11 +1,12 @@
 "use client";
 
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { SortableContext } from "@dnd-kit/sortable";
 import type { CandidateResponse } from "@sugara/shared";
 import { useTranslations } from "next-intl";
 import { memo } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DROP_ZONE_ACTIVE } from "@/lib/colors";
+import { noShiftSortingStrategy } from "@/lib/dnd-sorting";
 import { cn } from "@/lib/utils";
 import { CandidateItem } from "./candidate-item";
 import { DndInsertIndicator } from "./dnd-insert-indicator";
@@ -105,7 +106,7 @@ export const CandidateList = memo(function CandidateList({
   if (draggable) {
     return (
       <div ref={droppableRef}>
-        <SortableContext items={candidates.map((c) => c.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={candidates.map((c) => c.id)} strategy={noShiftSortingStrategy}>
           {candidates.length === 0 ? (
             <div
               className={cn(

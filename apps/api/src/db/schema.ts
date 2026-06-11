@@ -173,6 +173,28 @@ export const verifications = pgTable("verifications", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }).enableRLS();
 
+// External API keys (self-hash auth). The raw key is shown once at creation and
+// only its SHA-256 hash is stored, so the key is unrecoverable from the DB.
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 100 }).notNull(),
+    // SHA-256 hex digest of the raw key. Unique so verification is a single-index lookup.
+    keyHash: varchar("key_hash", { length: 64 }).notNull().unique(),
+    // Leading characters of the raw key (e.g. "sk_a1b2c3d4") for list display only.
+    start: varchar("start", { length: 16 }).notNull(),
+    // Flat scope labels, e.g. ["trips:read", "expenses:read"]. Whitelisted at the route layer.
+    scopes: text("scopes").array().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("api_keys_user_id_idx").on(table.userId)],
+).enableRLS();
+
 export const trips = pgTable(
   "trips",
   {
