@@ -344,6 +344,7 @@
     "limitPollOptions": "Up to {max} date options",
     "limitPollParticipants": "Up to {max} participants",
     "souvenirSaveFailed": "Failed to save souvenir",
+    "souvenirDeleted": "Souvenir deleted",
     "souvenirDeleteFailed": "Failed to delete souvenir",
     "emptySouvenir": "No souvenirs yet",
     "exportSuccess": "Exported",

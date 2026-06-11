@@ -344,6 +344,7 @@
     "limitPollOptions": "日程案は最大{max}件まで追加できます",
     "limitPollParticipants": "参加者は最大{max}人まで追加できます",
     "souvenirSaveFailed": "お土産の保存に失敗しました",
+    "souvenirDeleted": "お土産を削除しました",
     "souvenirDeleteFailed": "お土産の削除に失敗しました",
     "emptySouvenir": "お土産リストはまだありません",
     "exportSuccess": "エクスポートしました",

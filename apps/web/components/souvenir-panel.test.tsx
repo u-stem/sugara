@@ -192,6 +192,34 @@ describe("SouvenirPanel delete", () => {
     expect(vi.mocked(toast.error)).not.toHaveBeenCalled();
   });
 
+  it("shows a localized success toast after deletion", async () => {
+    stubFetch([makeItem({ id: "s1" })]);
+    renderPanel();
+    await screen.findByText("イカ飯");
+
+    await deleteFirstItem();
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith("お土産を削除しました");
+    });
+  });
+
+  it("shows a localized success toast after bulk deletion", async () => {
+    stubFetch([makeItem({ id: "s1" }), makeItem({ id: "s2", name: "木彫りの熊" })]);
+    renderPanel();
+    await screen.findByText("イカ飯");
+
+    fireEvent.click(screen.getByRole("button", { name: "選択" }));
+    fireEvent.click(screen.getByRole("button", { name: "全選択" }));
+    fireEvent.click(screen.getByRole("button", { name: "削除" }));
+    const confirmButtons = screen.getAllByRole("button", { name: "削除する" });
+    fireEvent.click(confirmButtons[1]);
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith("お土産を削除しました");
+    });
+  });
+
   it("treats a 404 on delete as success because the item is already gone", async () => {
     stubFetch([makeItem({ id: "s1" })], () => jsonError(404, "Souvenir not found"));
     renderPanel();

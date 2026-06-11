@@ -127,6 +127,7 @@ export function SouvenirPanel({ tripId, addOpen, onAddOpenChange }: SouvenirPane
   const deleteMutation = useMutation({
     mutationFn: deleteSouvenir,
     onSuccess: () => {
+      toast.success(tm("souvenirDeleted"));
       setDeleteTarget(null);
     },
     onError: (err) => {
@@ -140,6 +141,7 @@ export function SouvenirPanel({ tripId, addOpen, onAddOpenChange }: SouvenirPane
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: string[]) => Promise.all(ids.map(deleteSouvenir)),
     onSuccess: () => {
+      toast.success(tm("souvenirDeleted"));
       setSelectedIds(new Set());
       setSelectMode(false);
       setBulkDeleteOpen(false);
