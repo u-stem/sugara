@@ -5,6 +5,7 @@ import {
   scheduleCategorySchema,
   scheduleColorSchema,
   transportMethodSchema,
+  tripStatusSchema,
 } from "@sugara/shared";
 import { z } from "zod";
 import type { ApiClient } from "./client.js";
@@ -79,7 +80,7 @@ export const INPUT_SHAPES = {
     id: z.string().uuid(),
     title: z.string().min(1).max(100).optional(),
     destination: z.string().max(100).nullable().optional(),
-    status: z.enum(["scheduling", "draft", "planned", "active", "completed"]).optional(),
+    status: tripStatusSchema.optional(),
     startDate: z.string().date().optional(),
     endDate: z.string().date().optional(),
     currency: currencyCodeSchema.optional(),

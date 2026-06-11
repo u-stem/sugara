@@ -23,6 +23,7 @@ import {
   expenseSplitTypeSchema,
   MAX_LINE_ITEMS_PER_EXPENSE,
   splitsTotalMatchesAmount,
+  tripStatusSchema,
   updateArticleSchema,
   updateBookmarkListSchema,
   updateBookmarkSchema,
@@ -235,7 +236,7 @@ export const v1TripWriteResponseSchema = z.object({
   startDate: z.string().nullable(),
   endDate: z.string().nullable(),
   currency: z.string(),
-  status: z.enum(["scheduling", "draft", "planned", "active", "completed"]),
+  status: tripStatusSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
 });
