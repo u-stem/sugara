@@ -95,3 +95,34 @@ describe("CandidateItem transport cost", () => {
     expect(screen.queryByText("￥500")).toBeNull();
   });
 });
+
+describe("CandidateItem reorder link tap guard", () => {
+  function renderReorderable(overrides: Partial<CandidateResponse> = {}) {
+    renderWithIntl(
+      <MobileContext.Provider value={true}>
+        <CandidateItem spot={makeCandidate(overrides)} onEdit={noop} onDelete={noop} reorderable />
+      </MobileContext.Provider>,
+    );
+  }
+
+  it("disables pointer events on the address link while reordering", () => {
+    renderReorderable({ category: "sightseeing", address: "Tokyo Station" });
+
+    const link = screen.getByText("Tokyo Station").closest("a");
+    expect(link?.closest(".pointer-events-none")).not.toBeNull();
+  });
+
+  it("disables pointer events on the transit route link while reordering", () => {
+    renderReorderable();
+
+    const link = screen.getByText("Tokyo → Kyoto").closest("a");
+    expect(link?.closest(".pointer-events-none")).not.toBeNull();
+  });
+
+  it("disables pointer events on the URL link while reordering", () => {
+    renderReorderable({ urls: ["https://example.com/spot"] });
+
+    const link = screen.getByText("example.com/spot").closest("a");
+    expect(link?.closest(".pointer-events-none")).not.toBeNull();
+  });
+});

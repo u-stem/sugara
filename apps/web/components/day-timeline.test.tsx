@@ -150,3 +150,36 @@ describe("DayTimeline mobile reorder with cross-day entries", () => {
     expect(sortButton.hasAttribute("disabled")).toBe(false);
   });
 });
+
+describe("DayTimeline mobile reorder link tap guard", () => {
+  it("disables pointer events on the address link while reordering", () => {
+    renderTimeline({
+      schedules: [
+        makeSchedule({ id: "s1", address: "Tokyo Station" }),
+        makeSchedule({ id: "s2", sortOrder: 1 }),
+      ],
+    });
+    enterReorderMode();
+
+    const link = screen.getByText("Tokyo Station").closest("a");
+    expect(link?.closest(".pointer-events-none")).not.toBeNull();
+  });
+
+  it("disables pointer events on the transit route link while reordering", () => {
+    renderTimeline({
+      schedules: [
+        makeSchedule({
+          id: "s1",
+          category: "transport",
+          departurePlace: "Tokyo",
+          arrivalPlace: "Kyoto",
+        }),
+        makeSchedule({ id: "s2", sortOrder: 1 }),
+      ],
+    });
+    enterReorderMode();
+
+    const link = screen.getByText("Tokyo → Kyoto").closest("a");
+    expect(link?.closest(".pointer-events-none")).not.toBeNull();
+  });
+});

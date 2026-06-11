@@ -133,7 +133,9 @@ export const PlaceItem = memo(function PlaceItem({
             timeStr={timeStr}
           />
           {(address || urls.length > 0 || memo) && (
-            <div className={cn("mt-1 space-y-1", selectable && "pointer-events-none")}>
+            <div
+              className={cn("mt-1 space-y-1", (selectable || reorderable) && "pointer-events-none")}
+            >
               {address && (
                 <a
                   href={buildMapsSearchUrl(address)}
