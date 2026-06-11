@@ -3,10 +3,16 @@ import type {
   CurrencyCode,
   DayPatternResponse,
   DayResponse,
+  ExpensesResponse,
   ScheduleResponse,
   TripResponse,
 } from "@sugara/shared";
-import { formatWholeUnits, toCurrencyCode } from "@sugara/shared";
+import {
+  formatWholeUnits,
+  fromMinorUnits,
+  getSplitDisplayCurrency,
+  toCurrencyCode,
+} from "@sugara/shared";
 import { formatDate, formatTime, toDateString } from "@/lib/format";
 
 // Ordered by: When → What → Where → How → Extra → Meta
@@ -319,6 +325,47 @@ export function buildPreviewRows(
     }
   }
   return rows;
+}
+
+// Convert API response amounts (minor units) to major units for spreadsheet cells.
+// Equal splits are stored in trip currency; custom/itemized use the expense currency.
+export function toExpenseExportData(
+  data: ExpensesResponse,
+  translateCategory?: (key: string) => string,
+): ExpenseExportData {
+  const tripCurrency = data.tripCurrency;
+  return {
+    expenses: data.expenses.map((e) => ({
+      title: e.title,
+      amount: fromMinorUnits(e.amount, e.currency),
+      paidByName: e.paidByUser.name,
+      splitType: e.splitType,
+      category: e.category
+        ? translateCategory
+          ? translateCategory(e.category)
+          : e.category
+        : null,
+      splits: e.splits.map((s) => ({
+        name: s.user.name,
+        amount: fromMinorUnits(
+          s.amount,
+          getSplitDisplayCurrency(e.splitType, tripCurrency, e.currency),
+        ),
+      })),
+    })),
+    settlement: {
+      totalAmount: fromMinorUnits(data.settlement.totalAmount, tripCurrency),
+      balances: data.settlement.balances.map((b) => ({
+        name: b.name,
+        net: fromMinorUnits(b.net, tripCurrency),
+      })),
+      transfers: data.settlement.transfers.map((t) => ({
+        fromName: t.from.name,
+        toName: t.to.name,
+        amount: fromMinorUnits(t.amount, tripCurrency),
+      })),
+    },
+  };
 }
 
 export type ExpenseExportResult = {
