@@ -17,3 +17,16 @@ export function buildMemberNoMap(members: ReadonlyArray<{ userId: string }>): Ma
   }
   return map;
 }
+
+// Looks up a userId by its 1-indexed memberNo.
+// Returns undefined when the memberNo is not present in the map
+// (e.g. the caller supplied an out-of-range or invalid number).
+export function resolveMemberNoToUserId(
+  memberNoMap: Map<string, number>,
+  memberNo: number,
+): string | undefined {
+  for (const [userId, no] of memberNoMap) {
+    if (no === memberNo) return userId;
+  }
+  return undefined;
+}

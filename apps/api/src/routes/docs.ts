@@ -76,7 +76,7 @@ async function addDocsCsp(c: Context<AppEnv>, next: Next): Promise<void> {
 
 const SPEC_OPTIONS: Parameters<typeof generateSpecs>[1] = {
   documentation: {
-    info: { title: "sugara External API", version: "1.0.0" },
+    info: { title: "sugara External API", version: "1.1.0" },
     // servers defines the base URL so that spec paths (/trips, /articles, …)
     // are relative to /api/v1. Scalar's Try-it uses this to build full URLs.
     servers: [{ url: "/api/v1" }],
