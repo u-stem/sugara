@@ -13,6 +13,7 @@ import {
   EXPENSE_TITLE_MAX_LENGTH,
   expenseCategorySchema,
   formatCurrency,
+  fromMinorUnits,
   toMinorUnits,
 } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
@@ -41,7 +42,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api, getApiErrorMessage } from "@/lib/api";
-import { calculateItemizedSplits, type ExpenseLineItem } from "@/lib/expense-calc";
+import { calculateItemizedSplits, type ExpenseLineItem, minorUnitsEqual } from "@/lib/expense-calc";
 import { queryKeys } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 
@@ -118,7 +119,7 @@ export function ExpenseDialog({
     if (!open) return;
     if (expense) {
       setTitle(expense.title);
-      setAmount(String(expense.amount));
+      setAmount(String(fromMinorUnits(expense.amount, expense.currency)));
       setPaidByUserId(expense.paidByUserId);
       setCategory(expense.category ?? "");
       setCurrency(expense.currency);
@@ -132,7 +133,7 @@ export function ExpenseDialog({
           expense.lineItems.map((li) => ({
             id: li.id,
             name: li.name,
-            amount: li.amount,
+            amount: fromMinorUnits(li.amount, expense.currency),
             memberIds: new Set(li.members.map((m) => m.userId)),
           })),
         );
@@ -145,8 +146,10 @@ export function ExpenseDialog({
 
       setSelectedMembers(new Set(expense.splits.map((s) => s.userId)));
       const amounts: Record<string, string> = {};
+      // Equal splits are stored in trip currency; custom/itemized use expense currency
+      const splitCurrency = expense.splitType === "equal" ? tripCurrency : expense.currency;
       for (const s of expense.splits) {
-        amounts[s.userId] = String(s.amount);
+        amounts[s.userId] = String(fromMinorUnits(s.amount, splitCurrency));
       }
       setCustomAmounts(amounts);
       setMembersInitialized(true);
@@ -212,15 +215,22 @@ export function ExpenseDialog({
     0,
   );
   const parsedAmount = Number(amount) || 0;
-  const customMismatch = splitType === "custom" && customTotal !== parsedAmount;
+  // Compare in minor-unit space: float addition of major units (e.g. 0.1+0.1+0.1) does not
+  // equal 0.3 in IEEE 754, so a direct !== would produce a false mismatch.
+  const customMismatch =
+    splitType === "custom" && !minorUnitsEqual(customTotal, parsedAmount, currency);
 
   // Itemized split calculations
   const allMemberIds = useMemo(() => new Set(members.map((m) => m.userId)), [members]);
   const itemsTotal = lineItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-  const restAmount = parsedAmount - itemsTotal;
+  // Derive the remainder in minor units to avoid FP errors from major-unit subtraction.
+  // restMinor < 1 means there is less than one minor unit left (effectively zero), which
+  // prevents a ghost "split the rest" button appearing for negligible rounding residuals.
+  const restMinor = toMinorUnits(parsedAmount, currency) - toMinorUnits(itemsTotal, currency);
+  const restAmount = fromMinorUnits(Math.max(restMinor, 0), currency);
 
   const effectiveItems =
-    splitTheRest && restAmount > 0
+    splitTheRest && restMinor >= 1
       ? [
           ...lineItems,
           { id: "__rest__", name: te("restLabel"), amount: restAmount, memberIds: allMemberIds },
@@ -231,11 +241,13 @@ export function ExpenseDialog({
     splitType === "itemized"
       ? calculateItemizedSplits(
           effectiveItems.map((item) => ({ ...item, amount: Number(item.amount) || 0 })),
+          currency,
         )
       : [];
 
   const itemizedTotal = itemizedSplits.reduce((sum, s) => sum + s.amount, 0);
-  const itemizedMismatch = splitType === "itemized" && itemizedTotal !== parsedAmount;
+  const itemizedMismatch =
+    splitType === "itemized" && !minorUnitsEqual(itemizedTotal, parsedAmount, currency);
   const hasInvalidLineItems =
     splitType === "itemized" &&
     lineItems.some((item) => item.amount <= 0 || item.memberIds.size === 0);
@@ -547,6 +559,7 @@ export function ExpenseDialog({
                           }
                           placeholder="0"
                           min={0}
+                          step={CURRENCIES[currency].decimals > 0 ? "0.01" : "1"}
                         />
                       </div>
                     ))}
@@ -613,6 +626,7 @@ export function ExpenseDialog({
                       placeholder={te("lineItemAmountPlaceholder")}
                       className="w-24"
                       min={0}
+                      step={CURRENCIES[currency].decimals > 0 ? "0.01" : "1"}
                     />
                     <Button
                       type="button"
@@ -664,7 +678,7 @@ export function ExpenseDialog({
                           })
                         : te("totalSpendingAmount", { amount: parsedAmount.toLocaleString() })}
                     </p>
-                    {restAmount > 0 && (
+                    {restMinor >= 1 && (
                       <Button
                         type="button"
                         variant={splitTheRest ? "secondary" : "outline"}
@@ -688,7 +702,7 @@ export function ExpenseDialog({
                           <div key={s.userId} className="flex items-center justify-between text-sm">
                             <span>{member?.name ?? s.userId}</span>
                             <span className="font-medium">
-                              {formatCurrency(s.amount, currency, locale)}
+                              {formatCurrency(toMinorUnits(s.amount, currency), currency, locale)}
                             </span>
                           </div>
                         );

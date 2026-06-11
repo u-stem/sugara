@@ -493,6 +493,52 @@ describe("Expense routes", () => {
       expect(res.status).toBe(400);
     });
 
+    it("returns 400 when lineItem amount rounds to 0 minor units", async () => {
+      // $0.004 rounds to 0 cents in minor units; the service must reject it so that
+      // a positive major-unit input cannot silently be stored as a zero-cent line item.
+      mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: userId1 }]);
+      mockCountQuery(0);
+
+      const res = await makeApp().request(`/api/trips/${tripId}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Coffee",
+          amount: 0.004,
+          currency: "USD",
+          exchangeRate: 150,
+          paidByUserId: userId1,
+          splitType: "itemized",
+          splits: [{ userId: userId1, amount: 0.004 }],
+          lineItems: [{ name: "Coffee", amount: 0.004, memberIds: [userId1] }],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 when custom split amount rounds to 0 minor units", async () => {
+      // $0.001 rounds to 0 cents; the service must reject it before DB insert.
+      mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: userId1 }]);
+      mockCountQuery(0);
+
+      const res = await makeApp().request(`/api/trips/${tripId}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Coffee",
+          amount: 0.001,
+          currency: "USD",
+          exchangeRate: 150,
+          paidByUserId: userId1,
+          splitType: "custom",
+          splits: [{ userId: userId1, amount: 0.001 }],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
     it("returns 400 when paidByUserId is not a member", async () => {
       mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: userId2 }]);
       mockCountQuery(0);
@@ -916,6 +962,78 @@ describe("Expense routes", () => {
           splits: [
             { userId: userId1, amount: 700 },
             { userId: userId2, amount: 500 },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("splits のみ更新で USD major-unit splits が minor units に変換され既存 amount と一致する場合 200 を返す", async () => {
+      // Regression test: before the fix, 5.5 + 4.5 = 10 (major) ≠ 1000 (minor) caused a false 400.
+      // After the fix, toMinorUnits(5.5, "USD") + toMinorUnits(4.5, "USD") = 550 + 450 = 1000.
+      mockDbQuery.expenses.findFirst.mockResolvedValue({
+        id: "exp-1",
+        tripId,
+        amount: 1000,
+        currency: "USD",
+        splitType: "custom",
+      });
+      mockDbQuery.tripMembers.findMany.mockResolvedValue([
+        { userId: userId1 },
+        { userId: userId2 },
+      ]);
+      const updatedExpense = { id: "exp-1", amount: 1000, currency: "USD" };
+      mockDbUpdate.mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([updatedExpense]),
+          }),
+        }),
+      });
+      mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+      mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+
+      const res = await makeApp().request(`/api/trips/${tripId}/expenses/exp-1`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          splitType: "custom",
+          splits: [
+            { userId: userId1, amount: 5.5 },
+            { userId: userId2, amount: 4.5 },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+    });
+
+    it("amount と splits 両方更新で合計不一致の場合 400 を返す", async () => {
+      // When both amount and splits are sent, service validates minor-unit consistency.
+      mockDbQuery.expenses.findFirst.mockResolvedValue({
+        id: "exp-1",
+        tripId,
+        amount: 1000,
+        currency: "USD",
+        splitType: "custom",
+      });
+      mockDbQuery.tripMembers.findMany.mockResolvedValue([
+        { userId: userId1 },
+        { userId: userId2 },
+      ]);
+      mockDbQuery.trips.findFirst.mockResolvedValue({ currency: "USD" });
+
+      const res = await makeApp().request(`/api/trips/${tripId}/expenses/exp-1`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        // amount 12.5 USD = 1250 minor, but splits sum 6.25 + 6.30 = 1255 minor → mismatch
+        body: JSON.stringify({
+          amount: 12.5,
+          splitType: "custom",
+          splits: [
+            { userId: userId1, amount: 6.25 },
+            { userId: userId2, amount: 6.3 },
           ],
         }),
       });

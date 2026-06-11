@@ -22,6 +22,7 @@ import {
   expenseCategorySchema,
   expenseSplitTypeSchema,
   MAX_LINE_ITEMS_PER_EXPENSE,
+  toMinorUnits,
   updateArticleSchema,
   updateBookmarkListSchema,
   updateBookmarkSchema,
@@ -102,14 +103,16 @@ export type V1UpdateScheduleInput = z.infer<typeof v1UpdateScheduleSchema>;
 
 // v1 expense split references a member by the stable, non-secret memberNo
 // instead of an internal userId UUID.
+// Amounts use major units (e.g. 6.25 = $6.25); the service converts to minor units before DB write.
 const v1SplitItemSchema = z.object({
   memberNo: z.number().int().positive(),
-  amount: z.number().int().min(0).optional(),
+  amount: z.number().min(0).optional(),
 });
 
+// Line item amounts also use major units; decimals are valid for non-JPY currencies.
 const v1LineItemInputSchema = z.object({
   name: z.string().min(1).max(200),
-  amount: z.number().int().min(1),
+  amount: z.number().positive(),
   // Parallel to lineItems[].memberIds in the internal schema but using memberNos.
   memberNos: z.array(z.number().int().positive()).min(1),
 });
@@ -146,8 +149,13 @@ export const v1CreateExpenseSchema = z
   .refine(
     (data) => {
       if (data.splitType === "custom" || data.splitType === "itemized") {
-        const total = data.splits.reduce((sum, s) => sum + (s.amount ?? 0), 0);
-        return total === data.amount;
+        // Compare in minor units so that e.g. 6.25 + 6.25 === 12.50 for USD
+        // (floating-point addition of major units would lose precision).
+        const splitMinor = data.splits.reduce(
+          (sum, s) => sum + toMinorUnits(s.amount ?? 0, data.currency),
+          0,
+        );
+        return splitMinor === toMinorUnits(data.amount, data.currency);
       }
       return true;
     },
@@ -174,7 +182,9 @@ export const v1UpdateExpenseSchema = z
     paidByMemberNo: z.number().int().positive(),
     splitType: expenseSplitTypeSchema,
     category: expenseCategorySchema.nullable().optional(),
-    currency: currencyCodeSchema.optional().default("JPY"),
+    // No default for partial updates: omitting currency keeps parsedCurrency=undefined,
+    // which lets the service fall back to the existing expense's currency.
+    currency: currencyCodeSchema.optional(),
     exchangeRate: z.number().positive().max(999999).optional(),
     splits: z.array(v1SplitItemSchema).min(1),
     lineItems: z.array(v1LineItemInputSchema).max(MAX_LINE_ITEMS_PER_EXPENSE).optional(),
@@ -208,24 +218,10 @@ export const v1UpdateExpenseSchema = z
     },
     { message: "Custom splits require amount for each member", path: ["splits"] },
   )
-  .refine(
-    (data) => {
-      // When amount and splits are both replaced in one request, neither of the
-      // single-field consistency checks in updateExpenseCore fires — this refine
-      // is the only guard against storing splits that do not sum to the amount
-      // (mirrors the both-present refine in the shared updateExpenseSchema).
-      if (
-        (data.splitType === "custom" || data.splitType === "itemized") &&
-        data.splits &&
-        data.amount !== undefined
-      ) {
-        const total = data.splits.reduce((sum, s) => sum + (s.amount ?? 0), 0);
-        return total === data.amount;
-      }
-      return true;
-    },
-    { message: "Split amounts must equal total amount", path: ["splits"] },
-  )
+  // Note: the both-present amount/splits consistency check is omitted intentionally.
+  // The schema cannot know the existing expense currency when currency is absent from
+  // a partial update, so minor-unit comparison is deferred to the service layer
+  // (updateExpenseCore).
   .refine(
     (data) => {
       if (data.splitType === "itemized") {

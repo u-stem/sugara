@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateItemizedSplits, type ExpenseLineItem } from "../expense-calc";
+import { calculateItemizedSplits, type ExpenseLineItem, minorUnitsEqual } from "../expense-calc";
 
 describe("calculateItemizedSplits", () => {
   const memberA = "00000000-0000-0000-0000-000000000001";
@@ -10,7 +10,7 @@ describe("calculateItemizedSplits", () => {
     const items: ExpenseLineItem[] = [
       { id: "1", name: "料理", amount: 3000, memberIds: new Set([memberA, memberB, memberC]) },
     ];
-    const result = calculateItemizedSplits(items);
+    const result = calculateItemizedSplits(items, "JPY");
     expect(result).toEqual([
       { userId: memberA, amount: 1000 },
       { userId: memberB, amount: 1000 },
@@ -22,7 +22,7 @@ describe("calculateItemizedSplits", () => {
     const items: ExpenseLineItem[] = [
       { id: "1", name: "料理", amount: 1000, memberIds: new Set([memberA, memberB, memberC]) },
     ];
-    const result = calculateItemizedSplits(items);
+    const result = calculateItemizedSplits(items, "JPY");
     expect(result).toEqual([
       { userId: memberA, amount: 334 },
       { userId: memberB, amount: 333 },
@@ -37,7 +37,7 @@ describe("calculateItemizedSplits", () => {
       { id: "2", name: "ビール", amount: 1500, memberIds: new Set([memberA, memberB]) },
       { id: "3", name: "ソフトドリンク", amount: 500, memberIds: new Set([memberC]) },
     ];
-    const result = calculateItemizedSplits(items);
+    const result = calculateItemizedSplits(items, "JPY");
     const map = new Map(result.map((r) => [r.userId, r.amount]));
     expect(map.get(memberA)).toBe(1750);
     expect(map.get(memberB)).toBe(1750);
@@ -50,21 +50,55 @@ describe("calculateItemizedSplits", () => {
       { id: "1", name: "ビール", amount: 1000, memberIds: new Set([memberA]) },
       { id: "rest", name: "その他", amount: 4000, memberIds: new Set([memberA, memberB]) },
     ];
-    const result = calculateItemizedSplits(items);
+    const result = calculateItemizedSplits(items, "JPY");
     const map = new Map(result.map((r) => [r.userId, r.amount]));
     expect(map.get(memberA)).toBe(3000);
     expect(map.get(memberB)).toBe(2000);
   });
 
   it("returns empty array for empty items", () => {
-    expect(calculateItemizedSplits([])).toEqual([]);
+    expect(calculateItemizedSplits([], "JPY")).toEqual([]);
   });
 
   it("splits based on item amounts only", () => {
     const items: ExpenseLineItem[] = [
       { id: "1", name: "料理", amount: 4000, memberIds: new Set([memberA, memberB]) },
     ];
-    const result = calculateItemizedSplits(items);
+    const result = calculateItemizedSplits(items, "JPY");
     expect(result.reduce((s, r) => s + r.amount, 0)).toBe(4000);
+  });
+
+  it("splits a fractional USD amount correctly without floating-point errors", () => {
+    // $5.99 split between 2 members: 300 cents / 2 = 150 each → $3.00 + $2.99
+    const items: ExpenseLineItem[] = [
+      { id: "1", name: "Coffee", amount: 5.99, memberIds: new Set([memberA, memberB]) },
+    ];
+    const result = calculateItemizedSplits(items, "USD");
+    const map = new Map(result.map((r) => [r.userId, r.amount]));
+    expect(map.get(memberA)).toBe(3.0);
+    expect(map.get(memberB)).toBe(2.99);
+    expect(result.reduce((s, r) => s + r.amount, 0)).toBeCloseTo(5.99, 10);
+  });
+});
+
+describe("minorUnitsEqual", () => {
+  it("returns true when IEEE 754 float addition equals the target in minor units", () => {
+    // Without minor-unit comparison: 0.1 + 0.1 + 0.1 === 0.30000000000000004 !== 0.3
+    // This is the exact false-positive mismatch scenario the function is designed to fix.
+    const floatSum = 0.1 + 0.1 + 0.1;
+    expect(floatSum === 0.3).toBe(false); // confirm the raw float is indeed not equal
+    expect(minorUnitsEqual(floatSum, 0.3, "USD")).toBe(true);
+  });
+
+  it("returns false when amounts differ by at least one minor unit", () => {
+    expect(minorUnitsEqual(0.31, 0.3, "USD")).toBe(false);
+  });
+
+  it("returns true for equal JPY amounts (no sub-unit)", () => {
+    expect(minorUnitsEqual(1000, 1000, "JPY")).toBe(true);
+  });
+
+  it("returns false for differing JPY amounts", () => {
+    expect(minorUnitsEqual(1001, 1000, "JPY")).toBe(false);
   });
 });

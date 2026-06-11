@@ -218,6 +218,67 @@ describe("v1 write routes integration", () => {
   });
 
   // -------------------------------------------------------------------------
+  // POST USD expense — minor-unit storage
+  // -------------------------------------------------------------------------
+
+  it("POST USD expense stores expense.amount and split amounts in minor units", async () => {
+    // Arrange: create a USD trip
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "USD Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+        currency: "USD",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    const db = getTestDb();
+    const bob = await createTestUser({ name: "Bob", email: "bob@usd-expense.test" });
+    await db.insert(tripMembers).values({
+      tripId: trip.id,
+      userId: bob.id,
+      role: "editor",
+    });
+
+    const sortedIds = [userId, bob.id].sort();
+    const aliceMemberNo = sortedIds.indexOf(userId) + 1;
+    const bobMemberNo = sortedIds.indexOf(bob.id) + 1;
+
+    // Act: POST expense with decimal USD amount and custom splits
+    const expRes = await v1App.request(`/trips/${trip.id}/expenses`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Dinner",
+        amount: 12.5,
+        currency: "USD",
+        paidByMemberNo: aliceMemberNo,
+        splitType: "custom",
+        splits: [
+          { memberNo: aliceMemberNo, amount: 6.25 },
+          { memberNo: bobMemberNo, amount: 6.25 },
+        ],
+      }),
+    });
+
+    // Assert: HTTP response
+    expect(expRes.status).toBe(201);
+
+    // Assert: DB stores minor units (12.5 USD = 1250 cents; 6.25 USD = 625 cents)
+    const expRow = await db.query.expenses.findFirst({
+      where: eq(expenses.tripId, trip.id),
+      with: { splits: true },
+    });
+    expect(expRow?.amount).toBe(1250);
+    const splitAmounts = expRow?.splits.map((s) => s.amount).sort((a, b) => a - b);
+    expect(splitAmounts).toEqual([625, 625]);
+  });
+
+  // -------------------------------------------------------------------------
   // PATCH /trips/:id — currency change rejected when expenses exist
   // -------------------------------------------------------------------------
 

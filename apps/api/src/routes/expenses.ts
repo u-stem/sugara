@@ -142,6 +142,8 @@ expenseRoutes.post("/:tripId/expenses", requireTripAccess("editor"), async (c) =
         return c.json({ error: ERROR_MSG.EXPENSE_PAYER_NOT_MEMBER }, 400);
       case "split_user_not_member":
         return c.json({ error: ERROR_MSG.EXPENSE_SPLIT_USER_NOT_MEMBER }, 400);
+      case "amount_below_minor_unit":
+        return c.json({ error: ERROR_MSG.EXPENSE_AMOUNT_BELOW_MINOR_UNIT }, 400);
     }
   }
 
@@ -179,6 +181,8 @@ expenseRoutes.patch("/:tripId/expenses/:expenseId", requireTripAccess("editor"),
         return c.json({ error: ERROR_MSG.EXPENSE_SPLIT_AMOUNT_MISMATCH }, 400);
       case "itemized_no_line_items":
         return c.json({ error: "Itemized split requires line items" }, 400);
+      case "amount_below_minor_unit":
+        return c.json({ error: ERROR_MSG.EXPENSE_AMOUNT_BELOW_MINOR_UNIT }, 400);
     }
   }
 

@@ -581,11 +581,13 @@ describe("PATCH /trips/:id error mapping", () => {
 // ---------------------------------------------------------------------------
 
 describe("PATCH expense with both amount and splits", () => {
-  it("returns 400 when custom split amounts do not sum to the new amount", async () => {
-    // Arrange — neither single-field check in updateExpenseCore fires when both
-    // fields are present; the v1 schema refine is the only guard
+  it("returns 400 when custom split amounts do not sum to the new amount (service validation)", async () => {
+    // Arrange — validation moved to service layer (schema refine removed).
+    // The service returns split_amount_mismatch which maps to 400 invalid_request.
     mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
     mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripMembers.findMany.mockResolvedValue(MEMBER_ROWS);
+    mockUpdateExpenseCore.mockResolvedValue({ ok: false, error: "split_amount_mismatch" });
 
     // Act
     const res = await jsonPatch(`/trips/${TRIP_ID}/expenses/${EXPENSE_ID}`, {

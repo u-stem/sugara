@@ -30,7 +30,8 @@ export type CreateExpenseResult =
   | { ok: false; error: "exchange_rate_required" }
   | { ok: false; error: "limit_reached" }
   | { ok: false; error: "payer_not_member" }
-  | { ok: false; error: "split_user_not_member" };
+  | { ok: false; error: "split_user_not_member" }
+  | { ok: false; error: "amount_below_minor_unit" };
 
 export type UpdateExpenseResult =
   | { ok: true; expense: ExpenseRow }
@@ -39,7 +40,8 @@ export type UpdateExpenseResult =
   | { ok: false; error: "payer_not_member" }
   | { ok: false; error: "split_user_not_member" }
   | { ok: false; error: "split_amount_mismatch" }
-  | { ok: false; error: "itemized_no_line_items" };
+  | { ok: false; error: "itemized_no_line_items" }
+  | { ok: false; error: "amount_below_minor_unit" };
 
 /**
  * Core business logic for creating an expense.
@@ -116,11 +118,30 @@ export async function createExpenseCore(
     return { ok: false, error: "split_user_not_member" };
   }
 
-  // Calculate split amounts for equal type (use baseAmount for settlement consistency)
+  // Guard against positive amounts that round to 0 minor units (e.g. $0.004 → 0 cents).
+  // An explicit split amount of 0 is allowed as a zero-burden participant.
+  if (splitType !== "equal") {
+    for (const s of splits) {
+      if (s.amount !== undefined && s.amount > 0 && toMinorUnits(s.amount, currency) === 0) {
+        return { ok: false, error: "amount_below_minor_unit" };
+      }
+    }
+  }
+  if (lineItems) {
+    for (const item of lineItems) {
+      if (toMinorUnits(item.amount, currency) === 0) {
+        return { ok: false, error: "amount_below_minor_unit" };
+      }
+    }
+  }
+
+  // Calculate split amounts for equal type (use baseAmount for settlement consistency).
+  // For custom/itemized, convert each split's major-unit amount to minor units so that
+  // storage matches the minor-unit convention used by expenses.amount.
   const splitAmounts =
     splitType === "equal"
       ? calculateEqualSplit(baseAmount ?? minorAmount, splits.length)
-      : splits.map((s) => s.amount ?? 0);
+      : splits.map((s) => toMinorUnits(s.amount ?? 0, currency));
 
   const result = await db.transaction(async (tx) => {
     const [expense] = await tx
@@ -153,7 +174,8 @@ export async function createExpenseCore(
           lineItems.map((item, i) => ({
             expenseId: expense.id,
             name: item.name,
-            amount: item.amount,
+            // Convert major-unit input to minor units for consistent DB storage.
+            amount: toMinorUnits(item.amount, currency),
             sortOrder: i,
           })),
         )
@@ -288,6 +310,23 @@ export async function updateExpenseCore(
     }
   }
 
+  // Guard against positive amounts that round to 0 minor units (e.g. $0.004 → 0 cents).
+  // An explicit split amount of 0 is allowed as a zero-burden participant.
+  if (splits && (updateFields.splitType ?? existing.splitType) !== "equal") {
+    for (const s of splits) {
+      if (s.amount !== undefined && s.amount > 0 && toMinorUnits(s.amount, finalCurrency) === 0) {
+        return { ok: false, error: "amount_below_minor_unit" };
+      }
+    }
+  }
+  if (lineItems) {
+    for (const item of lineItems) {
+      if (toMinorUnits(item.amount, finalCurrency) === 0) {
+        return { ok: false, error: "amount_below_minor_unit" };
+      }
+    }
+  }
+
   // When only amount changes (no splits provided), verify existing splits still sum correctly.
   // Without this check, the expense amount and split totals would become inconsistent.
   if (updateFields.amount !== undefined && !splits) {
@@ -300,13 +339,19 @@ export async function updateExpenseCore(
     }
   }
 
-  // When only splits change (no amount provided), verify new splits sum matches existing amount.
-  // "equal" is skipped because calculateEqualSplit recalculates amounts from existing.amount.
-  if (splits && updateFields.amount === undefined) {
+  // When splits change, verify the new split total matches the effective expense amount in minor units.
+  // "equal" is skipped: calculateEqualSplit recomputes amounts from the stored total.
+  if (splits) {
     const effectiveSplitType = updateFields.splitType ?? existing.splitType;
     if (effectiveSplitType === "custom" || effectiveSplitType === "itemized") {
-      const splitsTotal = splits.reduce((sum, s) => sum + (s.amount ?? 0), 0);
-      if (splitsTotal !== existing.amount) {
+      // Use the incoming minor amount when amount is also being updated; otherwise fall back to the
+      // existing stored minor-unit amount. This covers "splits-only" and "amount+splits" in one check.
+      const expectedMinor = minorAmount ?? existing.amount;
+      const splitsTotal = splits.reduce(
+        (sum, s) => sum + toMinorUnits(s.amount ?? 0, finalCurrency),
+        0,
+      );
+      if (splitsTotal !== expectedMinor) {
         return { ok: false, error: "split_amount_mismatch" };
       }
     }
@@ -335,7 +380,7 @@ export async function updateExpenseCore(
       const splitAmounts =
         finalSplitType === "equal"
           ? calculateEqualSplit(effectiveBaseAmount, splits.length)
-          : splits.map((s) => s.amount ?? 0);
+          : splits.map((s) => toMinorUnits(s.amount ?? 0, finalCurrency));
 
       await tx.delete(expenseSplits).where(eq(expenseSplits.expenseId, expenseId));
       await tx.insert(expenseSplits).values(
@@ -356,7 +401,7 @@ export async function updateExpenseCore(
             lineItems.map((item, i) => ({
               expenseId,
               name: item.name,
-              amount: item.amount,
+              amount: toMinorUnits(item.amount, finalCurrency),
               sortOrder: i,
             })),
           )

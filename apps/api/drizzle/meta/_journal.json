@@ -351,6 +351,13 @@
       "when": 1781015276854,
       "tag": "0049_pink_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1781162011201,
+      "tag": "0050_expense_splits_to_minor_units",
+      "breakpoints": true
     }
   ]
 }
