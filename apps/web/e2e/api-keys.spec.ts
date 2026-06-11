@@ -129,5 +129,11 @@ test.describe("API keys", () => {
     expect(created.status()).toBe(201);
     const createdBody = await created.json();
     expect(createdBody.title).toBe("E2E write trip");
+
+    // Write does not imply read — the write-only key cannot list trips
+    const readDenied = await request.get("/api/v1/trips", {
+      headers: { Authorization: `Bearer ${writeKey}` },
+    });
+    expect(readDenied.status()).toBe(403);
   });
 });
