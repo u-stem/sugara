@@ -1,5 +1,3 @@
-"use client";
-
 import type { CrossDayEntry, ScheduleResponse } from "@sugara/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
@@ -33,9 +31,10 @@ const selectionStub = {
   canEnter: false,
 };
 
-function makeSchedule(overrides: Partial<ScheduleResponse> = {}): ScheduleResponse {
+function makeSchedule(
+  overrides: Partial<ScheduleResponse> & Pick<ScheduleResponse, "id">,
+): ScheduleResponse {
   return {
-    id: "s1",
     name: "Spot",
     category: "sightseeing",
     address: null,
@@ -58,6 +57,16 @@ function makeIntermediateEntry(): CrossDayEntry {
     sourcePatternId: "p0",
     sourceDayNumber: 1,
     crossDayPosition: "intermediate",
+  };
+}
+
+function makeFinalEntry(): CrossDayEntry {
+  return {
+    schedule: makeSchedule({ id: "hotel2", name: "Hotel", category: "hotel", endTime: "10:00" }),
+    sourceDayId: "d0",
+    sourcePatternId: "p0",
+    sourceDayNumber: 1,
+    crossDayPosition: "final",
   };
 }
 
@@ -117,6 +126,18 @@ describe("DayTimeline mobile reorder with cross-day entries", () => {
 
     const upButtons = screen.getAllByLabelText("上に移動");
     expect(upButtons[0].hasAttribute("disabled")).toBe(true);
+  });
+
+  it("enables the down button on the last schedule when a final cross-day entry sits below it", () => {
+    renderTimeline({
+      schedules: [makeSchedule({ id: "s1" }), makeSchedule({ id: "s2", sortOrder: 1 })],
+      crossDayEntries: [makeFinalEntry()],
+    });
+    enterReorderMode();
+
+    // Merged timeline: [s1, s2, checkout entry] — s2 can still move below the entry via anchor.
+    const downButtons = screen.getAllByLabelText("下に移動");
+    expect(downButtons[1].hasAttribute("disabled")).toBe(false);
   });
 
   it("enables the reorder-mode button for a single schedule when a staying entry shares the day", () => {
