@@ -1,4 +1,11 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import {
+  currencyCodeSchema,
+  expenseCategorySchema,
+  scheduleCategorySchema,
+  scheduleColorSchema,
+  transportMethodSchema,
+} from "@sugara/shared";
 import { z } from "zod";
 import type { ApiClient } from "./client.js";
 
@@ -6,22 +13,6 @@ import type { ApiClient } from "./client.js";
 // Note: z.string().uuid() validates strict UUID v4 format, which is stricter than the
 // v1 API's guid() validator (which also accepts v1-v5). All IDs are v4-generated in
 // practice, so this extra strictness causes no real-world rejections.
-
-// Currency codes supported by the v1 API (mirrored from @sugara/shared currency.ts).
-const currencyEnum = z.enum([
-  "JPY",
-  "USD",
-  "EUR",
-  "GBP",
-  "AUD",
-  "CAD",
-  "CHF",
-  "CNY",
-  "KRW",
-  "THB",
-  "SGD",
-  "HKD",
-]);
 
 // Shared sub-schemas for expense splits/line-items (memberNo-based, not userId-based).
 const splitItemShape = z.object({
@@ -80,7 +71,7 @@ export const INPUT_SHAPES = {
     // YYYY-MM-DD; endDate must be >= startDate (validated by API)
     startDate: z.string().date(),
     endDate: z.string().date(),
-    currency: currencyEnum.optional(),
+    currency: currencyCodeSchema.optional(),
   },
 
   // PATCH /trips/:id — requires editor or owner role on the trip.
@@ -91,7 +82,7 @@ export const INPUT_SHAPES = {
     status: z.enum(["scheduling", "draft", "planned", "active", "completed"]).optional(),
     startDate: z.string().date().optional(),
     endDate: z.string().date().optional(),
-    currency: currencyEnum.optional(),
+    currency: currencyCodeSchema.optional(),
   },
 
   // POST /trips/:tripId/days/:dayNumber/schedules — appends to the default day pattern.
@@ -100,7 +91,7 @@ export const INPUT_SHAPES = {
     // 1-indexed day number within the trip; check get_trip for the total day count
     dayNumber: z.number().int().min(1),
     name: z.string().min(1).max(200),
-    category: z.enum(["sightseeing", "restaurant", "hotel", "transport", "activity", "other"]),
+    category: scheduleCategorySchema,
     address: z.string().max(500).optional(),
     // HH:MM or HH:MM:SS format
     startTime: z.string().optional(),
@@ -110,25 +101,9 @@ export const INPUT_SHAPES = {
     urls: z.array(z.string()).max(5).optional(),
     departurePlace: z.string().max(200).optional(),
     arrivalPlace: z.string().max(200).optional(),
-    transportMethod: z
-      .enum([
-        "train",
-        "shinkansen",
-        "bus",
-        "taxi",
-        "walk",
-        "car",
-        "airplane",
-        "bicycle",
-        "ropeway",
-        "cable_car",
-        "ferry",
-      ])
-      .optional(),
+    transportMethod: transportMethodSchema.optional(),
     cost: z.number().int().nonnegative().max(99999999).optional(),
-    color: z
-      .enum(["blue", "red", "green", "yellow", "purple", "pink", "orange", "gray"])
-      .optional(),
+    color: scheduleColorSchema.optional(),
     // how many extra days the schedule spans (1 = next day)
     endDayOffset: z.number().int().min(1).max(30).optional(),
   },
@@ -138,9 +113,7 @@ export const INPUT_SHAPES = {
     tripId: z.string().uuid(),
     scheduleId: z.string().uuid(),
     name: z.string().min(1).max(200).optional(),
-    category: z
-      .enum(["sightseeing", "restaurant", "hotel", "transport", "activity", "other"])
-      .optional(),
+    category: scheduleCategorySchema.optional(),
     address: z.string().max(500).optional(),
     startTime: z.string().optional(),
     endTime: z.string().optional(),
@@ -148,25 +121,9 @@ export const INPUT_SHAPES = {
     urls: z.array(z.string()).max(5).optional(),
     departurePlace: z.string().max(200).optional(),
     arrivalPlace: z.string().max(200).optional(),
-    transportMethod: z
-      .enum([
-        "train",
-        "shinkansen",
-        "bus",
-        "taxi",
-        "walk",
-        "car",
-        "airplane",
-        "bicycle",
-        "ropeway",
-        "cable_car",
-        "ferry",
-      ])
-      .optional(),
+    transportMethod: transportMethodSchema.optional(),
     cost: z.number().int().nonnegative().max(99999999).optional(),
-    color: z
-      .enum(["blue", "red", "green", "yellow", "purple", "pink", "orange", "gray"])
-      .optional(),
+    color: scheduleColorSchema.optional(),
     endDayOffset: z.number().int().min(1).max(30).optional(),
   },
 
@@ -179,19 +136,8 @@ export const INPUT_SHAPES = {
     // obtain memberNo from get_trip members list before calling this tool
     paidByMemberNo: z.number().int().positive(),
     splitType: z.enum(["equal", "custom", "itemized"]),
-    category: z
-      .enum([
-        "transportation",
-        "accommodation",
-        "meals",
-        "communication",
-        "supplies",
-        "entertainment",
-        "conference",
-        "other",
-      ])
-      .optional(),
-    currency: currencyEnum.optional(),
+    category: expenseCategorySchema.optional(),
+    currency: currencyCodeSchema.optional(),
     // required when currency differs from the trip currency
     exchangeRate: z.number().positive().max(999999).optional(),
     // at least one split entry is required; amount required for custom/itemized
@@ -208,20 +154,8 @@ export const INPUT_SHAPES = {
     amount: z.number().positive().optional(),
     paidByMemberNo: z.number().int().positive().optional(),
     splitType: z.enum(["equal", "custom", "itemized"]).optional(),
-    category: z
-      .enum([
-        "transportation",
-        "accommodation",
-        "meals",
-        "communication",
-        "supplies",
-        "entertainment",
-        "conference",
-        "other",
-      ])
-      .nullable()
-      .optional(),
-    currency: currencyEnum.optional(),
+    category: expenseCategorySchema.nullable().optional(),
+    currency: currencyCodeSchema.optional(),
     exchangeRate: z.number().positive().max(999999).optional(),
     // if provided, splitType must also be provided (API enforces both-or-neither)
     splits: z.array(splitItemShape).min(1).optional(),
