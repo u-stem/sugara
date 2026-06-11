@@ -12,6 +12,7 @@ type V1ErrorCode =
   | "unauthorized"
   | "insufficient_scope"
   | "not_found"
+  | "conflict"
   | "rate_limited"
   | "invalid_request"
   | "internal_error";
@@ -21,6 +22,7 @@ function isV1ErrorCode(code: string): code is V1ErrorCode {
     "unauthorized",
     "insufficient_scope",
     "not_found",
+    "conflict",
     "rate_limited",
     "invalid_request",
     "internal_error",
@@ -31,6 +33,7 @@ const ERROR_MESSAGES: Record<V1ErrorCode, string> = {
   unauthorized: "API キーが無効か期限切れです。SUGARA_API_KEY を確認してください",
   insufficient_scope: "このキーには必要なスコープがありません（例: trips:read）",
   not_found: "対象が見つからないか、アクセス権がありません",
+  conflict: "操作を完了できませんでした（競合またはリソース上限に達しました）",
   rate_limited: "レート制限を超えました。少し待って再試行してください",
   invalid_request: "リクエストが無効です",
   internal_error: "サーバーの内部エラーが発生しました",
@@ -123,6 +126,33 @@ export class ApiClient {
     return response.json();
   }
 
+  // Sends a mutating request (POST or PATCH) with a JSON body.
+  // Content-Type is always application/json; the API rejects requests without it.
+  private async mutate(method: "POST" | "PATCH", path: string, body: unknown): Promise<unknown> {
+    const url = new URL(`${this.baseUrl}/api/v1${path}`);
+
+    let response: Response;
+    try {
+      response = await this._fetch(url.toString(), {
+        method,
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new Error("SUGARA_API_URL に接続できません");
+    }
+
+    if (!response.ok) {
+      throw await buildApiError(response);
+    }
+
+    return response.json();
+  }
+
   async listTrips(opts?: ListTripsOptions): Promise<unknown> {
     const params = new URLSearchParams();
     if (opts?.scope !== undefined) params.set("scope", opts.scope);
@@ -160,5 +190,72 @@ export class ApiClient {
 
   async getArticle(id: string): Promise<unknown> {
     return this.request(`/articles/${encodeURIComponent(id)}`);
+  }
+
+  // --- Write methods (12 endpoints, 1:1 with v1 write routes) ---
+
+  async createTrip(body: unknown): Promise<unknown> {
+    return this.mutate("POST", "/trips", body);
+  }
+
+  async updateTrip(id: string, body: unknown): Promise<unknown> {
+    return this.mutate("PATCH", `/trips/${encodeURIComponent(id)}`, body);
+  }
+
+  async createSchedule(tripId: string, dayNumber: number, body: unknown): Promise<unknown> {
+    // dayNumber is 1-indexed; the API path uses /days/:dayNumber/schedules.
+    return this.mutate(
+      "POST",
+      `/trips/${encodeURIComponent(tripId)}/days/${encodeURIComponent(String(dayNumber))}/schedules`,
+      body,
+    );
+  }
+
+  async updateSchedule(tripId: string, scheduleId: string, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "PATCH",
+      `/trips/${encodeURIComponent(tripId)}/schedules/${encodeURIComponent(scheduleId)}`,
+      body,
+    );
+  }
+
+  async createExpense(tripId: string, body: unknown): Promise<unknown> {
+    return this.mutate("POST", `/trips/${encodeURIComponent(tripId)}/expenses`, body);
+  }
+
+  async updateExpense(tripId: string, expenseId: string, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "PATCH",
+      `/trips/${encodeURIComponent(tripId)}/expenses/${encodeURIComponent(expenseId)}`,
+      body,
+    );
+  }
+
+  async createBookmarkList(body: unknown): Promise<unknown> {
+    return this.mutate("POST", "/bookmark-lists", body);
+  }
+
+  async updateBookmarkList(listId: string, body: unknown): Promise<unknown> {
+    return this.mutate("PATCH", `/bookmark-lists/${encodeURIComponent(listId)}`, body);
+  }
+
+  async createBookmark(listId: string, body: unknown): Promise<unknown> {
+    return this.mutate("POST", `/bookmark-lists/${encodeURIComponent(listId)}/bookmarks`, body);
+  }
+
+  async updateBookmark(listId: string, bookmarkId: string, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "PATCH",
+      `/bookmark-lists/${encodeURIComponent(listId)}/bookmarks/${encodeURIComponent(bookmarkId)}`,
+      body,
+    );
+  }
+
+  async createArticle(body: unknown): Promise<unknown> {
+    return this.mutate("POST", "/articles", body);
+  }
+
+  async updateArticle(id: string, body: unknown): Promise<unknown> {
+    return this.mutate("PATCH", `/articles/${encodeURIComponent(id)}`, body);
   }
 }

@@ -30,6 +30,24 @@ function getFirstCallHeaders(calls: Parameters<FetchLike>[]): Record<string, str
   return headers as Record<string, string>;
 }
 
+// Returns the HTTP method of the first recorded fetch call.
+function getFirstCallMethod(calls: Parameters<FetchLike>[]): string {
+  const first = calls[0];
+  if (first === undefined) throw new Error("no fetch calls recorded");
+  const [, initArg] = first;
+  // Absence of method in RequestInit means GET by convention
+  return initArg?.method ?? "GET";
+}
+
+// Parses and returns the JSON-parsed request body of the first recorded fetch call.
+function getFirstCallBody(calls: Parameters<FetchLike>[]): unknown {
+  const first = calls[0];
+  if (first === undefined) throw new Error("no fetch calls recorded");
+  const [, initArg] = first;
+  if (!initArg?.body) throw new Error("no body in fetch call");
+  return JSON.parse(String(initArg.body));
+}
+
 describe("ApiClient", () => {
   let mockFetch: ReturnType<typeof vi.fn<FetchLike>>;
   let client: ApiClient;
@@ -140,6 +158,28 @@ describe("ApiClient", () => {
       expect(errorMessage).toContain("見つからない");
     });
 
+    it("maps 409 conflict to Japanese message", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ error: { code: "conflict", message: "limit reached" } }, 409),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createTrip({
+          title: "Test",
+          startDate: "2025-01-01",
+          endDate: "2025-01-03",
+        });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("競合");
+    });
+
     it("maps 429 rate_limited to Japanese message", async () => {
       // Arrange
       mockFetch.mockResolvedValue(
@@ -210,6 +250,165 @@ describe("ApiClient", () => {
       // Assert
       const url = getFirstCallUrl(mockFetch.mock.calls);
       expect(url).toContain("scope=owned");
+    });
+  });
+
+  describe("createTrip — request assembly", () => {
+    const tripBody = { title: "Japan 2025", startDate: "2025-01-01", endDate: "2025-01-05" };
+
+    it("uses POST method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "abc" }, 201));
+
+      // Act
+      await client.createTrip(tripBody);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+    });
+
+    it("sends to /api/v1/trips", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "abc" }, 201));
+
+      // Act
+      await client.createTrip(tripBody);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("/api/v1/trips");
+    });
+
+    it("sends Content-Type: application/json header", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "abc" }, 201));
+
+      // Act
+      await client.createTrip(tripBody);
+
+      // Assert
+      expect(getFirstCallHeaders(mockFetch.mock.calls)["Content-Type"]).toBe("application/json");
+    });
+
+    it("serialises the body to JSON", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "abc" }, 201));
+
+      // Act
+      await client.createTrip(tripBody);
+
+      // Assert
+      expect(getFirstCallBody(mockFetch.mock.calls)).toEqual(tripBody);
+    });
+  });
+
+  describe("updateTrip — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+
+    it("uses PATCH method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: tripId }, 200));
+
+      // Act
+      await client.updateTrip(tripId, { title: "Updated" });
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("PATCH");
+    });
+
+    it("sends to /api/v1/trips/:id", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: tripId }, 200));
+
+      // Act
+      await client.updateTrip(tripId, { title: "Updated" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(`/api/v1/trips/${tripId}`);
+    });
+  });
+
+  describe("createSchedule — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+
+    it("uses POST method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "s1" }, 201));
+
+      // Act
+      await client.createSchedule(tripId, 2, { name: "Lunch", category: "restaurant" });
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+    });
+
+    it("encodes dayNumber in the URL path", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "s1" }, 201));
+
+      // Act
+      await client.createSchedule(tripId, 3, { name: "Dinner", category: "restaurant" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("/days/3/schedules");
+    });
+  });
+
+  describe("createExpense — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const expenseBody = {
+      title: "Dinner",
+      amount: 3000,
+      paidByMemberNo: 1,
+      splitType: "equal",
+      splits: [{ memberNo: 1 }, { memberNo: 2 }],
+    };
+
+    it("uses POST method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "e1" }, 201));
+
+      // Act
+      await client.createExpense(tripId, expenseBody);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+    });
+
+    it("sends to /api/v1/trips/:tripId/expenses", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "e1" }, 201));
+
+      // Act
+      await client.createExpense(tripId, expenseBody);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(`/api/v1/trips/${tripId}/expenses`);
+    });
+  });
+
+  describe("createBookmarkList — request assembly", () => {
+    it("sends to /api/v1/bookmark-lists", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "bl1" }, 201));
+
+      // Act
+      await client.createBookmarkList({ name: "Japan 2025" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("/api/v1/bookmark-lists");
+    });
+  });
+
+  describe("createArticle — request assembly", () => {
+    it("sends to /api/v1/articles", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: "a1" }, 201));
+
+      // Act
+      await client.createArticle({ title: "My Story" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("/api/v1/articles");
     });
   });
 });
