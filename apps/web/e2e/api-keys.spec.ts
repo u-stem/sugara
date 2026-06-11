@@ -28,9 +28,9 @@ test.describe("API keys", () => {
     await page.getByRole("tab", { name: "API キー" }).click();
     await expect(page.getByText("発行済みのキーはありません")).toBeVisible();
 
-    // Issue a key with the trips scope only
+    // Issue a key with the trips read scope only
     await page.getByLabel("名前").fill("e2e key");
-    await page.getByLabel("旅行", { exact: true }).check({ force: true });
+    await page.getByLabel("旅行(読み取り)", { exact: true }).check({ force: true });
     await page.getByRole("button", { name: "発行", exact: true }).click();
 
     // The raw key is shown exactly once in the dialog
@@ -72,5 +72,68 @@ test.describe("API keys", () => {
       headers: { Authorization: `Bearer ${rawKey}` },
     });
     expect(revoked.status()).toBe(401);
+  });
+
+  test("write scope allows POST while a read-only key is rejected", async ({ page, request }) => {
+    const writeUser = `e2e_apikey_w_${Date.now()}`;
+
+    // Sign up a fresh (non-guest) user
+    await page.goto("/auth/signup");
+    await page.getByLabel("ユーザー名").fill(writeUser);
+    await page.getByLabel("表示名").fill(name);
+    await page.locator("#password").fill(password);
+    await page.locator("#confirmPassword").fill(password);
+    await page.getByLabel("利用規約").check({ force: true });
+    await page.getByRole("button", { name: "新規登録" }).click();
+    await expect(page).toHaveURL(/\/home/, { timeout: 10000 });
+
+    await page.goto("/settings");
+    await page.getByRole("tab", { name: "API キー" }).click();
+
+    // Issue a read-only key, then a write key, capturing each raw key from
+    // the one-time dialog before it closes.
+    const issueKey = async (keyName: string, scopeLabel: string): Promise<string> => {
+      await page.getByLabel("名前").fill(keyName);
+      await page.getByLabel(scopeLabel, { exact: true }).check({ force: true });
+      await page.getByRole("button", { name: "発行", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog.getByText("キーを発行しました")).toBeVisible();
+      const raw = (await dialog.locator("code").innerText()).trim();
+      await dialog.getByRole("button", { name: "閉じる" }).click();
+      // Scope checkboxes keep their state between issues; uncheck for the next round
+      await page.getByLabel(scopeLabel, { exact: true }).uncheck({ force: true });
+      return raw;
+    };
+
+    const readKey = await issueKey("e2e read key", "旅行(読み取り)");
+    const writeKey = await issueKey("e2e write key", "旅行(作成・更新)");
+
+    const tripBody = {
+      title: "E2E write trip",
+      startDate: "2026-07-01",
+      endDate: "2026-07-03",
+    };
+
+    // A read-only key cannot create a trip
+    const denied = await request.post("/api/v1/trips", {
+      headers: { Authorization: `Bearer ${readKey}` },
+      data: tripBody,
+    });
+    expect(denied.status()).toBe(403);
+
+    // A write key creates the trip
+    const created = await request.post("/api/v1/trips", {
+      headers: { Authorization: `Bearer ${writeKey}` },
+      data: tripBody,
+    });
+    expect(created.status()).toBe(201);
+    const createdBody = await created.json();
+    expect(createdBody.title).toBe("E2E write trip");
+
+    // Write does not imply read — the write-only key cannot list trips
+    const readDenied = await request.get("/api/v1/trips", {
+      headers: { Authorization: `Bearer ${writeKey}` },
+    });
+    expect(readDenied.status()).toBe(403);
   });
 });

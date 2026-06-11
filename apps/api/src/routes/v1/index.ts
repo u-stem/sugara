@@ -1,6 +1,4 @@
-import type { MemberRole } from "@sugara/shared";
 import { and, count, desc, eq, inArray, ne } from "drizzle-orm";
-import type { Context } from "hono";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { z } from "zod";
@@ -11,8 +9,10 @@ import { v1AuditLog } from "../../lib/external-api/audit-log";
 import { ApiV1Error, getApiKey, type V1Env, v1ErrorHandler } from "../../lib/external-api/errors";
 import { buildMemberNoMap } from "../../lib/external-api/member-no";
 import { v1RateLimit } from "../../lib/external-api/rate-limit";
-import { checkTripAccess } from "../../lib/permissions";
 import { requireApiKey } from "../../middleware/require-api-key";
+import { articlesWriteApp } from "./articles-write";
+import { bookmarksWriteApp } from "./bookmarks-write";
+import { expensesWriteApp } from "./expenses-write";
 import {
   articleDetailResponseSchema,
   articleListResponseSchema,
@@ -23,6 +23,8 @@ import {
   tripDetailResponseSchema,
   tripListResponseSchema,
 } from "./openapi-schemas";
+import { uuidSchema, withTripAccess } from "./shared";
+import { tripsWriteApp } from "./trips-write";
 
 // Rate limit for v1: generous cap for self-use (CLI / local LLM), IP-scoped.
 // Fail-open by design (see rateLimitByIp). Concrete value is a rough stand-in;
@@ -42,43 +44,7 @@ v1App.use("*", v1AuditLog());
 // error shape { error: { code, message } } is returned instead of the internal one.
 v1App.use("*", v1RateLimit(V1_RATE_LIMIT));
 
-// ---------- Shared UUID schema ----------
-
-// z.guid() is the Zod v4 way to validate the 8-4-4-4-12 hex GUID format;
-// z.string().uuid() enforces strict version/variant bits which rejects our
-// test fixtures and user-supplied IDs from other generators.
-const uuidSchema = z.string().check(z.guid());
-
-// ---------- withTripAccess HOF ----------
-//
-// Returns a Hono route handler that structurally enforces trip membership:
-//   1. Validates the path param is a valid UUID (400 if not)
-//   2. Verifies the API key owner is a trip member via checkTripAccess (404 if not)
-//   3. Calls the inner handler with (c, tripId, role)
-//
-// Using a HOF rather than middleware means the inner handler receives tripId and
-// role as typed arguments and cannot be called without the check having run
-// (no way to accidentally call the handler directly and skip the guard).
-// The param name is a literal union so typos are caught at compile time.
-
-type TripAccessHandler = (c: Context<V1Env>, tripId: string, role: MemberRole) => Promise<Response>;
-
-function withTripAccess(paramName: "id" | "tripId", handler: TripAccessHandler) {
-  return async (c: Context<V1Env>): Promise<Response> => {
-    const rawId = c.req.param(paramName);
-    const parsed = uuidSchema.safeParse(rawId);
-    if (!parsed.success) {
-      throw new ApiV1Error(400, "invalid_request", "Invalid trip id");
-    }
-    const tripId = parsed.data;
-    const key = getApiKey(c);
-    const role = await checkTripAccess(tripId, key.userId);
-    if (role === null) {
-      throw new ApiV1Error(404, "not_found", "Trip not found or access denied");
-    }
-    return handler(c, tripId, role);
-  };
-}
+// uuidSchema and withTripAccess are imported from ./shared (shared with write sub-routers).
 
 // ---------- Shared query param schemas ----------
 
@@ -940,6 +906,16 @@ v1App.get(
     });
   },
 );
+
+// ---------- Write sub-routers ----------
+//
+// These must be mounted BEFORE the catch-all so that POST/PATCH routes are
+// matched first. Each sub-router is a separate Hono<V1Env>() instance that
+// carries its own describeRoute metadata for OpenAPI spec generation.
+v1App.route("/", tripsWriteApp);
+v1App.route("/", expensesWriteApp);
+v1App.route("/", bookmarksWriteApp);
+v1App.route("/", articlesWriteApp);
 
 // ---------- Catch-all ----------
 //

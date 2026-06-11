@@ -29,6 +29,7 @@ export type ApiV1ErrorCode =
   | "unauthorized"
   | "insufficient_scope"
   | "not_found"
+  | "conflict"
   | "rate_limited"
   | "internal_error";
 

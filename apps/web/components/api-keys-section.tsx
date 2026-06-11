@@ -1,9 +1,9 @@
 "use client";
 
-import { API_KEY_SCOPES, type ApiKeyScope } from "@sugara/shared";
+import type { ApiKeyScope } from "@sugara/shared";
 import { BookOpen, Check, Copy, Trash2 } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,13 +67,36 @@ const EXPIRES_OPTIONS = [
 
 const DEFAULT_EXPIRES_SECONDS = String(30 * 24 * 60 * 60);
 
-// Maps API key scope identifiers to their i18n label keys.
+// Maps API key scope identifiers to their full "resource (level)" i18n label
+// keys — used for issued-key badges and per-checkbox accessible names.
 const SCOPE_LABEL_KEYS = {
   "trips:read": "scopeTrips",
   "expenses:read": "scopeExpenses",
   "articles:read": "scopeArticles",
   "bookmarks:read": "scopeBookmarks",
+  "trips:write": "scopeTripsWrite",
+  "expenses:write": "scopeExpensesWrite",
+  "articles:write": "scopeArticlesWrite",
+  "bookmarks:write": "scopeBookmarksWrite",
 } as const satisfies Record<ApiKeyScope, string>;
+
+// Issue-form layout: one row per resource with read/write checkbox columns,
+// so the list stays scannable as resources grow.
+const SCOPE_MATRIX = [
+  { resourceKey: "scopeResourceTrips", read: "trips:read", write: "trips:write" },
+  { resourceKey: "scopeResourceExpenses", read: "expenses:read", write: "expenses:write" },
+  { resourceKey: "scopeResourceArticles", read: "articles:read", write: "articles:write" },
+  { resourceKey: "scopeResourceBookmarks", read: "bookmarks:read", write: "bookmarks:write" },
+] as const;
+
+// Compile-time exhaustiveness: adding a scope to API_KEY_SCOPES without a
+// matrix cell turns this alias into an error-carrying tuple type.
+type ScopesInMatrix = (typeof SCOPE_MATRIX)[number]["read" | "write"];
+type AssertMatrixCoversAllScopes =
+  Exclude<ApiKeyScope, ScopesInMatrix> extends never
+    ? true
+    : ["scope missing from SCOPE_MATRIX", Exclude<ApiKeyScope, ScopesInMatrix>];
+const _assertMatrixCoversAllScopes: AssertMatrixCoversAllScopes = true;
 
 export function ApiKeysSection() {
   const t = useTranslations("apiKeys");
@@ -248,22 +271,35 @@ export function ApiKeysSection() {
               </Select>
             </div>
 
-            {/* Scopes — fieldset/legend so the group label is announced by screen readers */}
+            {/* Scopes — resource rows × read/write columns so every selection
+                stays visible at once (tabs would hide checked state). The
+                fieldset/legend announces the group; each checkbox carries the
+                full "resource (level)" name as its accessible label. */}
             <fieldset className="space-y-2">
               <legend className="text-sm font-medium leading-none">{t("scopesLabel")}</legend>
-              <div className="space-y-2">
-                {API_KEY_SCOPES.map((scope) => (
-                  <div key={scope} className="flex items-center gap-2">
-                    <Checkbox
-                      id={`scope-${scope}`}
-                      checked={selectedScopes.has(scope)}
-                      onCheckedChange={() => toggleScope(scope)}
-                      disabled={submitting}
-                    />
-                    <label htmlFor={`scope-${scope}`} className="cursor-pointer text-sm">
-                      {t(SCOPE_LABEL_KEYS[scope])}
-                    </label>
-                  </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-y-2">
+                <span aria-hidden="true" />
+                <span className="px-3 text-center text-xs font-medium text-muted-foreground">
+                  {t("scopeColumnRead")}
+                </span>
+                <span className="px-3 text-center text-xs font-medium text-muted-foreground">
+                  {t("scopeColumnWrite")}
+                </span>
+                {SCOPE_MATRIX.map((row) => (
+                  <Fragment key={row.resourceKey}>
+                    <span className="text-sm">{t(row.resourceKey)}</span>
+                    {[row.read, row.write].map((scope) => (
+                      <div key={scope} className="flex justify-center px-3">
+                        <Checkbox
+                          id={`scope-${scope}`}
+                          checked={selectedScopes.has(scope)}
+                          onCheckedChange={() => toggleScope(scope)}
+                          disabled={submitting}
+                          aria-label={t(SCOPE_LABEL_KEYS[scope])}
+                        />
+                      </div>
+                    ))}
+                  </Fragment>
                 ))}
               </div>
               {scopeError && (

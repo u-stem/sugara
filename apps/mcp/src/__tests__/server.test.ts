@@ -39,7 +39,19 @@ const FAKE_TRIPS = {
   pagination: { total: 1 },
 };
 
-// The 7 tool names that registerTools must expose.
+// Fixed data returned for create_trip.
+const FAKE_CREATED_TRIP = {
+  id: "00000000-0000-0000-0000-000000000002",
+  title: "Test Trip",
+  startDate: "2025-01-01",
+  endDate: "2025-01-05",
+  currency: "JPY",
+  status: "planned",
+  createdAt: "2025-01-01T00:00:00.000Z",
+  updatedAt: "2025-01-01T00:00:00.000Z",
+};
+
+// The 19 tool names that registerTools must expose.
 const EXPECTED_TOOL_NAMES = [
   "list_trips",
   "get_trip",
@@ -48,6 +60,18 @@ const EXPECTED_TOOL_NAMES = [
   "list_bookmarks",
   "list_articles",
   "get_article",
+  "create_trip",
+  "update_trip",
+  "create_schedule",
+  "update_schedule",
+  "create_expense",
+  "update_expense",
+  "create_bookmark_list",
+  "update_bookmark_list",
+  "create_bookmark",
+  "update_bookmark",
+  "create_article",
+  "update_article",
 ] as const;
 
 /**
@@ -87,6 +111,70 @@ class FakeApiClient extends ApiClient {
   override async getArticle(_id: string): Promise<unknown> {
     return { id: "00000000-0000-0000-0000-000000000001", title: "Test", content: "" };
   }
+
+  override async createTrip(_body: unknown): Promise<unknown> {
+    return FAKE_CREATED_TRIP;
+  }
+
+  override async updateTrip(_id: string, _body: unknown): Promise<unknown> {
+    return { ...FAKE_CREATED_TRIP, title: "Updated Trip" };
+  }
+
+  override async createSchedule(
+    _tripId: string,
+    _dayNumber: number,
+    _body: unknown,
+  ): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000010", name: "Test Schedule" };
+  }
+
+  override async updateSchedule(
+    _tripId: string,
+    _scheduleId: string,
+    _body: unknown,
+  ): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000010", name: "Updated Schedule" };
+  }
+
+  override async createExpense(_tripId: string, _body: unknown): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000020", title: "Dinner" };
+  }
+
+  override async updateExpense(
+    _tripId: string,
+    _expenseId: string,
+    _body: unknown,
+  ): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000020", title: "Updated Dinner" };
+  }
+
+  override async createBookmarkList(_body: unknown): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000030", name: "My List" };
+  }
+
+  override async updateBookmarkList(_listId: string, _body: unknown): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000030", name: "Updated List" };
+  }
+
+  override async createBookmark(_listId: string, _body: unknown): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000040", name: "Tokyo Tower" };
+  }
+
+  override async updateBookmark(
+    _listId: string,
+    _bookmarkId: string,
+    _body: unknown,
+  ): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000040", name: "Updated Bookmark" };
+  }
+
+  override async createArticle(_body: unknown): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000050", title: "My Story" };
+  }
+
+  override async updateArticle(_id: string, _body: unknown): Promise<unknown> {
+    return { id: "00000000-0000-0000-0000-000000000050", title: "Updated Story" };
+  }
 }
 
 /**
@@ -99,6 +187,19 @@ class ThrowingApiClient extends ApiClient {
 
   override async listTrips(_opts?: ListTripsOptions): Promise<unknown> {
     throw new Error("API unavailable");
+  }
+}
+
+/**
+ * Fake ApiClient where createTrip always throws — used to verify write tool error handling.
+ */
+class ThrowingWriteApiClient extends ApiClient {
+  constructor() {
+    super("http://localhost", "test_key");
+  }
+
+  override async createTrip(_body: unknown): Promise<unknown> {
+    throw new Error("操作を完了できませんでした（競合またはリソース上限に達しました）");
   }
 }
 
@@ -136,15 +237,15 @@ describe("MCP server — tools/list", () => {
     await mcpServer.close();
   });
 
-  it("returns exactly 7 tools", async () => {
+  it("returns exactly 19 tools", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
 
     // Assert
-    expect(result.tools).toHaveLength(7);
+    expect(result.tools).toHaveLength(19);
   });
 
-  it("includes all 7 expected tool names", async () => {
+  it("includes all 19 expected tool names", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
     const names = result.tools.map((t) => t.name);
@@ -199,6 +300,64 @@ describe("MCP server — tools/call list_trips (error path)", () => {
   it("returns isError: true when the API client throws", async () => {
     // Arrange + Act
     const result = await mcpClient.callTool({ name: "list_trips", arguments: {} });
+
+    // Assert
+    if (!isContentCallResult(result)) throw new Error("expected content-bearing result");
+    expect(result.isError).toBe(true);
+  });
+});
+
+describe("MCP server — tools/call create_trip (success path)", () => {
+  let mcpServer!: McpServer;
+  let mcpClient!: Client;
+
+  beforeEach(async () => {
+    const pair = await setupPair(new FakeApiClient());
+    mcpServer = pair.server;
+    mcpClient = pair.client;
+  });
+
+  afterEach(async () => {
+    await mcpClient.close();
+    await mcpServer.close();
+  });
+
+  it("returns created trip data as JSON string in content[0].text", async () => {
+    // Arrange + Act
+    const result = await mcpClient.callTool({
+      name: "create_trip",
+      arguments: { title: "Japan Trip", startDate: "2025-01-01", endDate: "2025-01-05" },
+    });
+
+    // Assert
+    if (!isContentCallResult(result)) throw new Error("expected content-bearing result");
+    const first = result.content[0];
+    if (!isTextContentItem(first)) throw new Error("expected text content item");
+    expect(JSON.parse(first.text)).toEqual(FAKE_CREATED_TRIP);
+  });
+});
+
+describe("MCP server — tools/call create_trip (error path)", () => {
+  let mcpServer!: McpServer;
+  let mcpClient!: Client;
+
+  beforeEach(async () => {
+    const pair = await setupPair(new ThrowingWriteApiClient());
+    mcpServer = pair.server;
+    mcpClient = pair.client;
+  });
+
+  afterEach(async () => {
+    await mcpClient.close();
+    await mcpServer.close();
+  });
+
+  it("returns isError: true when the API client throws on write", async () => {
+    // Arrange + Act
+    const result = await mcpClient.callTool({
+      name: "create_trip",
+      arguments: { title: "Japan Trip", startDate: "2025-01-01", endDate: "2025-01-05" },
+    });
 
     // Assert
     if (!isContentCallResult(result)) throw new Error("expected content-bearing result");
