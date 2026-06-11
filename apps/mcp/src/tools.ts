@@ -129,9 +129,6 @@ export const INPUT_SHAPES = {
       .optional(),
     // how many extra days the schedule spans (1 = next day)
     endDayOffset: z.number().int().min(1).max(30).optional(),
-    latitude: z.number().optional(),
-    longitude: z.number().optional(),
-    placeId: z.string().max(255).optional(),
   },
 
   // PATCH /trips/:tripId/schedules/:scheduleId — partial update.
@@ -169,9 +166,6 @@ export const INPUT_SHAPES = {
       .enum(["blue", "red", "green", "yellow", "purple", "pink", "orange", "gray"])
       .optional(),
     endDayOffset: z.number().int().min(1).max(30).optional(),
-    latitude: z.number().optional(),
-    longitude: z.number().optional(),
-    placeId: z.string().max(255).optional(),
   },
 
   // POST /trips/:tripId/expenses — paidBy and splits use memberNo (not userId).

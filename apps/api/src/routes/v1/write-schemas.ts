@@ -78,10 +78,15 @@ export type V1UpdateTripInput = z.infer<typeof v1UpdateTripSchema>;
 // ---------------------------------------------------------------------------
 
 // Strip anchoring fields that only make sense in the real-time drag-and-drop
-// flow. Callers can still set start/end times, cost, URLs, etc.
+// flow, and geolocation fields that no v1 DTO (write response or GET /trips/:id)
+// returns — accepting write-only fields would let callers store values they can
+// never read back. Callers can still set start/end times, cost, URLs, etc.
 export const v1CreateScheduleSchema = createScheduleSchema.omit({
   crossDayAnchor: true,
   crossDayAnchorSourceId: true,
+  latitude: true,
+  longitude: true,
+  placeId: true,
 });
 
 export type V1CreateScheduleInput = z.infer<typeof v1CreateScheduleSchema>;
@@ -202,6 +207,24 @@ export const v1UpdateExpenseSchema = z
       return true;
     },
     { message: "Custom splits require amount for each member", path: ["splits"] },
+  )
+  .refine(
+    (data) => {
+      // When amount and splits are both replaced in one request, neither of the
+      // single-field consistency checks in updateExpenseCore fires — this refine
+      // is the only guard against storing splits that do not sum to the amount
+      // (mirrors the both-present refine in the shared updateExpenseSchema).
+      if (
+        (data.splitType === "custom" || data.splitType === "itemized") &&
+        data.splits &&
+        data.amount !== undefined
+      ) {
+        const total = data.splits.reduce((sum, s) => sum + (s.amount ?? 0), 0);
+        return total === data.amount;
+      }
+      return true;
+    },
+    { message: "Split amounts must equal total amount", path: ["splits"] },
   )
   .refine(
     (data) => {

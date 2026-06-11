@@ -547,3 +547,80 @@ describe("POST /bookmark-lists/:listId/bookmarks", () => {
     expect(body.error.code).toBe("not_found");
   });
 });
+
+// ---------------------------------------------------------------------------
+// PATCH /trips/:id — error mapping
+// ---------------------------------------------------------------------------
+
+describe("PATCH /trips/:id error mapping", () => {
+  it("returns 400 invalid_request when the date change reduces the day count", async () => {
+    // Arrange — days_reduced is a permanent validation rule, mapped to 400
+    // (matching the internal route), not 409
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockUpdateTripCore.mockResolvedValue({ ok: false, error: "days_reduced" });
+
+    // Act
+    const res = await jsonPatch(`/trips/${TRIP_ID}`, {
+      startDate: "2026-07-01",
+      endDate: "2026-07-02",
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(400);
+    expect(body.error).toEqual({
+      code: "invalid_request",
+      message: "Cannot reduce the number of trip days",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /trips/:tripId/expenses/:expenseId — amount/splits consistency
+// ---------------------------------------------------------------------------
+
+describe("PATCH expense with both amount and splits", () => {
+  it("returns 400 when custom split amounts do not sum to the new amount", async () => {
+    // Arrange — neither single-field check in updateExpenseCore fires when both
+    // fields are present; the v1 schema refine is the only guard
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+
+    // Act
+    const res = await jsonPatch(`/trips/${TRIP_ID}/expenses/${EXPENSE_ID}`, {
+      amount: 1000,
+      splitType: "custom",
+      splits: [{ memberNo: 1, amount: 500 }],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("invalid_request");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Schedule write schemas — geolocation fields are not accepted
+// ---------------------------------------------------------------------------
+
+describe("v1 schedule schemas strip geolocation fields", () => {
+  it("create schema drops latitude/longitude/placeId so write-only values are never stored", async () => {
+    // Arrange — no v1 DTO returns these fields; accepting them would store
+    // values the caller can never read back
+    const { v1CreateScheduleSchema } = await import("../routes/v1/write-schemas");
+
+    // Act
+    const parsed = v1CreateScheduleSchema.parse({
+      name: "Museum",
+      category: "sightseeing",
+      latitude: 35.6762,
+      longitude: 139.6503,
+      placeId: "abc123",
+    });
+
+    // Assert
+    expect(parsed).not.toHaveProperty("latitude");
+  });
+});

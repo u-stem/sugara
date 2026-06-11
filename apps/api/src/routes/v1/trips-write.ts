@@ -287,12 +287,11 @@ tripsWriteApp.patch(
             throw new ApiV1Error(404, "not_found", "Trip not found");
           case "date_order":
             throw new ApiV1Error(400, "invalid_request", "End date must be on or after start date");
+          // days_reduced is a permanent validation rule (the guard never allows
+          // shrinking the date range), so it maps to 400 like the internal route —
+          // not 409, which would invite retry-after-resolving-conflict semantics.
           case "days_reduced":
-            throw new ApiV1Error(
-              409,
-              "conflict",
-              "Cannot reduce the number of trip days when schedules exist",
-            );
+            throw new ApiV1Error(400, "invalid_request", "Cannot reduce the number of trip days");
           case "has_expenses":
             throw new ApiV1Error(
               409,
