@@ -23,6 +23,12 @@ import {
   tripDetailResponseSchema,
   tripListResponseSchema,
 } from "./openapi-schemas";
+import {
+  serializeArticleDto,
+  serializeBookmarkDto,
+  serializeExpenseDto,
+  serializeListDto,
+} from "./serializers";
 import { uuidSchema, withTripAccess } from "./shared";
 import { tripsWriteApp } from "./trips-write";
 
@@ -56,29 +62,6 @@ const paginationSchema = z.object({
 const tripsQuerySchema = paginationSchema.extend({
   scope: z.enum(["owned", "shared"]).optional(),
 });
-
-// ---------- Helper: resolve a userId to its memberNo + displayName ----------
-//
-// Members in a trip are expected to always be present (fees cannot reference
-// users outside the trip). When that invariant is violated (e.g. a member was
-// removed outside the normal flow), we return just the displayName rather than
-// crashing with a 500. See design doc §4.3 defensive fallback note.
-
-type MemberRef = { memberNo: number; displayName: string } | { displayName: string };
-
-function resolveMemberRef(
-  memberNoMap: Map<string, number>,
-  nameMap: Map<string, string>,
-  userId: string,
-): MemberRef {
-  const memberNo = memberNoMap.get(userId);
-  const displayName = nameMap.get(userId) ?? "Unknown";
-  if (memberNo !== undefined) {
-    return { memberNo, displayName };
-  }
-  // Defensive fallback: invariant broken — include displayName only
-  return { displayName };
-}
 
 // ---------- GET /api/v1/trips ----------
 
@@ -459,19 +442,7 @@ v1App.get(
       offset: queryOffset,
     });
 
-    const data = expenseRows.map((exp) => ({
-      id: exp.id,
-      title: exp.title,
-      amount: exp.amount,
-      currency: exp.currency,
-      category: exp.category ?? null,
-      date: exp.createdAt.toISOString(),
-      paidBy: resolveMemberRef(memberNoMap, nameMap, exp.paidByUserId),
-      splits: exp.splits.map((s) => ({
-        ...resolveMemberRef(memberNoMap, nameMap, s.userId),
-        amount: s.amount,
-      })),
-    }));
+    const data = expenseRows.map((exp) => serializeExpenseDto(exp, memberNoMap, nameMap));
 
     return c.json({
       data,
@@ -565,15 +536,7 @@ v1App.get(
       offset: queryOffset,
     });
 
-    const data = listRows.map((list) => ({
-      id: list.id,
-      name: list.name,
-      visibility: list.visibility,
-      sortOrder: list.sortOrder,
-      bookmarkCount: list.bookmarks.length,
-      createdAt: list.createdAt.toISOString(),
-      updatedAt: list.updatedAt.toISOString(),
-    }));
+    const data = listRows.map((list) => serializeListDto(list, list.bookmarks.length));
 
     return c.json({
       data,
@@ -689,15 +652,7 @@ v1App.get(
       offset: queryOffset,
     });
 
-    const data = bookmarkRows.map((bm) => ({
-      id: bm.id,
-      name: bm.name,
-      memo: bm.memo ?? null,
-      urls: bm.urls,
-      sortOrder: bm.sortOrder,
-      createdAt: bm.createdAt.toISOString(),
-      updatedAt: bm.updatedAt.toISOString(),
-    }));
+    const data = bookmarkRows.map((bm) => serializeBookmarkDto(bm));
 
     return c.json({
       data,
@@ -894,16 +849,12 @@ v1App.get(
       throw new ApiV1Error(404, "not_found", "Article not found or access denied");
     }
 
-    return c.json({
-      id: article.id,
-      title: article.title,
-      content: article.content,
-      tags: article.tags,
-      visibility: article.visibility,
-      tripIds: article.articleTrips.map((t) => t.tripId),
-      createdAt: article.createdAt.toISOString(),
-      updatedAt: article.updatedAt.toISOString(),
-    });
+    return c.json(
+      serializeArticleDto(
+        article,
+        article.articleTrips.map((t) => t.tripId),
+      ),
+    );
   },
 );
 

@@ -1,7 +1,7 @@
 "use client";
 
 import type { CurrencyCode, ExpenseItem, ExpensesResponse } from "@sugara/shared";
-import { formatCurrency } from "@sugara/shared";
+import { formatCurrency, getSplitDisplayCurrency } from "@sugara/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowUpDown,
@@ -611,7 +611,11 @@ function ExpenseRow({
                 .sort((a, b) => b.amount - a.amount)
                 .map((split) => {
                   // Equal splits are calculated in base currency; custom/itemized remain in expense currency
-                  const splitCurrency = expense.splitType === "equal" ? tripCurrency : currency;
+                  const splitCurrency = getSplitDisplayCurrency(
+                    expense.splitType,
+                    tripCurrency,
+                    currency,
+                  );
                   return (
                     <div
                       key={split.userId}

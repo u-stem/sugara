@@ -37,7 +37,7 @@ expenseRoutes.get("/:tripId/expenses", requireTripAccess(), async (c) => {
         paidByUser: { columns: { id: true, name: true } },
         splits: { with: { user: { columns: { id: true, name: true } } } },
         lineItems: {
-          with: { members: true },
+          with: { members: { orderBy: (members, { asc }) => [asc(members.userId)] } },
           orderBy: (lineItems, { asc }) => [asc(lineItems.sortOrder)],
         },
       },

@@ -17,6 +17,7 @@ import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors
 import { getNextSortOrder } from "../../lib/sort-order";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
+import { serializeBookmarkDto, serializeListDto } from "./serializers";
 import { uuidSchema } from "./shared";
 import {
   v1BookmarkListWriteResponseSchema,
@@ -28,37 +29,6 @@ import {
 } from "./write-schemas";
 
 export const bookmarksWriteApp = new Hono<V1Env>();
-
-// ---------------------------------------------------------------------------
-// Serializers
-// ---------------------------------------------------------------------------
-
-type BookmarkListRow = typeof bookmarkLists.$inferSelect;
-type BookmarkRow = typeof bookmarks.$inferSelect;
-
-function serializeListDto(list: BookmarkListRow, bookmarkCount: number) {
-  return {
-    id: list.id,
-    name: list.name,
-    visibility: list.visibility,
-    sortOrder: list.sortOrder,
-    bookmarkCount,
-    createdAt: list.createdAt.toISOString(),
-    updatedAt: list.updatedAt.toISOString(),
-  };
-}
-
-function serializeBookmarkDto(b: BookmarkRow) {
-  return {
-    id: b.id,
-    name: b.name,
-    memo: b.memo ?? null,
-    urls: b.urls,
-    sortOrder: b.sortOrder,
-    createdAt: b.createdAt.toISOString(),
-    updatedAt: b.updatedAt.toISOString(),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // POST /bookmark-lists

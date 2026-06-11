@@ -14,6 +14,8 @@ import {
   expenseCategorySchema,
   formatCurrency,
   fromMinorUnits,
+  getAmountInputStep,
+  getSplitDisplayCurrency,
   toMinorUnits,
 } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
@@ -147,7 +149,11 @@ export function ExpenseDialog({
       setSelectedMembers(new Set(expense.splits.map((s) => s.userId)));
       const amounts: Record<string, string> = {};
       // Equal splits are stored in trip currency; custom/itemized use expense currency
-      const splitCurrency = expense.splitType === "equal" ? tripCurrency : expense.currency;
+      const splitCurrency = getSplitDisplayCurrency(
+        expense.splitType,
+        tripCurrency,
+        expense.currency,
+      );
       for (const s of expense.splits) {
         amounts[s.userId] = String(fromMinorUnits(s.amount, splitCurrency));
       }
@@ -433,7 +439,7 @@ export function ExpenseDialog({
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0"
               min={CURRENCIES[currency].decimals > 0 ? "0.01" : "1"}
-              step={CURRENCIES[currency].decimals > 0 ? "0.01" : "1"}
+              step={getAmountInputStep(currency)}
               required
             />
           </div>
@@ -559,7 +565,7 @@ export function ExpenseDialog({
                           }
                           placeholder="0"
                           min={0}
-                          step={CURRENCIES[currency].decimals > 0 ? "0.01" : "1"}
+                          step={getAmountInputStep(currency)}
                         />
                       </div>
                     ))}
@@ -626,7 +632,7 @@ export function ExpenseDialog({
                       placeholder={te("lineItemAmountPlaceholder")}
                       className="w-24"
                       min={0}
-                      step={CURRENCIES[currency].decimals > 0 ? "0.01" : "1"}
+                      step={getAmountInputStep(currency)}
                     />
                     <Button
                       type="button"

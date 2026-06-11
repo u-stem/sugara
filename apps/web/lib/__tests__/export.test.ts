@@ -2,6 +2,7 @@ import type {
   CandidateResponse,
   DayPatternResponse,
   DayResponse,
+  ExpensesResponse,
   ScheduleResponse,
   TripResponse,
 } from "@sugara/shared";
@@ -29,6 +30,7 @@ import {
   filterCandidateFields,
   rowsToCSV,
   scheduleToRow,
+  toExpenseExportData,
   type ValueLabels,
 } from "../export";
 
@@ -1275,6 +1277,89 @@ describe("exportTripToCSV - expenses", () => {
     });
 
     expect(capturedContent).not.toContain("Expenses");
+  });
+});
+
+// --- toExpenseExportData ---
+
+describe("toExpenseExportData", () => {
+  function makeExpensesResponse(overrides: Partial<ExpensesResponse> = {}): ExpensesResponse {
+    return {
+      tripCurrency: "JPY",
+      expenses: [],
+      settlement: {
+        totalAmount: 0,
+        balances: [],
+        transfers: [],
+        directTransfers: [],
+      },
+      settlementPayments: [],
+      categoryTotals: [],
+      memberTotals: [],
+      ...overrides,
+    };
+  }
+
+  it("uses trip currency for split amounts on equal split", () => {
+    // JPY has 0 decimals; USD has 2 decimals. tripCurrency=JPY, expenseCurrency=USD.
+    // Equal split resolves splits in trip currency (JPY):
+    //   fromMinorUnits(500, "JPY") = 500
+    //   fromMinorUnits(500, "USD") = 5  (would be wrong value)
+    const data = makeExpensesResponse({
+      tripCurrency: "JPY",
+      expenses: [
+        {
+          id: "e1",
+          title: "Dinner",
+          amount: 1000,
+          currency: "USD",
+          exchangeRate: null,
+          baseAmount: null,
+          splitType: "equal",
+          category: null,
+          paidByUserId: "u1",
+          paidByUser: { id: "u1", name: "Alice" },
+          splits: [{ userId: "u1", amount: 500, user: { id: "u1", name: "Alice" } }],
+          lineItems: [],
+          createdAt: "2025-01-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const result = toExpenseExportData(data);
+
+    expect(result.expenses[0].splits[0].amount).toBe(500);
+  });
+
+  it("uses expense currency for split amounts on custom split", () => {
+    // JPY has 0 decimals; USD has 2 decimals. tripCurrency=JPY, expenseCurrency=USD.
+    // Custom split resolves splits in expense currency (USD):
+    //   fromMinorUnits(625, "USD") = 6.25
+    //   fromMinorUnits(625, "JPY") = 625  (would be wrong value)
+    const data = makeExpensesResponse({
+      tripCurrency: "JPY",
+      expenses: [
+        {
+          id: "e1",
+          title: "Taxi",
+          amount: 1250,
+          currency: "USD",
+          exchangeRate: null,
+          baseAmount: null,
+          splitType: "custom",
+          category: null,
+          paidByUserId: "u1",
+          paidByUser: { id: "u1", name: "Alice" },
+          splits: [{ userId: "u1", amount: 625, user: { id: "u1", name: "Alice" } }],
+          lineItems: [],
+          createdAt: "2025-01-01T00:00:00Z",
+        },
+      ],
+    });
+
+    const result = toExpenseExportData(data);
+
+    expect(result.expenses[0].splits[0].amount).toBe(6.25);
   });
 });
 

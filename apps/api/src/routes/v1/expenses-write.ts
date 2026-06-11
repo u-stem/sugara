@@ -13,13 +13,14 @@ import { count, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { db } from "../../db";
-import { expenses, tripDays, tripMembers, users } from "../../db/schema";
+import { expenseSplits, tripDays, tripMembers } from "../../db/schema";
 import { createExpenseCore, updateExpenseCore } from "../../lib/expense-service";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
-import { buildMemberNoMap, resolveMemberNoToUserId } from "../../lib/external-api/member-no";
+import { buildMemberNoMap, invertMemberNoMap } from "../../lib/external-api/member-no";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
-import { uuidSchema, withTripAccess } from "./shared";
+import { serializeExpenseDto } from "./serializers";
+import { getActorName, uuidSchema, withTripAccess } from "./shared";
 import {
   v1CreateExpenseSchema,
   v1ExpenseWriteResponseSchema,
@@ -27,38 +28,6 @@ import {
 } from "./write-schemas";
 
 export const expensesWriteApp = new Hono<V1Env>();
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// Mirror of the local resolveMemberRef in index.ts — kept private to this file.
-type MemberRef = { memberNo: number; displayName: string } | { displayName: string };
-
-function resolveMemberRef(
-  memberNoMap: Map<string, number>,
-  nameMap: Map<string, string>,
-  userId: string,
-): MemberRef {
-  const memberNo = memberNoMap.get(userId);
-  const displayName = nameMap.get(userId) ?? "Unknown";
-  if (memberNo !== undefined) {
-    return { memberNo, displayName };
-  }
-  // Defensive fallback: member was removed outside the normal flow
-  return { displayName };
-}
-
-// Fetch the expense with paidByUser name and splits for response serialization.
-async function fetchExpenseForResponse(expenseId: string) {
-  return db.query.expenses.findFirst({
-    where: eq(expenses.id, expenseId),
-    with: {
-      paidByUser: { columns: { name: true } },
-      splits: { columns: { userId: true, amount: true } },
-    },
-  });
-}
 
 // ---------------------------------------------------------------------------
 // POST /trips/:tripId/expenses
@@ -148,9 +117,11 @@ expensesWriteApp.post(
         with: { user: { columns: { name: true } } },
       });
       const memberNoMap = buildMemberNoMap(memberRows);
+      const userIdByMemberNo = invertMemberNoMap(memberNoMap);
+      const nameMap = new Map(memberRows.map((m) => [m.userId, m.user?.name ?? "Unknown"]));
 
       // Resolve paidByMemberNo → paidByUserId.
-      const paidByUserId = resolveMemberNoToUserId(memberNoMap, parsed.data.paidByMemberNo);
+      const paidByUserId = userIdByMemberNo.get(parsed.data.paidByMemberNo);
       if (!paidByUserId) {
         throw new ApiV1Error(400, "invalid_request", "Unknown paidByMemberNo");
       }
@@ -158,7 +129,7 @@ expensesWriteApp.post(
       // Resolve splits[].memberNo → splits[].userId.
       const resolvedSplits: { userId: string; amount?: number }[] = [];
       for (const s of parsed.data.splits) {
-        const uid = resolveMemberNoToUserId(memberNoMap, s.memberNo);
+        const uid = userIdByMemberNo.get(s.memberNo);
         if (!uid) {
           throw new ApiV1Error(400, "invalid_request", `Unknown memberNo ${s.memberNo} in splits`);
         }
@@ -172,7 +143,7 @@ expensesWriteApp.post(
         for (const item of parsed.data.lineItems) {
           const memberIds: string[] = [];
           for (const mno of item.memberNos) {
-            const uid = resolveMemberNoToUserId(memberNoMap, mno);
+            const uid = userIdByMemberNo.get(mno);
             if (!uid) {
               throw new ApiV1Error(400, "invalid_request", `Unknown memberNo ${mno} in lineItems`);
             }
@@ -183,23 +154,25 @@ expensesWriteApp.post(
       }
 
       // Fetch actor name for createExpenseCore notifications.
-      const actorRow = await db.query.users.findFirst({
-        where: eq(users.id, key.userId),
-        columns: { name: true },
-      });
-      const actorName = actorRow?.name ?? "Unknown";
+      const actorName = await getActorName(key.userId);
 
-      const result = await createExpenseCore(tripId, key.userId, actorName, {
-        title: parsed.data.title,
-        amount: parsed.data.amount,
-        paidByUserId,
-        splitType: parsed.data.splitType,
-        category: parsed.data.category,
-        currency: parsed.data.currency,
-        exchangeRate: parsed.data.exchangeRate,
-        splits: resolvedSplits,
-        lineItems: resolvedLineItems,
-      });
+      const result = await createExpenseCore(
+        tripId,
+        key.userId,
+        actorName,
+        {
+          title: parsed.data.title,
+          amount: parsed.data.amount,
+          paidByUserId,
+          splitType: parsed.data.splitType,
+          category: parsed.data.category,
+          currency: parsed.data.currency,
+          exchangeRate: parsed.data.exchangeRate,
+          splits: resolvedSplits,
+          lineItems: resolvedLineItems,
+        },
+        { memberIds: new Set(memberRows.map((m) => m.userId)) },
+      );
 
       if (!result.ok) {
         switch (result.error) {
@@ -224,28 +197,8 @@ expensesWriteApp.post(
         }
       }
 
-      // Re-fetch with relations for the response DTO.
-      const expenseWithRelations = await fetchExpenseForResponse(result.expense.id);
-      if (!expenseWithRelations) {
-        throw new ApiV1Error(500, "internal_error", "Expense not found after creation");
-      }
-
-      const nameMap = new Map(memberRows.map((m) => [m.userId, m.user?.name ?? "Unknown"]));
-
       return c.json(
-        {
-          id: expenseWithRelations.id,
-          title: expenseWithRelations.title,
-          amount: expenseWithRelations.amount,
-          currency: expenseWithRelations.currency,
-          category: expenseWithRelations.category ?? null,
-          date: expenseWithRelations.createdAt.toISOString(),
-          paidBy: resolveMemberRef(memberNoMap, nameMap, expenseWithRelations.paidByUserId),
-          splits: expenseWithRelations.splits.map((s) => ({
-            ...resolveMemberRef(memberNoMap, nameMap, s.userId),
-            amount: s.amount,
-          })),
-        },
+        serializeExpenseDto({ ...result.expense, splits: result.splits }, memberNoMap, nameMap),
         201,
       );
     },
@@ -342,11 +295,13 @@ expensesWriteApp.patch(
         with: { user: { columns: { name: true } } },
       });
       const memberNoMap = buildMemberNoMap(memberRows);
+      const userIdByMemberNo = invertMemberNoMap(memberNoMap);
+      const nameMap = new Map(memberRows.map((m) => [m.userId, m.user?.name ?? "Unknown"]));
 
       // Resolve paidByMemberNo → paidByUserId when present.
       let paidByUserId: string | undefined;
       if (parsed.data.paidByMemberNo !== undefined) {
-        const uid = resolveMemberNoToUserId(memberNoMap, parsed.data.paidByMemberNo);
+        const uid = userIdByMemberNo.get(parsed.data.paidByMemberNo);
         if (!uid) {
           throw new ApiV1Error(400, "invalid_request", "Unknown paidByMemberNo");
         }
@@ -358,7 +313,7 @@ expensesWriteApp.patch(
       if (parsed.data.splits) {
         resolvedSplits = [];
         for (const s of parsed.data.splits) {
-          const uid = resolveMemberNoToUserId(memberNoMap, s.memberNo);
+          const uid = userIdByMemberNo.get(s.memberNo);
           if (!uid) {
             throw new ApiV1Error(
               400,
@@ -378,7 +333,7 @@ expensesWriteApp.patch(
         for (const item of parsed.data.lineItems) {
           const memberIds: string[] = [];
           for (const mno of item.memberNos) {
-            const uid = resolveMemberNoToUserId(memberNoMap, mno);
+            const uid = userIdByMemberNo.get(mno);
             if (!uid) {
               throw new ApiV1Error(400, "invalid_request", `Unknown memberNo ${mno} in lineItems`);
             }
@@ -388,17 +343,23 @@ expensesWriteApp.patch(
         }
       }
 
-      const result = await updateExpenseCore(tripId, expenseId, key.userId, {
-        title: parsed.data.title,
-        amount: parsed.data.amount,
-        paidByUserId,
-        splitType: parsed.data.splitType,
-        category: parsed.data.category,
-        currency: parsed.data.currency,
-        exchangeRate: parsed.data.exchangeRate,
-        splits: resolvedSplits,
-        lineItems: resolvedLineItems,
-      });
+      const result = await updateExpenseCore(
+        tripId,
+        expenseId,
+        key.userId,
+        {
+          title: parsed.data.title,
+          amount: parsed.data.amount,
+          paidByUserId,
+          splitType: parsed.data.splitType,
+          category: parsed.data.category,
+          currency: parsed.data.currency,
+          exchangeRate: parsed.data.exchangeRate,
+          splits: resolvedSplits,
+          lineItems: resolvedLineItems,
+        },
+        { memberIds: new Set(memberRows.map((m) => m.userId)) },
+      );
 
       if (!result.ok) {
         switch (result.error) {
@@ -435,27 +396,18 @@ expensesWriteApp.patch(
         }
       }
 
-      // Re-fetch with relations for the response DTO.
-      const expenseWithRelations = await fetchExpenseForResponse(result.expense.id);
-      if (!expenseWithRelations) {
-        throw new ApiV1Error(500, "internal_error", "Expense not found after update");
-      }
+      // Use splits from service result when splits were updated; fall back to a
+      // DB query when only non-split fields changed (result.splits is undefined).
+      const splitRows =
+        result.splits ??
+        (await db.query.expenseSplits.findMany({
+          where: eq(expenseSplits.expenseId, expenseId),
+          columns: { userId: true, amount: true },
+        }));
 
-      const nameMap = new Map(memberRows.map((m) => [m.userId, m.user?.name ?? "Unknown"]));
-
-      return c.json({
-        id: expenseWithRelations.id,
-        title: expenseWithRelations.title,
-        amount: expenseWithRelations.amount,
-        currency: expenseWithRelations.currency,
-        category: expenseWithRelations.category ?? null,
-        date: expenseWithRelations.createdAt.toISOString(),
-        paidBy: resolveMemberRef(memberNoMap, nameMap, expenseWithRelations.paidByUserId),
-        splits: expenseWithRelations.splits.map((s) => ({
-          ...resolveMemberRef(memberNoMap, nameMap, s.userId),
-          amount: s.amount,
-        })),
-      });
+      return c.json(
+        serializeExpenseDto({ ...result.expense, splits: splitRows }, memberNoMap, nameMap),
+      );
     },
     { minRole: "editor" },
   ),

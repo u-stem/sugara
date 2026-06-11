@@ -1,7 +1,7 @@
 "use client";
 
 import type { ExpensesResponse, TripResponse } from "@sugara/shared";
-import { fromMinorUnits, toCurrencyCode } from "@sugara/shared";
+import { toCurrencyCode } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCheck, Download, X } from "lucide-react";
 import { useParams } from "next/navigation";
@@ -33,7 +33,6 @@ import {
   type CSVLineEnding,
   DEFAULT_CSV_OPTIONS,
   EXPORT_FIELDS,
-  type ExpenseExportData,
   type ExpenseExportLabels,
   type ExportField,
   type ExportFieldLabels,
@@ -42,6 +41,7 @@ import {
   exportTrip,
   filterCandidateFields,
   type PatternMode,
+  toExpenseExportData,
   type ValueLabels,
 } from "@/lib/export";
 import { useAuthRedirect } from "@/lib/hooks/use-auth-redirect";
@@ -53,44 +53,6 @@ const FORMAT_LABELS: Record<ExportFormat, string> = {
   csv: "CSV (.csv)",
   ics: "iCal (.ics)",
 };
-
-// Convert API response amounts (minor units) to major units for spreadsheet cells.
-// Equal splits are stored in trip currency; custom/itemized use the expense currency.
-function toExpenseExportData(
-  data: ExpensesResponse,
-  translateCategory?: (key: string) => string,
-): ExpenseExportData {
-  const tripCurrency = data.tripCurrency;
-  return {
-    expenses: data.expenses.map((e) => ({
-      title: e.title,
-      amount: fromMinorUnits(e.amount, e.currency),
-      paidByName: e.paidByUser.name,
-      splitType: e.splitType,
-      category: e.category
-        ? translateCategory
-          ? translateCategory(e.category)
-          : e.category
-        : null,
-      splits: e.splits.map((s) => ({
-        name: s.user.name,
-        amount: fromMinorUnits(s.amount, e.splitType === "equal" ? tripCurrency : e.currency),
-      })),
-    })),
-    settlement: {
-      totalAmount: fromMinorUnits(data.settlement.totalAmount, tripCurrency),
-      balances: data.settlement.balances.map((b) => ({
-        name: b.name,
-        net: fromMinorUnits(b.net, tripCurrency),
-      })),
-      transfers: data.settlement.transfers.map((t) => ({
-        fromName: t.from.name,
-        toName: t.to.name,
-        amount: fromMinorUnits(t.amount, tripCurrency),
-      })),
-    },
-  };
-}
 
 function ExpensePreviewTable({
   data,
