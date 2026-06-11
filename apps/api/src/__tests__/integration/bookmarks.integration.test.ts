@@ -20,12 +20,15 @@ vi.mock("../../lib/auth", () => ({
   },
 }));
 
+import { asc, eq } from "drizzle-orm";
 import { bookmarkLists } from "../../db/schema";
+import { bookmarkListRoutes } from "../../routes/bookmark-lists";
 import { bookmarkRoutes } from "../../routes/bookmarks";
 import { cleanupTables, createTestUser, getTestDb, teardownTestDb } from "./setup";
 
 function createApp() {
   const app = new Hono();
+  app.route("/api/bookmark-lists", bookmarkListRoutes);
   app.route("/api/bookmark-lists", bookmarkRoutes);
   return app;
 }
@@ -59,7 +62,6 @@ describe("Bookmarks Integration", () => {
 
   afterAll(async () => {
     await cleanupTables();
-    await teardownTestDb();
   });
 
   async function createBookmark(name: string) {
@@ -84,4 +86,78 @@ describe("Bookmarks Integration", () => {
     // Assert: MAX+1, not COUNT (COUNT=2 would collide with C's sortOrder)
     expect(d.sortOrder).toBe(3);
   });
+});
+
+describe("Bookmark list sortOrder after deletion", () => {
+  const app = createApp();
+  let owner: { id: string; name: string; email: string };
+
+  beforeEach(async () => {
+    await cleanupTables();
+    owner = await createTestUser({ name: "Owner", email: "owner@test.com" });
+    mockGetSession.mockImplementation(() => ({
+      user: owner,
+      session: { id: "test-session" },
+    }));
+  });
+
+  afterAll(async () => {
+    await cleanupTables();
+  });
+
+  async function createList(name: string) {
+    const res = await app.request("/api/bookmark-lists", json({ name }));
+    expect(res.status).toBe(201);
+    return res.json();
+  }
+
+  /** Create lists A/B/C (sortOrder 0/1/2), delete B, return remaining lists. */
+  async function arrangeGap() {
+    const a = await createList("A");
+    const b = await createList("B");
+    const c = await createList("C");
+    await app.request(`/api/bookmark-lists/${b.id}`, { method: "DELETE" });
+    return { a, c };
+  }
+
+  it("assigns a non-colliding sortOrder to a list created after deleting a middle list", async () => {
+    await arrangeGap();
+
+    const d = await createList("D");
+
+    // MAX+1, not COUNT (COUNT=2 would collide with C's sortOrder)
+    expect(d.sortOrder).toBe(3);
+  });
+
+  it("assigns a non-colliding sortOrder when duplicating a list after deleting a middle list", async () => {
+    const { a } = await arrangeGap();
+
+    const res = await app.request(`/api/bookmark-lists/${a.id}/duplicate`, { method: "POST" });
+    const copy = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(copy.sortOrder).toBe(3);
+  });
+
+  it("assigns non-colliding sequential sortOrders when batch-duplicating after deleting a middle list", async () => {
+    const { a, c } = await arrangeGap();
+
+    const res = await app.request(
+      "/api/bookmark-lists/batch-duplicate",
+      json({ listIds: [a.id, c.id] }),
+    );
+
+    expect(res.status).toBe(201);
+    const rows = await getTestDb()
+      .select({ name: bookmarkLists.name, sortOrder: bookmarkLists.sortOrder })
+      .from(bookmarkLists)
+      .where(eq(bookmarkLists.userId, owner.id))
+      .orderBy(asc(bookmarkLists.sortOrder));
+    // A(0), C(2) survive; the two copies continue from MAX+1 = 3
+    expect(rows.map((r) => r.sortOrder)).toEqual([0, 2, 3, 4]);
+  });
+});
+
+afterAll(async () => {
+  await teardownTestDb();
 });

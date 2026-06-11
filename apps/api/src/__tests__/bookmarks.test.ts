@@ -109,11 +109,21 @@ describe("Bookmark routes", () => {
         sortOrder: 0,
         listId,
       };
-      mockDbInsert.mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([created]),
+      // First select: COUNT (limit check); second: COALESCE(MAX(sortOrder), -1) (#143)
+      mockDbSelect.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 3 }]),
         }),
       });
+      mockDbSelect.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ max: 2 }]),
+        }),
+      });
+      const insertValues = vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([created]),
+      });
+      mockDbInsert.mockReturnValue({ values: insertValues });
 
       const app = createTestApp(bookmarkRoutes, "/api/bookmark-lists");
       const res = await app.request(`/api/bookmark-lists/${listId}/bookmarks`, {
@@ -123,6 +133,8 @@ describe("Bookmark routes", () => {
       });
 
       expect(res.status).toBe(201);
+      // MAX(sortOrder)=2 -> new bookmark gets 3 (gap-safe MAX+1, not COUNT)
+      expect(insertValues).toHaveBeenCalledWith(expect.objectContaining({ sortOrder: 3 }));
     });
 
     it("returns 409 when bookmark limit reached", async () => {

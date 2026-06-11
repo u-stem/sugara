@@ -12,6 +12,7 @@ import { bookmarkLists, bookmarks } from "../db/schema";
 import { ERROR_MSG } from "../lib/constants";
 import { hasChanges } from "../lib/has-changes";
 import { getParam } from "../lib/params";
+import { getNextSortOrder } from "../lib/sort-order";
 import { requireAuth } from "../middleware/auth";
 import { requireNonGuest } from "../middleware/require-non-guest";
 import type { AppEnv } from "../types";
@@ -63,13 +64,22 @@ bookmarkListRoutes.post("/", async (c) => {
       return null;
     }
 
+    // MAX+1, not COUNT: deleting a non-last list leaves a gap, and a
+    // COUNT-based value would collide with an existing sortOrder (#143).
+    const sortOrder = await getNextSortOrder(
+      tx,
+      bookmarkLists.sortOrder,
+      bookmarkLists,
+      eq(bookmarkLists.userId, user.id),
+    );
+
     const [result] = await tx
       .insert(bookmarkLists)
       .values({
         userId: user.id,
         name: parsed.data.name,
         visibility: parsed.data.visibility,
-        sortOrder: listCount,
+        sortOrder,
       })
       .returning();
 
@@ -170,13 +180,21 @@ bookmarkListRoutes.post("/:listId/duplicate", async (c) => {
       return null;
     }
 
+    // MAX+1, not COUNT: see the create handler above (#143).
+    const sortOrder = await getNextSortOrder(
+      tx,
+      bookmarkLists.sortOrder,
+      bookmarkLists,
+      eq(bookmarkLists.userId, user.id),
+    );
+
     const [newList] = await tx
       .insert(bookmarkLists)
       .values({
         userId: user.id,
         name: `${source.name} (copy)`,
         visibility: source.visibility,
-        sortOrder: listCount,
+        sortOrder,
       })
       .returning();
 
@@ -253,6 +271,14 @@ bookmarkListRoutes.post("/batch-duplicate", async (c) => {
       return null;
     }
 
+    // MAX+1, not COUNT: see the create handler above (#143).
+    const baseSortOrder = await getNextSortOrder(
+      tx,
+      bookmarkLists.sortOrder,
+      bookmarkLists,
+      eq(bookmarkLists.userId, user.id),
+    );
+
     for (let i = 0; i < sources.length; i++) {
       const source = sources[i];
       const [newList] = await tx
@@ -261,7 +287,7 @@ bookmarkListRoutes.post("/batch-duplicate", async (c) => {
           userId: user.id,
           name: `${source.name} (copy)`,
           visibility: source.visibility,
-          sortOrder: listCount + i,
+          sortOrder: baseSortOrder + i,
         })
         .returning();
 
