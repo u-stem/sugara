@@ -22,7 +22,7 @@ import {
   expenseCategorySchema,
   expenseSplitTypeSchema,
   MAX_LINE_ITEMS_PER_EXPENSE,
-  toMinorUnits,
+  splitsTotalMatchesAmount,
   updateArticleSchema,
   updateBookmarkListSchema,
   updateBookmarkSchema,
@@ -146,21 +146,10 @@ export const v1CreateExpenseSchema = z
     },
     { message: "Custom splits require amount for each member", path: ["splits"] },
   )
-  .refine(
-    (data) => {
-      if (data.splitType === "custom" || data.splitType === "itemized") {
-        // Compare in minor units so that e.g. 6.25 + 6.25 === 12.50 for USD
-        // (floating-point addition of major units would lose precision).
-        const splitMinor = data.splits.reduce(
-          (sum, s) => sum + toMinorUnits(s.amount ?? 0, data.currency),
-          0,
-        );
-        return splitMinor === toMinorUnits(data.amount, data.currency);
-      }
-      return true;
-    },
-    { message: "Split amounts must equal total amount", path: ["splits"] },
-  )
+  .refine((data) => splitsTotalMatchesAmount(data), {
+    message: "Split amounts must equal total amount",
+    path: ["splits"],
+  })
   .refine(
     (data) => {
       if (data.splitType === "itemized") {
