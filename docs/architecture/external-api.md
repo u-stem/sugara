@@ -1,6 +1,6 @@
 # 外部 API v1
 
-アカウント保持者がスクリプト・CLI・ローカル LLM から自分の旅行データを読み取るための REST API。内部 API（Cookie セッション専用）とは独立したルーターとして実装されており、API キー（Bearer 認証）でアクセスする。
+アカウント保持者がスクリプト・CLI・ローカル LLM から自分の旅行データを読み書きするための REST API。内部 API（Cookie セッション専用）とは独立したルーターとして実装されており、API キー（Bearer 認証）でアクセスする。
 
 ## 認証方式
 
@@ -23,8 +23,12 @@
 | `expenses:read` | 費用・精算の読み取り |
 | `articles:read` | 記事の読み取り（自分が作成した記事のみ） |
 | `bookmarks:read` | ブックマークの読み取り（自分が所有するリストのみ） |
+| `trips:write` | 旅行・予定の作成・更新 |
+| `expenses:write` | 費用の作成・更新 |
+| `articles:write` | 記事の作成・更新（自分の記事のみ） |
+| `bookmarks:write` | ブックマークリスト・ブックマークの作成・更新（自分のリストのみ） |
 
-書き込み系スコープ（`trips:write` / `expenses:write` 等）は将来の拡張として予約されており、v1 では未実装。
+write は read を**含意しない**（最小権限。read と write は独立に付与する）。削除（DELETE）は外部 API では提供しない（誤削除リスクを避け Web UI に限定）。既存の read のみのキーは write スコープを保有しないため挙動不変（後方互換）。
 
 ## エンドポイント一覧
 
@@ -39,12 +43,33 @@
 | GET | `/articles/:id` | `articles:read` | 記事詳細（本文あり） |
 | GET | `/bookmark-lists` | `bookmarks:read` | 自分のブックマークリスト一覧 |
 | GET | `/bookmark-lists/:listId/bookmarks` | `bookmarks:read` | リスト内のブックマーク |
+| POST | `/trips` | `trips:write` | 旅行作成（キー所有者が owner。上限超過は 409） |
+| PATCH | `/trips/:id` | `trips:write` | 旅行更新（部分更新。費用がある旅行の通貨変更は 409） |
+| POST | `/trips/:tripId/days/:dayNumber/schedules` | `trips:write` | 指定日（1 始まり）への予定追加（末尾に挿入） |
+| PATCH | `/trips/:tripId/schedules/:scheduleId` | `trips:write` | 予定更新 |
+| POST | `/trips/:tripId/expenses` | `expenses:write` | 費用作成（memberNo ベース入力） |
+| PATCH | `/trips/:tripId/expenses/:expenseId` | `expenses:write` | 費用更新 |
+| POST | `/bookmark-lists` | `bookmarks:write` | ブックマークリスト作成 |
+| PATCH | `/bookmark-lists/:listId` | `bookmarks:write` | リスト更新 |
+| POST | `/bookmark-lists/:listId/bookmarks` | `bookmarks:write` | ブックマーク追加 |
+| PATCH | `/bookmark-lists/:listId/bookmarks/:bookmarkId` | `bookmarks:write` | ブックマーク更新 |
+| POST | `/articles` | `articles:write` | 記事作成（キー所有者が owner） |
+| PATCH | `/articles/:id` | `articles:write` | 記事更新（自分の記事のみ） |
 
 **ページネーション**: offset/limit 方式。`limit` 既定 50・上限 100、`offset` 0 以上。
 
 **アクセス制御**:
 - `:id` / `:tripId` を取る旅行系エンドポイントは `withTripAccess` ラッパが `checkTripAccess(tripId, userId)` を呼び、非メンバーには `404 not_found`（存在秘匿）
+- 旅行系の write は `withTripAccess` の `minRole: "editor"` で editor 以上を要求。ロール不足も `404 not_found`（内部 API と同じ存在秘匿ポリシー）
 - 記事・ブックマークは `ownerId === userId` / `list.userId === userId` のみで境界完結
+- 日程調整中（trip_days 未生成）の旅行への予定・費用作成は `409 conflict`
+
+**書き込みの入力**:
+- リクエストスキーマは `packages/shared` の内部スキーマから派生した v1 専用形（`apps/api/src/routes/v1/write-schemas.ts`）。`coverImageUrl` 等の内部 Storage 参照や楽観ロック用フィールドは外部に公開しない
+- 費用の支払者・分割は `paidByMemberNo` / `splits[].memberNo` で指定し、サーバ側で userId に逆引きする。不明な memberNo は `400 invalid_request`
+- memberNo はメンバー増減で振り直されるため、書き込み直前に `GET /trips/:id` で最新の対応を確認すること
+- 作成は `201`、更新は `200`。レスポンスは read 系と同じ外部 DTO（memberNo + displayName、内部 UUID 非公開）
+- 共有ロジック: 旅行更新・費用作成/更新は内部 API と同一のサービス関数（`apps/api/src/lib/trip-service.ts` / `expense-service.ts`）を経由し、検証・通知・アクティビティログの挙動を揃える
 
 **外部 DTO**:
 - 内部 user UUID・メールアドレスは一切出さない
@@ -88,6 +113,7 @@ Web UI は設定画面の「API キー」タブ（`apps/web/components/api-keys-
 | 401 | `unauthorized` | キー無効・欠落・期限切れ・失効（理由を区別しない） |
 | 403 | `insufficient_scope` | スコープ不足 |
 | 404 | `not_found` | リソースなし または アクセス権なし（存在秘匿） |
+| 409 | `conflict` | 現在の状態と矛盾する書き込み（旅行数上限・費用がある旅行の通貨変更・日程未確定の旅行への予定追加等） |
 | 429 | `rate_limited` | レート超過 |
 | 500 | `internal_error` | 詳細は返さない |
 
@@ -118,22 +144,23 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 
 **認証**: `requireAuth` + `requireNonGuest`（Cookie セッション + 本登録ユーザー限定）。ゲストアカウントや未認証ユーザーには公開しない。
 
-**spec の内容**: v1 の 7 エンドポイントのみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
+**spec の内容**: v1 の 19 エンドポイント（read 7 + write 12）のみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
 
 **Scalar UI のアセット**: `@scalar/api-reference` を `apps/web` の devDependency として固定バージョン管理する。`apps/web/scripts/copy-scalar-assets.ts` が dev サーバ起動時（`predev`）とビルド時（`prebuild`）に standalone バンドルを `apps/web/public/scalar/standalone.js` へコピーし、Next.js が同一オリジン（`/scalar/standalone.js`）から配信する。第三者オリジン依存ゼロ。生成物は `.gitignore` で除外済み（3.5 MB をリポジトリにコミットしない）。
 
 **CSP**: `/api/_docs` のレスポンスに最小 CSP を付与する（`addDocsCsp` ミドルウェア）。同一オリジン配信後は外部オリジンが不要なため `connect-src 'self'` が主効果（万一のスクリプト注入でもデータ外部送信を遮断）。`script-src 'unsafe-inline'` は Scalar の inline 初期化スクリプト（`Scalar.createApiReference('#app', config)`）のために必要。
 
-**実装**: `hono-openapi` の `describeRoute` を v1 の 7 ルートに追加してメタデータを付与し、`generateSpecs(v1App, ...)` で spec を生成。`@scalar/hono-api-reference` の `Scalar` ミドルウェアで UI を提供。`Scalar({ cdn: "/scalar/standalone.js", withDefaultFonts: false })` で外部 CDN とフォントサービスへの依存を排除。
+**実装**: `hono-openapi` の `describeRoute` を v1 の全ルートに追加してメタデータを付与し、`generateSpecs(v1App, ...)` で spec を生成。`@scalar/hono-api-reference` の `Scalar` ミドルウェアで UI を提供。`Scalar({ cdn: "/scalar/standalone.js", withDefaultFonts: false })` で外部 CDN とフォントサービスへの依存を排除。
 
 ## MCP サーバ（apps/mcp）
 
 v1 REST を LLM（Claude Desktop / Claude Code 等）から扱うための MCP サーバ。`apps/mcp`（`private`、未公開）に置き、**stdio トランスポート**で動作する（LLM クライアントが子プロセスとして起動）。
 
 - 認証: API キーを環境変数 `SUGARA_API_KEY` で受け取り `Authorization: Bearer` で v1 を叩く。接続先は `SUGARA_API_URL`。生キーはログ・エラーに出さない
-- ツール: v1 の 7 エンドポイントに 1:1 対応する 7 つの read ツール（`list_trips` / `get_trip` / `list_trip_expenses` / `list_bookmark_lists` / `list_bookmarks` / `list_articles` / `get_article`）。入力は zod で境界検証（limit 1–100 / offset 0+ / uuid / scope enum）
+- ツール: v1 の 19 エンドポイントに 1:1 対応する 19 ツール。read 7 つ（`list_trips` / `get_trip` / `list_trip_expenses` / `list_bookmark_lists` / `list_bookmarks` / `list_articles` / `get_article`）+ write 12（`create_trip` / `update_trip` / `create_schedule` / `update_schedule` / `create_expense` / `update_expense` / `create_bookmark_list` / `update_bookmark_list` / `create_bookmark` / `update_bookmark` / `create_article` / `update_article`）。入力は zod で境界検証（limit 1–100 / offset 0+ / uuid / scope enum）
+- annotations: read ツールは `readOnlyHint: true`、create 系は `destructiveHint: false`、update 系は既存データを上書きするため `destructiveHint: true` を明示し、MCP クライアント側の確認 UI 判断に供する
 - エラー: v1 の `{ error: { code, message } }` を人間可読メッセージに写像（`isError: true`）
-- 読み取り専用・stdio のため公開ネットワーク面はなく、攻撃面は「キーを持つローカルプロセス」に限定
+- stdio のため公開ネットワーク面はなく、攻撃面は「キーを持つローカルプロセス」に限定。削除ツールは提供しない
 - SDK: `@modelcontextprotocol/sdk`。実行はビルドせず `bun run src/index.ts`（モノレポの TS 直接実行規約に準拠）
 - セットアップ手順は `apps/mcp/README.md`
 
@@ -141,4 +168,5 @@ v1 REST を LLM（Claude Desktop / Claude Code 等）から扱うための MCP �
 
 - レート制限の具体値（IP 段の window/max）を実負荷に基づいて調整
 - キー ID 単位のレート制限・`X-RateLimit-*` ヘッダ（公開拡大時に後方互換追加）
-- 書き込み系スコープ（`trips:write` / `expenses:write`）の追加
+- 書き込み専用の低いレート制限（現状は read と同じ IP 300/min を適用）
+- memberNo の安定化（現状は書き込み直前の `GET /trips/:id` での確認を要求。メンバー増減と書き込みが競合すると別メンバーに紐づくリスクが残る。恒久対応はメンバー参照のトークン化）
