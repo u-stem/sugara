@@ -1,16 +1,9 @@
 import type { CrossDayEntry, ScheduleResponse } from "@sugara/shared";
 import { buildMergedTimeline, type TimelineItem, timelineSortableIds } from "./merge-timeline";
 
-/**
- * Determine whether the pointer currently sits in the upper half of the
- * drop target's bounding rect. Works with pointer, mouse, and touch events.
- */
-export function isOverUpperHalf(
-  activatorEvent: Event | null,
-  deltaY: number,
-  overRect: { top: number; height: number } | null | undefined,
-): boolean {
-  if (!overRect || !activatorEvent) return false;
+/** Current pointer Y = activation position + drag delta. Works with pointer, mouse, and touch events. */
+function resolvePointerY(activatorEvent: Event | null, deltaY: number): number | null {
+  if (!activatorEvent) return null;
   let startY: number | null = null;
   const ev = activatorEvent as PointerEvent | MouseEvent | TouchEvent;
   if ("clientY" in ev && typeof ev.clientY === "number") {
@@ -18,10 +11,65 @@ export function isOverUpperHalf(
   } else if ("touches" in ev && ev.touches?.[0]) {
     startY = ev.touches[0].clientY;
   }
-  if (startY == null) return false;
-  const currentY = startY + deltaY;
+  if (startY == null) return null;
+  return startY + deltaY;
+}
+
+/**
+ * Determine whether the pointer currently sits in the upper half of the
+ * drop target's bounding rect.
+ */
+export function isOverUpperHalf(
+  activatorEvent: Event | null,
+  deltaY: number,
+  overRect: { top: number; height: number } | null | undefined,
+): boolean {
+  if (!overRect) return false;
+  const currentY = resolvePointerY(activatorEvent, deltaY);
+  if (currentY == null) return false;
   const midY = overRect.top + overRect.height / 2;
   return currentY < midY;
+}
+
+/**
+ * Locate the pointer relative to the timeline zone rect. The wrapper
+ * droppable wins the collision only when the pointer is outside every card —
+ * above the list ("head", insert at the top), below it ("tail", append at the
+ * end), or in a gap the wrapper happened to steal ("inside", where callers
+ * should keep their previous, more specific target).
+ */
+export function timelineEdge(
+  activatorEvent: Event | null,
+  deltaY: number,
+  rect: { top: number; bottom: number } | null | undefined,
+): "head" | "tail" | "inside" | null {
+  if (!rect) return null;
+  const currentY = resolvePointerY(activatorEvent, deltaY);
+  if (currentY == null) return null;
+  if (currentY < rect.top) return "head";
+  if (currentY > rect.bottom) return "tail";
+  return "inside";
+}
+
+/**
+ * Canonical gap index for the insert indicator line.
+ *
+ * Hovering the lower half of item i and the upper half of item i+1 both drop
+ * into the same gap, but rendering the line on "bottom of i" vs "top of i+1"
+ * produces two visually distinct positions for one insertion point (the list
+ * has inter-item spacing). Normalizing to a gap index lets the caller render
+ * a single line per gap: index k means "the gap above item k", and
+ * k === items.length means "after the last item".
+ */
+export function indicatorGapIndex(
+  sortableIds: string[],
+  overId: string | null,
+  upperHalf: boolean,
+): number | null {
+  if (overId == null) return null;
+  const idx = sortableIds.indexOf(overId);
+  if (idx === -1) return null;
+  return upperHalf ? idx : idx + 1;
 }
 
 export type DropTarget =

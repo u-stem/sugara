@@ -7,16 +7,22 @@ export type TimelineItem =
 /**
  * Build a merged timeline of schedules and cross-day entries.
  *
+ * Intermediate cross-day entries (the "staying" rows on the middle days of a
+ * multi-night stay) are pinned to the top of the day in source order. Their
+ * endTime is the checkout time on the final day, so it carries no meaning on
+ * intermediate days and must not participate in the time-based merge. Only
+ * final entries merge by endTime.
+ *
  * Schedules with a valid cross-day anchor (both `crossDayAnchor` and
  * `crossDayAnchorSourceId` set, and the source id matching one of the
  * crossDayEntries) are placed immediately before/after their target crossDay
  * and sorted by sortOrder within that slot. All other schedules (including
  * schedules with a broken/stale anchor whose source doesn't match any
  * crossDay) flow through the time-based merge: time-having schedules flush
- * pending crossDays whose endTime is <= the schedule's startTime, and
- * null-startTime schedules do not flush. Remaining crossDays fall through to
- * the end (endTime-having entries sorted by endTime, then null-endTime
- * entries).
+ * pending final crossDays whose endTime is <= the schedule's startTime, and
+ * null-startTime schedules do not flush. Remaining final crossDays fall
+ * through to the end (endTime-having entries sorted by endTime, then
+ * null-endTime entries).
  */
 export function buildMergedTimeline(
   schedules: ScheduleResponse[],
@@ -26,7 +32,12 @@ export function buildMergedTimeline(
     return schedules.map((schedule) => ({ type: "schedule", schedule }));
   }
 
+  // Anchors may target intermediate entries too, so validity checks against
+  // the full entry list, not just the time-merged (final) subset.
   const validSourceIds = new Set(crossDayEntries.map((e) => e.schedule.id));
+
+  const intermediateEntries = crossDayEntries.filter((e) => e.crossDayPosition === "intermediate");
+  const finalEntries = crossDayEntries.filter((e) => e.crossDayPosition === "final");
 
   const anchoredBefore: ScheduleResponse[] = [];
   const anchoredAfter: ScheduleResponse[] = [];
@@ -43,7 +54,10 @@ export function buildMergedTimeline(
     }
   }
 
-  const merged = timeBasedMerge(plainSchedules, crossDayEntries);
+  const merged = timeBasedMerge(plainSchedules, finalEntries);
+  merged.unshift(
+    ...intermediateEntries.map((entry): TimelineItem => ({ type: "crossDay", entry })),
+  );
 
   // Skip the bucket-and-splice pass entirely when no schedules carry a
   // cross-day anchor — the time-based merge above is already the final order.

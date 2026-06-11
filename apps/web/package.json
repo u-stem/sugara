@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "copy-scalar": "bun run scripts/copy-scalar-assets.ts",
+    "predev": "bun run copy-scalar",
     "dev": "next dev --turbopack",
+    "prebuild": "bun run copy-scalar",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "biome lint app/ components/ lib/",
@@ -74,6 +77,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.60.0",
+    "@scalar/api-reference": "1.57.5",
     "@tailwindcss/postcss": "4.3.0",
     "@testing-library/dom": "10.4.1",
     "@testing-library/react": "16.3.2",
