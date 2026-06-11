@@ -73,6 +73,10 @@ const SCOPE_LABEL_KEYS = {
   "expenses:read": "scopeExpenses",
   "articles:read": "scopeArticles",
   "bookmarks:read": "scopeBookmarks",
+  "trips:write": "scopeTripsWrite",
+  "expenses:write": "scopeExpensesWrite",
+  "articles:write": "scopeArticlesWrite",
+  "bookmarks:write": "scopeBookmarksWrite",
 } as const satisfies Record<ApiKeyScope, string>;
 
 export function ApiKeysSection() {

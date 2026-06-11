@@ -7,10 +7,14 @@ export const API_KEY_SCOPES = [
   "expenses:read",
   "articles:read",
   "bookmarks:read",
+  "trips:write",
+  "expenses:write",
+  "articles:write",
+  "bookmarks:write",
 ] as const;
 export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 
-// 90 days — maximum lifetime for any issued key. Read-only, self-use context.
+// 90 days — maximum lifetime for any issued key. Self-use context.
 export const MAX_API_KEY_EXPIRES_IN_SECONDS = 90 * 24 * 60 * 60; // 7,776,000
 
 export const createApiKeySchema = z.object({

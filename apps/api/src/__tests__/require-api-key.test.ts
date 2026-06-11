@@ -17,6 +17,7 @@ function makeApp() {
   const app = new Hono<V1Env>();
   app.onError(v1ErrorHandler);
   app.get("/trips", requireApiKey("trips:read"), (c) => c.json({ ok: true }));
+  app.post("/trips", requireApiKey("trips:write"), (c) => c.json({ ok: true }, 201));
   return app;
 }
 
@@ -82,6 +83,32 @@ describe("requireApiKey middleware", () => {
     });
 
     expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ ok: true });
+  });
+
+  it("returns 403 when a read-only key calls a write route", async () => {
+    mockVerifyApiKey.mockResolvedValue(VALID_KEY);
+
+    const res = await makeApp().request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_read_only" },
+    });
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body).toEqual({ error: { code: "insufficient_scope", message: expect.any(String) } });
+  });
+
+  it("returns 201 when key holds the write scope for a write route", async () => {
+    mockVerifyApiKey.mockResolvedValue({ ...VALID_KEY, scopes: ["trips:write"] });
+
+    const res = await makeApp().request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_write" },
+    });
+
+    expect(res.status).toBe(201);
     const body = await res.json();
     expect(body).toEqual({ ok: true });
   });
