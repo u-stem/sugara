@@ -28,11 +28,13 @@ export function useTripMutationCallbacks({
 }) {
   const queryClient = useQueryClient();
 
+  // invalidateTrip's ["trips", tripId] key prefix-matches the activity-logs
+  // key, so no separate invalidation is needed here (it would refetch the
+  // logs a second time).
   const onMutate = useCallback(async () => {
     await invalidateTrip();
     broadcastChange();
-    await queryClient.invalidateQueries({ queryKey: queryKeys.trips.activityLogs(tripId) });
-  }, [invalidateTrip, broadcastChange, queryClient, tripId]);
+  }, [invalidateTrip, broadcastChange]);
 
   const onScheduleAdded = useCallback(async () => {
     broadcastChange();

@@ -46,14 +46,14 @@ describe("useTripMutationCallbacks", () => {
     expect(broadcastChange).toHaveBeenCalledTimes(1);
   });
 
-  it("onMutate invalidates the activity logs", async () => {
+  // invalidateTrip's ["trips", tripId] key prefix-matches the activity-logs
+  // key, so a separate invalidation would refetch the logs a second time.
+  it("onMutate does not invalidate the activity logs separately", async () => {
     const { result } = setup();
 
     await act(() => result.current.onMutate());
 
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({
-      queryKey: ["trips", "t1", "activity-logs"],
-    });
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
   });
 
   // Reproduction for #123: the add-schedule dialog has already written the

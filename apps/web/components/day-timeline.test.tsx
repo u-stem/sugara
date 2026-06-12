@@ -99,6 +99,7 @@ function renderTimeline({
             schedules={schedules}
             crossDayEntries={crossDayEntries}
             onRefresh={noop}
+            onScheduleAdded={noop}
             onReorderSchedule={noop}
             scheduleLimitReached
           />

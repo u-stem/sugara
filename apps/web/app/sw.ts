@@ -58,10 +58,12 @@ const serwist = new Serwist({
     // fresher client-side cache updates (#123), and it also persists
     // authenticated personal data in Cache Storage. Offline reads are
     // covered by the IndexedDB-persisted TanStack Query cache instead.
+    // networkTimeoutSeconds matches the defaultCache entries this shadows
+    // (including /api/auth/*, which would otherwise lose its 10s timeout).
     {
       matcher: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
         sameOrigin && url.pathname.startsWith("/api/"),
-      handler: new NetworkOnly(),
+      handler: new NetworkOnly({ networkTimeoutSeconds: 10 }),
     },
     ...defaultCache,
   ],
