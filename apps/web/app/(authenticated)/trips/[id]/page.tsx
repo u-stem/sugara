@@ -54,6 +54,7 @@ import { usePatternOperations } from "@/lib/hooks/use-pattern-operations";
 import { buildReactionUser, useReaction } from "@/lib/hooks/use-reaction";
 import { useScheduleSelection } from "@/lib/hooks/use-schedule-selection";
 import { useTripDragAndDrop } from "@/lib/hooks/use-trip-drag-and-drop";
+import { useTripMutationCallbacks } from "@/lib/hooks/use-trip-mutation-callbacks";
 import { useTripSync } from "@/lib/hooks/use-trip-sync";
 import { isDialogOpen } from "@/lib/hotkeys";
 import { CATEGORY_ICONS } from "@/lib/icons";
@@ -529,12 +530,13 @@ export default function TripDetailPage() {
   );
   const { reactions, sendReaction, removeReaction, cooldown } = useReaction(channel, reactionUser);
 
-  // Mutation callback: refetch + broadcast to other clients
-  const onMutate = useCallback(async () => {
-    await invalidateTrip();
-    broadcastChange();
-    await queryClient.invalidateQueries({ queryKey: queryKeys.trips.activityLogs(tripId) });
-  }, [invalidateTrip, broadcastChange, queryClient, tripId]);
+  // Mutation callbacks: refetch + broadcast to other clients (see hook for
+  // why schedule adds skip the refetch, #123)
+  const { onMutate, onScheduleAdded } = useTripMutationCallbacks({
+    tripId,
+    invalidateTrip,
+    broadcastChange,
+  });
 
   const handleSaveToBookmark = useCallback((scheduleIds: string[]) => {
     setSaveToBookmarkIds(scheduleIds);
@@ -737,6 +739,7 @@ export default function TripDetailPage() {
                   date={currentDay.date}
                   schedules={dnd.localSchedules}
                   onRefresh={onMutate}
+                  onScheduleAdded={onScheduleAdded}
                   disabled={!online || !canEdit}
                   addScheduleOpen={!isLg ? addScheduleOpen : false}
                   onAddScheduleOpenChange={!isLg ? setAddScheduleOpen : undefined}
@@ -972,6 +975,7 @@ export default function TripDetailPage() {
                           date={currentDay.date}
                           schedules={dnd.localSchedules}
                           onRefresh={onMutate}
+                          onScheduleAdded={onScheduleAdded}
                           disabled={!online || !canEdit}
                           addScheduleOpen={isLg ? addScheduleOpen : false}
                           onAddScheduleOpenChange={isLg ? setAddScheduleOpen : undefined}

@@ -66,6 +66,7 @@ import { usePatternOperations } from "@/lib/hooks/use-pattern-operations";
 import { buildReactionUser, useReaction } from "@/lib/hooks/use-reaction";
 import { useScheduleSelection } from "@/lib/hooks/use-schedule-selection";
 import { useTripDragAndDrop } from "@/lib/hooks/use-trip-drag-and-drop";
+import { useTripMutationCallbacks } from "@/lib/hooks/use-trip-mutation-callbacks";
 import { useTripSync } from "@/lib/hooks/use-trip-sync";
 import { QUERY_CONFIG } from "@/lib/query-config";
 import { queryKeys } from "@/lib/query-keys";
@@ -160,11 +161,13 @@ export default function SpTripDetailPage() {
   );
   const { reactions, sendReaction, removeReaction, cooldown } = useReaction(channel, reactionUser);
 
-  const onMutate = useCallback(async () => {
-    await invalidateTrip();
-    broadcastChange();
-    await queryClient.invalidateQueries({ queryKey: queryKeys.trips.activityLogs(tripId ?? "") });
-  }, [invalidateTrip, broadcastChange, queryClient, tripId]);
+  // Mutation callbacks: refetch + broadcast to other clients (see hook for
+  // why schedule adds skip the refetch, #123)
+  const { onMutate, onScheduleAdded } = useTripMutationCallbacks({
+    tripId: tripId ?? "",
+    invalidateTrip,
+    broadcastChange,
+  });
 
   const handleSaveToBookmark = useCallback((scheduleIds: string[]) => {
     setSaveToBookmarkIds(scheduleIds);
@@ -364,6 +367,7 @@ export default function SpTripDetailPage() {
                   date={currentDay.date}
                   schedules={dnd.localSchedules}
                   onRefresh={onMutate}
+                  onScheduleAdded={onScheduleAdded}
                   disabled={!online || !canEdit}
                   addScheduleOpen={addScheduleOpen}
                   onAddScheduleOpenChange={setAddScheduleOpen}

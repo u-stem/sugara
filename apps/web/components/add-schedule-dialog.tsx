@@ -150,6 +150,9 @@ export function AddScheduleDialog({
           body: JSON.stringify(data),
         },
       );
+      // Stop any in-flight trip GET: it could resolve after setQueryData with
+      // a stale snapshot and overwrite the just-added schedule (#123).
+      await queryClient.cancelQueries({ queryKey: cacheKey });
       const prev = queryClient.getQueryData<TripResponse>(cacheKey);
       if (prev) {
         queryClient.setQueryData(

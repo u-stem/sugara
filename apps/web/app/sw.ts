@@ -3,7 +3,7 @@
 /// <reference lib="webworker" />
 import { defaultCache } from "@serwist/next/worker";
 import type { HandlerDidErrorCallbackParam, PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { NetworkFirst, Serwist } from "serwist";
+import { NetworkFirst, NetworkOnly, Serwist } from "serwist";
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -53,6 +53,18 @@ const serwist = new Serwist({
         ],
       }),
     },
+    // Placed before defaultCache to override its "apis" NetworkFirst handler.
+    // Caching /api/ responses can serve a stale snapshot that clobbers
+    // fresher client-side cache updates (#123), and it also persists
+    // authenticated personal data in Cache Storage. Offline reads are
+    // covered by the IndexedDB-persisted TanStack Query cache instead.
+    // networkTimeoutSeconds matches the defaultCache entries this shadows
+    // (including /api/auth/*, which would otherwise lose its 10s timeout).
+    {
+      matcher: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+        sameOrigin && url.pathname.startsWith("/api/"),
+      handler: new NetworkOnly({ networkTimeoutSeconds: 10 }),
+    },
     ...defaultCache,
   ],
   // additionalPrecacheEntries in next.config.ts precaches /offline with revision "1".
@@ -61,6 +73,12 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// Purge the legacy "apis" runtime cache left by the previous defaultCache
+// handler: it may hold stale authenticated API responses (#123).
+self.addEventListener("activate", (event) => {
+  event.waitUntil(caches.delete("apis"));
+});
 
 // Push notification handlers (separate from serwist)
 self.addEventListener("push", (event) => {
