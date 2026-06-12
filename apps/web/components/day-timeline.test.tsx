@@ -1,6 +1,7 @@
 import type { CrossDayEntry, ScheduleResponse } from "@sugara/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SelectionProvider } from "@/lib/hooks/selection-context";
 import { MobileContext } from "@/lib/hooks/use-is-mobile";
@@ -50,9 +51,9 @@ function makeSchedule(
   };
 }
 
-function makeIntermediateEntry(): CrossDayEntry {
+function makeIntermediateEntry(overrides?: Partial<ScheduleResponse>): CrossDayEntry {
   return {
-    schedule: makeSchedule({ id: "hotel1", name: "Hotel", category: "hotel" }),
+    schedule: makeSchedule({ id: "hotel1", name: "Hotel", category: "hotel", ...overrides }),
     sourceDayId: "d0",
     sourcePatternId: "p0",
     sourceDayNumber: 1,
@@ -60,9 +61,15 @@ function makeIntermediateEntry(): CrossDayEntry {
   };
 }
 
-function makeFinalEntry(): CrossDayEntry {
+function makeFinalEntry(overrides?: Partial<ScheduleResponse>): CrossDayEntry {
   return {
-    schedule: makeSchedule({ id: "hotel2", name: "Hotel", category: "hotel", endTime: "10:00" }),
+    schedule: makeSchedule({
+      id: "hotel2",
+      name: "Hotel",
+      category: "hotel",
+      endTime: "10:00",
+      ...overrides,
+    }),
     sourceDayId: "d0",
     sourcePatternId: "p0",
     sourceDayNumber: 1,
@@ -73,15 +80,17 @@ function makeFinalEntry(): CrossDayEntry {
 function renderTimeline({
   schedules,
   crossDayEntries,
+  selection = selectionStub,
 }: {
   schedules: ScheduleResponse[];
   crossDayEntries?: CrossDayEntry[];
+  selection?: ComponentProps<typeof SelectionProvider>["value"];
 }) {
   const queryClient = new QueryClient();
   return renderWithIntl(
     <QueryClientProvider client={queryClient}>
       <MobileContext.Provider value={true}>
-        <SelectionProvider value={selectionStub}>
+        <SelectionProvider value={selection}>
           <DayTimeline
             tripId="t1"
             dayId="d1"
@@ -182,6 +191,28 @@ describe("DayTimeline mobile reorder link tap guard", () => {
     enterReorderMode();
 
     const link = screen.getByText("Tokyo → Kyoto").closest("a");
+    expect(link?.closest(".pointer-events-none")).not.toBeNull();
+  });
+
+  it("disables pointer events on a staying entry address link while reordering", () => {
+    renderTimeline({
+      schedules: [makeSchedule({ id: "s1" }), makeSchedule({ id: "s2", sortOrder: 1 })],
+      crossDayEntries: [makeIntermediateEntry({ address: "Hotel Street 1" })],
+    });
+    enterReorderMode();
+
+    const link = screen.getByText("Hotel Street 1").closest("a");
+    expect(link?.closest(".pointer-events-none")).not.toBeNull();
+  });
+
+  it("disables pointer events on a checkout entry address link in selection mode", () => {
+    renderTimeline({
+      schedules: [makeSchedule({ id: "s1" })],
+      crossDayEntries: [makeFinalEntry({ address: "Hotel Street 1" })],
+      selection: { ...selectionStub, selectionTarget: "timeline" },
+    });
+
+    const link = screen.getByText("Hotel Street 1").closest("a");
     expect(link?.closest(".pointer-events-none")).not.toBeNull();
   });
 });

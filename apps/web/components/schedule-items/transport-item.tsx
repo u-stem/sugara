@@ -65,6 +65,7 @@ export const TransportItem = memo(function TransportItem({
   onSaveToBookmark,
   draggable,
   reorderable,
+  linksDisabled,
   onMoveUp,
   onMoveDown,
   mapsEnabled,
@@ -176,7 +177,10 @@ export const TransportItem = memo(function TransportItem({
           />
           {(routeStr || costStr || urls.length > 0 || memo) && (
             <div
-              className={cn("mt-1 space-y-1", (selectable || reorderable) && "pointer-events-none")}
+              className={cn(
+                "mt-1 space-y-1",
+                (selectable || reorderable || linksDisabled) && "pointer-events-none",
+              )}
             >
               {routeStr && (
                 <span
