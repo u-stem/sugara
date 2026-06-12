@@ -33,19 +33,52 @@ export type ApiV1ErrorCode =
   | "rate_limited"
   | "internal_error";
 
+// Fine-grained machine-readable reason carried alongside the coarse `code`.
+// The top-level `code` set is frozen for backward compatibility (consumers
+// branch on it), so new distinctions are expressed as an additive `reason`
+// instead of new top-level codes.
+export type ApiV1ErrorReason = "trip_limit_reached";
+
+export type ApiV1ErrorOptions = {
+  reason?: ApiV1ErrorReason;
+  details?: unknown;
+};
+
 export class ApiV1Error extends Error {
+  readonly reason?: ApiV1ErrorReason;
+  readonly details?: unknown;
+
   constructor(
     public readonly status: ContentfulStatusCode,
     public readonly code: ApiV1ErrorCode,
     message: string,
+    options?: ApiV1ErrorOptions,
   ) {
     super(message);
     this.name = "ApiV1Error";
+    this.reason = options?.reason;
+    this.details = options?.details;
   }
 }
 
-export function apiV1ErrorBody(code: ApiV1ErrorCode, message: string) {
-  return { error: { code, message } };
+export type ApiV1ErrorBody = {
+  error: {
+    code: ApiV1ErrorCode;
+    message: string;
+    reason?: ApiV1ErrorReason;
+    details?: unknown;
+  };
+};
+
+export function apiV1ErrorBody(
+  code: ApiV1ErrorCode,
+  message: string,
+  options?: ApiV1ErrorOptions,
+): ApiV1ErrorBody {
+  const body: ApiV1ErrorBody = { error: { code, message } };
+  if (options?.reason !== undefined) body.error.reason = options.reason;
+  if (options?.details !== undefined) body.error.details = options.details;
+  return body;
 }
 
 // Isolated error handler for v1App. Must not inherit or delegate to the global
@@ -53,7 +86,10 @@ export function apiV1ErrorBody(code: ApiV1ErrorCode, message: string) {
 // strings are never exposed to external callers.
 export const v1ErrorHandler: ErrorHandler<V1Env> = (err, c) => {
   if (err instanceof ApiV1Error) {
-    return c.json(apiV1ErrorBody(err.code, err.message), err.status);
+    return c.json(
+      apiV1ErrorBody(err.code, err.message, { reason: err.reason, details: err.details }),
+      err.status,
+    );
   }
   // All other exceptions — DB errors, unexpected throws, etc. — are collapsed
   // to 500 internal_error with no detail leak.

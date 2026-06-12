@@ -367,6 +367,29 @@ describe("POST /trips", () => {
     expect(res.status).toBe(409);
     expect(body.error.code).toBe("conflict");
   });
+
+  it("includes trip_limit_reached reason and details.max in the 409 body", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockResolveTripLimit.mockResolvedValue(5);
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ count: 5 }]),
+      }),
+    });
+
+    // Act
+    const res = await jsonPost("/trips", {
+      title: "Overflow Trip",
+      startDate: "2026-07-01",
+      endDate: "2026-07-03",
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(body.error.reason).toBe("trip_limit_reached");
+    expect(body.error.details).toEqual({ max: 5 });
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -106,7 +106,7 @@ Web UI は設定画面の「API キー」タブ（`apps/web/components/api-keys-
 ## エラーモデル
 
 ```json
-{ "error": { "code": "...", "message": "..." } }
+{ "error": { "code": "...", "message": "...", "reason": "...", "details": { } } }
 ```
 
 | HTTP | code | 用途 |
@@ -118,6 +118,12 @@ Web UI は設定画面の「API キー」タブ（`apps/web/components/api-keys-
 | 409 | `conflict` | 現在の状態と矛盾する書き込み（旅行数上限・費用がある旅行の通貨変更・日程未確定の旅行への予定追加等） |
 | 429 | `rate_limited` | レート超過 |
 | 500 | `internal_error` | 詳細は返さない |
+
+`code` の集合は後方互換のため凍結し、エラー種別の細分化は optional な `reason`（機械可読な細分化コード）と `details`（構造化データ）の追加で表現する。現在の `reason`:
+
+| reason | 付随する code | details |
+|---|---|---|
+| `trip_limit_reached` | `conflict` (409) | `{ "max": <ユーザー毎の旅行数上限の実値> }` |
 
 v1 は独立した `onError` を持ち、グローバルの `handleError`（内部エラー形・日本語メッセージ）を継承しない。
 
