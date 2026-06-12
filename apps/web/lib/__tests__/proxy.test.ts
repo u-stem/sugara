@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { proxy } from "../../proxy";
 
 function makeRequest(pathname: string, opts: { viewMode?: string; ua?: string } = {}): NextRequest {
@@ -28,14 +28,15 @@ describe("proxy — SP redirect", () => {
   it("does NOT redirect /trips/[id]/print to SP in SP mode", async () => {
     const req = makeRequest("/trips/abc123/print", { viewMode: "sp" });
     const res = await proxy(req);
-    // Should pass through (no SP redirect), may redirect to /auth/login due to no session
-    expect(res?.headers.get("location")).not.toContain("/sp/");
+    // No SP redirect; the auth guard outcome (redirect or fail-open pass) is
+    // covered by the auth guard suite below, so only assert the SP part here.
+    expect(res?.headers.get("location") ?? "").not.toContain("/sp/");
   });
 
   it("does NOT redirect /trips/[id]/export to SP in SP mode", async () => {
     const req = makeRequest("/trips/abc123/export", { viewMode: "sp" });
     const res = await proxy(req);
-    expect(res?.headers.get("location")).not.toContain("/sp/");
+    expect(res?.headers.get("location") ?? "").not.toContain("/sp/");
   });
 
   it("redirects mobile UA with no cookie to SP for /trips", async () => {
@@ -48,13 +49,13 @@ describe("proxy — SP redirect", () => {
   it("does NOT redirect mobile UA to SP for /trips/[id]/print", async () => {
     const req = makeRequest("/trips/abc123/print", { ua: MOBILE_UA });
     const res = await proxy(req);
-    expect(res?.headers.get("location")).not.toContain("/sp/");
+    expect(res?.headers.get("location") ?? "").not.toContain("/sp/");
   });
 
   it("does NOT redirect mobile UA to SP for /trips/[id]/export", async () => {
     const req = makeRequest("/trips/abc123/export", { ua: MOBILE_UA });
     const res = await proxy(req);
-    expect(res?.headers.get("location")).not.toContain("/sp/");
+    expect(res?.headers.get("location") ?? "").not.toContain("/sp/");
   });
 });
 
@@ -107,6 +108,100 @@ describe("proxy — SP-only route fallback", () => {
     const res = await proxy(req);
     expect(res?.status).toBe(307);
     expect(res?.headers.get("location")).toContain("/trips/abc");
+  });
+});
+
+describe("proxy — auth guard session check", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubGetSession(handler: () => Promise<Response>) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        if (String(input).includes("/api/auth/get-session")) return handler();
+        return Promise.reject(new Error(`unexpected fetch: ${input}`));
+      }),
+    );
+  }
+
+  it("redirects a protected path to login when get-session returns 200 with null", async () => {
+    stubGetSession(() => Promise.resolve(new Response("null", { status: 200 })));
+    const res = await proxy(makeRequest("/home"));
+
+    expect(res?.headers.get("location")).toContain("/auth/login");
+  });
+
+  it("passes a protected path through when get-session returns a session", async () => {
+    stubGetSession(() =>
+      Promise.resolve(new Response(JSON.stringify({ session: { id: "s1" } }), { status: 200 })),
+    );
+    const res = await proxy(makeRequest("/home"));
+
+    expect(res?.headers.get("location")).toBeNull();
+  });
+
+  it("fails open on a protected path when get-session is rate-limited (429)", async () => {
+    // A 429 (or any non-OK) proves nothing about the visitor's session; bouncing
+    // to /auth/login here logged out legitimately authenticated users (#162).
+    stubGetSession(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: "Too many requests" }), { status: 429 }),
+      ),
+    );
+    const res = await proxy(makeRequest("/home"));
+
+    expect(res?.headers.get("location")).toBeNull();
+  });
+
+  it("fails open on a protected path when get-session returns a 5xx", async () => {
+    stubGetSession(() => Promise.resolve(new Response("oops", { status: 503 })));
+    const res = await proxy(makeRequest("/home"));
+
+    expect(res?.headers.get("location")).toBeNull();
+  });
+
+  it("fails open on a protected path when the get-session fetch throws", async () => {
+    stubGetSession(() => Promise.reject(new TypeError("fetch failed")));
+    const res = await proxy(makeRequest("/home"));
+
+    expect(res?.headers.get("location")).toBeNull();
+  });
+
+  it("fails open on a protected path when get-session returns 200 with a non-JSON body", async () => {
+    // res.json() throws → caught by the same fail-open catch as network errors.
+    stubGetSession(() => Promise.resolve(new Response("<!DOCTYPE html>", { status: 200 })));
+    const res = await proxy(makeRequest("/home"));
+
+    expect(res?.headers.get("location")).toBeNull();
+  });
+
+  it("still sets CSP headers on a fail-open pass-through", async () => {
+    stubGetSession(() => Promise.resolve(new Response("oops", { status: 503 })));
+    const res = await proxy(makeRequest("/home"));
+
+    expect(res?.headers.get("Content-Security-Policy")).toBeTruthy();
+  });
+
+  it("redirects a guest-only path to home when authenticated", async () => {
+    stubGetSession(() =>
+      Promise.resolve(new Response(JSON.stringify({ session: { id: "s1" } }), { status: 200 })),
+    );
+    const res = await proxy(makeRequest("/auth/login"));
+
+    expect(res?.headers.get("location")).toContain("/home");
+  });
+
+  it("renders a guest-only path when get-session is rate-limited (429)", async () => {
+    stubGetSession(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: "Too many requests" }), { status: 429 }),
+      ),
+    );
+    const res = await proxy(makeRequest("/auth/login"));
+
+    expect(res?.headers.get("location")).toBeNull();
   });
 });
 

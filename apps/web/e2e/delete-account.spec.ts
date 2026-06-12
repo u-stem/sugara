@@ -214,14 +214,6 @@ test.describe("Delete Account", () => {
     });
     expect(inBrowserStatus, "pageB session must be valid (in-browser fetch)").toBe(200);
 
-    // Verify via API that pageB's data is intact after User A's deletion.
-    // Navigating to /home would trigger the proxy middleware (proxy.ts) which
-    // calls /api/auth/get-session server-side; this intermittently redirects to
-    // /auth/login even when the session is valid — reproduced after the PR #160
-    // rate-limit fix, root cause tracked in issue #162 (restore the UI-based
-    // assertion once resolved). The diagnostic checks above already confirm the
-    // session is intact, so API calls cover the data-state assertions for now.
-
     // A's trip should be gone (CASCADE deleted with user A's account)
     const aTripResp = await pageB.request.get(`/api/trips/${aTripId}`);
     expect(aTripResp.status(), "A's trip should be gone after account deletion (CASCADE)").toBe(404);
@@ -237,6 +229,19 @@ test.describe("Delete Account", () => {
     const hasUserA =
       Array.isArray(members) && members.some((m: { userId: string }) => m.userId === userAId);
     expect(hasUserA, "User A should not be in B's trip member list after deletion").toBe(false);
+
+    // UI verification, restored per issue #162: the historical flake here was
+    // the proxy treating a rate-limited (429) get-session as "unauthenticated"
+    // and bouncing valid sessions to /auth/login. Fixed by the dedicated
+    // get-session rate limit (#163) and the proxy failing open on non-OK
+    // session checks instead of redirecting.
+    await clearIdbCache(pageB);
+    await pageB.goto("/home");
+    await expect(pageB).toHaveURL(/\/home/);
+    await expect(pageB.getByRole("link", { name: /B's Trip/ }).first()).toBeVisible({
+      timeout: 15000,
+    });
+    await expect(pageB.getByRole("link", { name: /A's Trip/ })).not.toBeVisible();
 
     await contextB.close();
   });
