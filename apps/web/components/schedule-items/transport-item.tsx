@@ -65,7 +65,7 @@ export const TransportItem = memo(function TransportItem({
   onSaveToBookmark,
   draggable,
   reorderable,
-  linksDisabled,
+  interactionsDisabled,
   onMoveUp,
   onMoveDown,
   mapsEnabled,
@@ -179,7 +179,7 @@ export const TransportItem = memo(function TransportItem({
             <div
               className={cn(
                 "mt-1 space-y-1",
-                (selectable || reorderable || linksDisabled) && "pointer-events-none",
+                (selectable || reorderable || interactionsDisabled) && "pointer-events-none",
               )}
             >
               {routeStr && (
@@ -214,7 +214,7 @@ export const TransportItem = memo(function TransportItem({
             </div>
           )}
         </div>
-        {!selectable && (
+        {!selectable && !reorderable && !interactionsDisabled && (
           <ScheduleMenu
             name={name}
             disabled={disabled}

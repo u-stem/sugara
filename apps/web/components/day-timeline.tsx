@@ -251,7 +251,7 @@ export function DayTimeline({
             crossDayDisplay
             crossDaySourceDayNumber={sourceDayNumber}
             crossDayPosition={crossDayPosition}
-            linksDisabled={!!opts?.selectable || isReorderable}
+            interactionsDisabled={!!opts?.selectable || isReorderable}
             currency={currency}
           />
         </div>

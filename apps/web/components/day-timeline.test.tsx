@@ -216,3 +216,49 @@ describe("DayTimeline mobile reorder link tap guard", () => {
     expect(link?.closest(".pointer-events-none")).not.toBeNull();
   });
 });
+
+// Item menus are tap hazards during selection/reorder, same as links. Regular
+// items hide them via selectable/reorderable; cross-day entries never receive
+// those props, so they need the explicit interactionsDisabled prop to match.
+describe("DayTimeline item menu visibility in selection/reorder modes", () => {
+  it("hides the item menu on a checkout entry in selection mode", () => {
+    renderTimeline({
+      schedules: [makeSchedule({ id: "s1" })],
+      crossDayEntries: [makeFinalEntry()],
+      selection: { ...selectionStub, selectionTarget: "timeline" },
+    });
+
+    expect(screen.queryByRole("button", { name: "Hotelのメニュー" })).toBeNull();
+  });
+
+  it("hides the item menu on a staying entry while reordering", () => {
+    renderTimeline({
+      schedules: [makeSchedule({ id: "s1" }), makeSchedule({ id: "s2", sortOrder: 1 })],
+      crossDayEntries: [makeIntermediateEntry()],
+    });
+    enterReorderMode();
+
+    expect(screen.queryByRole("button", { name: "Hotelのメニュー" })).toBeNull();
+  });
+
+  it("hides the item menu on a regular schedule while reordering", () => {
+    renderTimeline({
+      schedules: [
+        makeSchedule({ id: "s1", name: "Castle" }),
+        makeSchedule({ id: "s2", sortOrder: 1 }),
+      ],
+    });
+    enterReorderMode();
+
+    expect(screen.queryByRole("button", { name: "Castleのメニュー" })).toBeNull();
+  });
+
+  it("keeps the item menu on a staying entry outside selection/reorder modes", () => {
+    renderTimeline({
+      schedules: [makeSchedule({ id: "s1" })],
+      crossDayEntries: [makeIntermediateEntry()],
+    });
+
+    expect(screen.getByRole("button", { name: "Hotelのメニュー" })).not.toBeNull();
+  });
+});

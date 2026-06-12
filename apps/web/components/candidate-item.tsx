@@ -284,6 +284,7 @@ export const CandidateItem = memo(function CandidateItem({
       )}
       {!disabled &&
         !selectable &&
+        !reorderable &&
         (isMobile ? (
           <>
             <ItemMenuButton
