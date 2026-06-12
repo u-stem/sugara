@@ -196,11 +196,13 @@ jobs:
           } >> "$GITHUB_ENV"
 
       # MIGRATION_URL defaults to 127.0.0.1:55322, which is exactly where
-      # `supabase start` puts Postgres, so no override is needed.
+      # `supabase start` puts Postgres, so no override is needed. db:seed is
+      # intentionally skipped: it provisions users through the auth HTTP API
+      # (server not yet running here) and e2e tests sign up their own users;
+      # only the FAQ seed (direct Postgres) is needed for page content.
       - name: Apply migrations and seed
         run: |
           bun run db:migrate
-          bun run db:seed
           bun run db:seed-faqs
 
       - name: Install Playwright browsers
