@@ -119,7 +119,7 @@ Web UI は設定画面の「API キー」タブ（`apps/web/components/api-keys-
 | 429 | `rate_limited` | レート超過 |
 | 500 | `internal_error` | 詳細は返さない |
 
-`code` の集合は後方互換のため凍結し、エラー種別の細分化は optional な `reason`（機械可読な細分化コード）と `details`（構造化データ）の追加で表現する。現在の `reason`:
+`reason` と `details` は省略可能（該当しないエラーでは key 自体が含まれない）。`code` の集合は後方互換のため凍結し、エラー種別の細分化は optional な `reason`（機械可読な細分化コード）と `details`（構造化データ）の追加で表現する。現在の `reason`:
 
 | reason | 付随する code | details |
 |---|---|---|

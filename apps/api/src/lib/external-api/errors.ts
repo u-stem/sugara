@@ -41,6 +41,9 @@ export type ApiV1ErrorReason = "trip_limit_reached";
 
 export type ApiV1ErrorOptions = {
   reason?: ApiV1ErrorReason;
+  // Serialized verbatim into the public error response by v1ErrorHandler —
+  // must contain only externally safe values (no internal ids, constraint
+  // names, or other infrastructure detail).
   details?: unknown;
 };
 

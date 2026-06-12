@@ -387,6 +387,8 @@ describe("POST /trips", () => {
     const body = await res.json();
 
     // Assert
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
     expect(body.error.reason).toBe("trip_limit_reached");
     expect(body.error.details).toEqual({ max: 5 });
   });
