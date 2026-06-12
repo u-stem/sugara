@@ -15,11 +15,16 @@ export const paginationSchema = z.object({
   total: z.number().int(),
 });
 
-// All v1 error responses share this shape: { error: { code, message } }
+// All v1 error responses share this shape: { error: { code, message } }.
+// `reason` (fine-grained machine-readable code, e.g. "trip_limit_reached") and
+// `details` (structured data such as { max }) are additive and optional so the
+// frozen top-level `code` set stays backward compatible.
 export const errorResponseSchema = z.object({
   error: z.object({
     code: z.string(),
     message: z.string(),
+    reason: z.string().optional(),
+    details: z.unknown().optional(),
   }),
 });
 

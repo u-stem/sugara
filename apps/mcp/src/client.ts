@@ -1,12 +1,18 @@
 import { z } from "zod";
 
-// Error response schema from the v1 API
+// Error response schema from the v1 API.
+// `reason` and `details` are additive fields carried alongside the frozen
+// top-level code set (e.g. reason "trip_limit_reached" with details.max).
 const v1ErrorBodySchema = z.object({
   error: z.object({
     code: z.string(),
     message: z.string(),
+    reason: z.string().optional(),
+    details: z.unknown().optional(),
   }),
 });
+
+const limitDetailsSchema = z.object({ max: z.number() });
 
 type V1ErrorCode =
   | "unauthorized"
@@ -48,7 +54,13 @@ async function buildApiError(response: Response): Promise<Error> {
   }
   const parsed = v1ErrorBodySchema.safeParse(body);
   if (parsed.success) {
-    const code = parsed.data.error.code;
+    const { code, reason, details } = parsed.data.error;
+    if (reason === "trip_limit_reached") {
+      const limit = limitDetailsSchema.safeParse(details);
+      if (limit.success) {
+        return new Error(`旅行の作成上限（${limit.data.max}件）に達しました`);
+      }
+    }
     const message = isV1ErrorCode(code)
       ? ERROR_MESSAGES[code]
       : `Server error (${response.status})`;

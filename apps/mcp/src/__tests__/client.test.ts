@@ -180,6 +180,63 @@ describe("ApiClient", () => {
       expect(errorMessage).toContain("競合");
     });
 
+    it("includes the trip limit value when reason is trip_limit_reached", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          {
+            error: {
+              code: "conflict",
+              reason: "trip_limit_reached",
+              message: "Trip limit reached for this account",
+              details: { max: 10 },
+            },
+          },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createTrip({
+          title: "Test",
+          startDate: "2025-01-01",
+          endDate: "2025-01-03",
+        });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("10");
+    });
+
+    it("falls back to the generic conflict message when details.max is absent", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          { error: { code: "conflict", reason: "trip_limit_reached", message: "limit" } },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createTrip({
+          title: "Test",
+          startDate: "2025-01-01",
+          endDate: "2025-01-03",
+        });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("競合");
+    });
+
     it("maps 429 rate_limited to Japanese message", async () => {
       // Arrange
       mockFetch.mockResolvedValue(

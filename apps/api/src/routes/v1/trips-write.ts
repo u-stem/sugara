@@ -45,7 +45,7 @@ tripsWriteApp.post(
     tags: ["Trips"],
     summary: "Create a trip",
     description:
-      "Creates a trip with the API key owner as the owner member. Returns 409 when the user has reached their trip limit. Supply startDate and endDate as YYYY-MM-DD strings. Requires `trips:write` scope.",
+      'Creates a trip with the API key owner as the owner member. Returns 409 with `error.reason: "trip_limit_reached"` and `error.details.max` (the effective per-user limit) when the user has reached their trip limit. Supply startDate and endDate as YYYY-MM-DD strings. Requires `trips:write` scope.',
     security: [{ bearerAuth: [] }],
     requestBody: {
       required: true,
@@ -76,7 +76,8 @@ tripsWriteApp.post(
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
       409: {
-        description: "Trip limit reached",
+        description:
+          "Trip limit reached (error.reason: trip_limit_reached, error.details.max: effective per-user limit)",
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
     },
@@ -102,7 +103,12 @@ tripsWriteApp.post(
 
       const limit = await resolveTripLimit(tx, userId);
       if (tripCountRow.count >= limit) {
-        return null;
+        // Thrown inside the transaction (nothing written yet) so the per-user
+        // limit resolved here can travel to the response as details.max.
+        throw new ApiV1Error(409, "conflict", "Trip limit reached for this account", {
+          reason: "trip_limit_reached",
+          details: { max: limit },
+        });
       }
 
       const [created] = await tx
@@ -128,10 +134,6 @@ tripsWriteApp.post(
 
       return created;
     });
-
-    if (!trip) {
-      throw new ApiV1Error(409, "conflict", "Trip limit reached for this account");
-    }
 
     logActivity({
       tripId: trip.id,
