@@ -1,10 +1,12 @@
 "use client";
 
-import type {
-  FriendResponse,
-  GroupMemberResponse,
-  GroupResponse,
-  MemberResponse,
+import {
+  ERROR_CODE,
+  type FriendResponse,
+  type GroupMemberResponse,
+  type GroupResponse,
+  MAX_MEMBERS_PER_TRIP,
+  type MemberResponse,
 } from "@sugara/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserPlus, X } from "lucide-react";
@@ -114,6 +116,11 @@ export function MemberDialog({
       badRequest: tm("invalidUserId"),
       notFound: tm("userNotFound"),
       conflict: tm("memberAlready"),
+      byCode: {
+        [ERROR_CODE.ALREADY_MEMBER]: tm("memberAlready"),
+        [ERROR_CODE.LIMIT_MEMBERS]: (max) =>
+          tm("limitMembers", { max: max ?? MAX_MEMBERS_PER_TRIP }),
+      },
     });
 
   async function handleAdd(e: React.FormEvent) {
@@ -345,7 +352,9 @@ export function MemberDialog({
             <div className="space-y-3 border-t pt-3">
               <Label className="text-sm font-medium">{tme("addMember")}</Label>
               {memberLimitReached ? (
-                <p className="text-sm text-muted-foreground">{tm("limitMembers", { max: 20 })}</p>
+                <p className="text-sm text-muted-foreground">
+                  {tm("limitMembers", { max: MAX_MEMBERS_PER_TRIP })}
+                </p>
               ) : (
                 <Tabs defaultValue="friends">
                   <TabsList className="w-full">

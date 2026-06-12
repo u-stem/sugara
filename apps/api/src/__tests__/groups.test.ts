@@ -43,7 +43,7 @@ vi.mock("../db/index", () => {
   };
 });
 
-import { MAX_GROUPS_PER_USER, MAX_MEMBERS_PER_GROUP } from "@sugara/shared";
+import { ERROR_CODE, MAX_GROUPS_PER_USER, MAX_MEMBERS_PER_GROUP } from "@sugara/shared";
 import { groupRoutes } from "../routes/groups";
 
 const userId = "00000000-0000-0000-0000-000000000001";
@@ -399,6 +399,34 @@ describe("Group routes", () => {
       expect(res.status).toBe(409);
     });
 
+    it("returns ALREADY_GROUP_MEMBER code when already a member", async () => {
+      mockDbQuery.groups.findFirst.mockResolvedValue({
+        id: groupId,
+        ownerId: userId,
+        name: "Family",
+      });
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: otherUserId,
+        name: "Friend A",
+      });
+      setupCountQuery(0);
+      const pgError = new Error("duplicate key");
+      Object.assign(pgError, { code: "23505" });
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockRejectedValue(pgError),
+      });
+
+      const app = createTestApp(groupRoutes, "/api/groups");
+      const res = await app.request(`/api/groups/${groupId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: otherUserId }),
+      });
+      const body = await res.json();
+
+      expect(body.code).toBe(ERROR_CODE.ALREADY_GROUP_MEMBER);
+    });
+
     it("returns 409 when member limit reached", async () => {
       mockDbQuery.groups.findFirst.mockResolvedValue({
         id: groupId,
@@ -420,6 +448,52 @@ describe("Group routes", () => {
       });
 
       expect(res.status).toBe(409);
+    });
+
+    it("returns LIMIT_GROUP_MEMBERS code when member limit reached", async () => {
+      mockDbQuery.groups.findFirst.mockResolvedValue({
+        id: groupId,
+        ownerId: userId,
+        name: "Family",
+      });
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: otherUserId,
+        name: "Friend A",
+      });
+      setupCountQuery(MAX_MEMBERS_PER_GROUP);
+
+      const app = createTestApp(groupRoutes, "/api/groups");
+      const res = await app.request(`/api/groups/${groupId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: otherUserId }),
+      });
+      const body = await res.json();
+
+      expect(body.code).toBe(ERROR_CODE.LIMIT_GROUP_MEMBERS);
+    });
+
+    it("returns details.max equal to MAX_MEMBERS_PER_GROUP when limit reached", async () => {
+      mockDbQuery.groups.findFirst.mockResolvedValue({
+        id: groupId,
+        ownerId: userId,
+        name: "Family",
+      });
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: otherUserId,
+        name: "Friend A",
+      });
+      setupCountQuery(MAX_MEMBERS_PER_GROUP);
+
+      const app = createTestApp(groupRoutes, "/api/groups");
+      const res = await app.request(`/api/groups/${groupId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: otherUserId }),
+      });
+      const body = await res.json();
+
+      expect(body.details.max).toBe(MAX_MEMBERS_PER_GROUP);
     });
   });
 

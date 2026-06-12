@@ -1,10 +1,12 @@
 "use client";
 
-import type {
-  FriendResponse,
-  GroupMemberResponse,
-  GroupResponse,
-  MemberResponse,
+import {
+  ERROR_CODE,
+  type FriendResponse,
+  type GroupMemberResponse,
+  type GroupResponse,
+  MAX_MEMBERS_PER_TRIP,
+  type MemberResponse,
 } from "@sugara/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, Pencil, UserMinus, UserPlus, Users, X } from "lucide-react";
@@ -125,6 +127,11 @@ export default function SpTripMembersPage() {
           badRequest: tm("invalidUserId"),
           notFound: tm("userNotFound"),
           conflict: tm("memberAlready"),
+          byCode: {
+            [ERROR_CODE.ALREADY_MEMBER]: tm("memberAlready"),
+            [ERROR_CODE.LIMIT_MEMBERS]: (max) =>
+              tm("limitMembers", { max: max ?? MAX_MEMBERS_PER_TRIP }),
+          },
         }),
       );
     } finally {
@@ -146,6 +153,11 @@ export default function SpTripMembersPage() {
         getApiErrorMessage(err, tm("memberAddFailed"), {
           notFound: tm("userNotFound"),
           conflict: tm("memberAlready"),
+          byCode: {
+            [ERROR_CODE.ALREADY_MEMBER]: tm("memberAlready"),
+            [ERROR_CODE.LIMIT_MEMBERS]: (max) =>
+              tm("limitMembers", { max: max ?? MAX_MEMBERS_PER_TRIP }),
+          },
         }),
       );
     } finally {

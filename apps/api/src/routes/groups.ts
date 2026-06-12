@@ -1,7 +1,9 @@
 import {
+  AppError,
   addGroupMemberSchema,
   addGroupMembersBulkSchema,
   createGroupSchema,
+  ERROR_CODE,
   MAX_GROUPS_PER_USER,
   MAX_MEMBERS_PER_GROUP,
   updateGroupSchema,
@@ -193,13 +195,15 @@ groupRoutes.post("/:groupId/members", async (c) => {
     return c.json({ error: ERROR_MSG.USER_NOT_FOUND }, 404);
   }
 
-  const result = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const [{ count: memberCount }] = await tx
       .select({ count: count() })
       .from(groupMembers)
       .where(eq(groupMembers.groupId, groupId));
     if (memberCount >= MAX_MEMBERS_PER_GROUP) {
-      return "limit" as const;
+      throw new AppError(ERROR_MSG.LIMIT_GROUP_MEMBERS, ERROR_CODE.LIMIT_GROUP_MEMBERS, 409, {
+        max: MAX_MEMBERS_PER_GROUP,
+      });
     }
 
     try {
@@ -209,20 +213,11 @@ groupRoutes.post("/:groupId/members", async (c) => {
       });
     } catch (e) {
       if (e instanceof Error && "code" in e && e.code === PG_UNIQUE_VIOLATION) {
-        return "duplicate" as const;
+        throw new AppError(ERROR_MSG.ALREADY_GROUP_MEMBER, ERROR_CODE.ALREADY_GROUP_MEMBER, 409);
       }
       throw e;
     }
-
-    return "ok" as const;
   });
-
-  if (result === "limit") {
-    return c.json({ error: ERROR_MSG.LIMIT_GROUP_MEMBERS }, 409);
-  }
-  if (result === "duplicate") {
-    return c.json({ error: ERROR_MSG.ALREADY_GROUP_MEMBER }, 409);
-  }
 
   return c.json({ ok: true }, 201);
 });
@@ -253,7 +248,9 @@ groupRoutes.post("/:groupId/members/bulk", async (c) => {
 
     const remainingSlots = MAX_MEMBERS_PER_GROUP - currentCount;
     if (remainingSlots <= 0) {
-      return { added: 0, failed: userIds.length, limitReached: true } as const;
+      throw new AppError(ERROR_MSG.LIMIT_GROUP_MEMBERS, ERROR_CODE.LIMIT_GROUP_MEMBERS, 409, {
+        max: MAX_MEMBERS_PER_GROUP,
+      });
     }
 
     const existingMembers = await tx
@@ -279,16 +276,8 @@ groupRoutes.post("/:groupId/members/bulk", async (c) => {
       await tx.insert(groupMembers).values(toAdd.map((uid) => ({ groupId, userId: uid })));
     }
 
-    return {
-      added: toAdd.length,
-      failed: userIds.length - toAdd.length,
-      limitReached: false,
-    } as const;
+    return { added: toAdd.length, failed: userIds.length - toAdd.length };
   });
-
-  if (result.limitReached) {
-    return c.json({ error: ERROR_MSG.LIMIT_GROUP_MEMBERS }, 409);
-  }
 
   return c.json({ added: result.added, failed: result.failed }, 201);
 });

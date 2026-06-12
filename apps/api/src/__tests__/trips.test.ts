@@ -355,6 +355,85 @@ describe("Trip routes", () => {
 
       expect(res.status).toBe(409);
     });
+
+    it("returns LIMIT_TRIPS code when trip limit reached", async () => {
+      const { ERROR_CODE, MAX_TRIPS_PER_USER } = await import("@sugara/shared");
+      mockDbSelect.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: MAX_TRIPS_PER_USER }]),
+        }),
+      });
+
+      const app = createTestApp(tripRoutes, "/api/trips");
+      const res = await app.request("/api/trips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Tokyo Trip",
+          destination: "Tokyo",
+          startDate: "2025-07-01",
+          endDate: "2025-07-03",
+        }),
+      });
+      const body = await res.json();
+
+      expect(body.code).toBe(ERROR_CODE.LIMIT_TRIPS);
+    });
+
+    it("returns details.max equal to MAX_TRIPS_PER_USER when trip limit reached", async () => {
+      const { MAX_TRIPS_PER_USER } = await import("@sugara/shared");
+      mockDbSelect.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: MAX_TRIPS_PER_USER }]),
+        }),
+      });
+
+      const app = createTestApp(tripRoutes, "/api/trips");
+      const res = await app.request("/api/trips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Tokyo Trip",
+          destination: "Tokyo",
+          startDate: "2025-07-01",
+          endDate: "2025-07-03",
+        }),
+      });
+      const body = await res.json();
+
+      expect(body.details.max).toBe(MAX_TRIPS_PER_USER);
+    });
+
+    it("returns details.max equal to override value when per-user trip limit reached", async () => {
+      const overrideLimit = 50;
+      // 1st select: trip count at the override limit
+      mockDbSelect.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: overrideLimit }]),
+        }),
+      });
+      // 2nd select: resolveTripLimit returns the override value
+      mockDbSelect.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ tripLimit: overrideLimit }]),
+        }),
+      });
+
+      const app = createTestApp(tripRoutes, "/api/trips");
+      const res = await app.request("/api/trips", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Tokyo Trip",
+          destination: "Tokyo",
+          startDate: "2025-07-01",
+          endDate: "2025-07-03",
+        }),
+      });
+      const body = await res.json();
+
+      expect(body.details.max).toBe(overrideLimit);
+    });
   });
 
   describe("GET /api/trips", () => {
