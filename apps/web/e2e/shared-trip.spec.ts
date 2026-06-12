@@ -63,11 +63,15 @@ test.describe("Shared Trip", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).not.toBeVisible();
 
-    // Regenerate share link
+    // Regenerate share link. The button only renders while the component holds
+    // shareUrl state from the first request, so wait for it explicitly before
+    // arming the response listener (observed flaky on CI otherwise).
+    const regenerateButton = page.getByRole("button", { name: "共有リンクを再生成" });
+    await expect(regenerateButton).toBeVisible({ timeout: 10000 });
     const secondResponse = page.waitForResponse(
       (res) => res.url().includes("/api/trips/") && res.url().endsWith("/share") && res.ok(),
     );
-    await page.getByRole("button", { name: "共有リンクを再生成" }).click();
+    await regenerateButton.click();
     await secondResponse;
     await expect(page.getByText("共有リンクを再生成してコピーしました")).toBeVisible();
   });

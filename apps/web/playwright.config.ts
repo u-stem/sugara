@@ -3,7 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
-  retries: 0,
+  // One retry on CI pairs with trace: "on-first-retry" — a flake gets absorbed
+  // AND leaves a trace artifact for diagnosis. Locally fail fast.
+  retries: process.env.CI ? 1 : 0,
   // Prevent dev-server overload: tests share real DB state so parallel execution causes flakiness
   workers: 1,
   use: {
