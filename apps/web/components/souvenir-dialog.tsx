@@ -2,6 +2,7 @@
 
 import {
   MAX_ADDRESSES_PER_SOUVENIR,
+  MAX_SOUVENIRS_PER_USER_PER_TRIP,
   MAX_URLS_PER_SOUVENIR,
   SOUVENIR_ADDRESS_MAX_LENGTH,
   SOUVENIR_NAME_MAX_LENGTH,
@@ -136,10 +137,16 @@ export function SouvenirDialog({ tripId, open, onOpenChange, item, onSaved }: So
           body: JSON.stringify(body),
         });
       }
+      toast.success(tm(isEdit ? "souvenirUpdated" : "souvenirAdded"));
       onOpenChange(false);
       onSaved();
     } catch (err) {
-      toast.error(getApiErrorMessage(err, tm("souvenirSaveFailed")));
+      toast.error(
+        getApiErrorMessage(err, tm("souvenirSaveFailed"), {
+          // 409 is only returned by the create route (per-trip souvenir limit)
+          conflict: tm("limitSouvenirs", { max: MAX_SOUVENIRS_PER_USER_PER_TRIP }),
+        }),
+      );
     } finally {
       setLoading(false);
     }

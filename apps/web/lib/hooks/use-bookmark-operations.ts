@@ -78,7 +78,11 @@ export function useBookmarkOperations({
       // it intentionally (PATCH /:bookmarkId doesn't touch bookmark_lists).
       invalidateLists();
     } catch (err) {
-      toast.error(getApiErrorMessage(err, tm("bookmarkAddFailed") as string));
+      toast.error(
+        getApiErrorMessage(err, tm("bookmarkAddFailed") as string, {
+          conflict: tm("limitBookmarks", { max: maxBookmarks }) as string,
+        }),
+      );
     } finally {
       setSubmitting(false);
     }

@@ -1,4 +1,4 @@
-import type { BookmarkListResponse } from "@sugara/shared";
+import { type BookmarkListResponse, MAX_BOOKMARK_LISTS_PER_USER } from "@sugara/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
@@ -100,7 +100,11 @@ export function useBookmarkListSelection({
       exit();
       invalidateLists();
     } catch (err) {
-      toast.error(getApiErrorMessage(err, tm("batchDuplicateFailed") as string));
+      toast.error(
+        getApiErrorMessage(err, tm("batchDuplicateFailed") as string, {
+          conflict: tm("limitBookmarkLists", { max: MAX_BOOKMARK_LISTS_PER_USER }) as string,
+        }),
+      );
     } finally {
       setBatchLoading(false);
     }

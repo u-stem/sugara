@@ -6,6 +6,7 @@ import {
   ARTICLE_TITLE_MAX_LENGTH,
   type ArticleResponse,
   type ArticleVisibility,
+  MAX_ARTICLES_PER_USER,
   MAX_TAGS_PER_ARTICLE,
   MAX_TRIPS_PER_ARTICLE,
   type TripListItem,
@@ -247,7 +248,14 @@ export function ArticleEditorDialog({
       onOpenChange(false);
       onSaved();
     } catch (err) {
-      toast.error(getApiErrorMessage(err, ta(isEdit ? "updateFailed" : "createFailed")));
+      toast.error(
+        getApiErrorMessage(
+          err,
+          ta(isEdit ? "updateFailed" : "createFailed"),
+          // 409 is only returned by the create route (article count limit)
+          isEdit ? undefined : { conflict: ta("limitReached", { max: MAX_ARTICLES_PER_USER }) },
+        ),
+      );
     } finally {
       setSubmitting(false);
     }

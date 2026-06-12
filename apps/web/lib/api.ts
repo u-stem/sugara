@@ -1,3 +1,5 @@
+import { reportError } from "@/lib/report-error";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 export class ApiError extends Error {
@@ -84,10 +86,14 @@ export async function api<T>(path: string, options: FetchOptions = {}): Promise<
   const res = await fetchApi(path, options);
 
   if (res.status === 204) {
-    throw new ApiError(
+    const guardError = new ApiError(
       `Expected JSON body from ${path} but got 204 No Content. Use apiVoid() for endpoints that return no body.`,
       204,
     );
+    // The user only sees a localized fallback toast (getApiErrorMessage never
+    // surfaces this message), so report it or the misuse stays invisible
+    reportError(guardError);
+    throw guardError;
   }
 
   return res.json();
@@ -103,7 +109,12 @@ export async function apiVoid(path: string, options: FetchOptions = {}): Promise
 
 /**
  * Extract a user-facing error message from an unknown catch value.
- * Handles ApiError (conflict / not-found) with dedicated messages.
+ *
+ * Server-originated messages (ApiError.message) and JS runtime messages
+ * (Error.message) are developer-facing and English-only, so they are never
+ * shown to users. Callers supply a localized {@link fallback} and may pass
+ * per-status overrides; when no override matches, the localized fallback is
+ * returned. This guarantees the user always sees a translated message.
  */
 export function getApiErrorMessage(
   err: unknown,
@@ -111,13 +122,9 @@ export function getApiErrorMessage(
   opts?: { badRequest?: string; conflict?: string; notFound?: string },
 ): string {
   if (err instanceof ApiError) {
-    if (err.status === 400) return opts?.badRequest ?? err.message;
-    if (err.status === 409) return opts?.conflict ?? err.message;
-    if (err.status === 404) return opts?.notFound ?? err.message;
-    // Server errors (5xx) may contain technical details; use fallback instead
-    if (err.status >= 500) return fallback;
-    return err.message;
+    if (err.status === 400) return opts?.badRequest ?? fallback;
+    if (err.status === 409) return opts?.conflict ?? fallback;
+    if (err.status === 404) return opts?.notFound ?? fallback;
   }
-  if (err instanceof Error) return err.message;
   return fallback;
 }

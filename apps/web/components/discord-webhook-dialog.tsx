@@ -147,7 +147,7 @@ export function DiscordWebhookDialog({
       queryClient.invalidateQueries({ queryKey: cacheKey });
       onOpenChange(false);
     } catch (err) {
-      const message = getApiErrorMessage(err, td("invalidUrl"), {
+      const message = getApiErrorMessage(err, td("saveFailed"), {
         conflict: td("alreadyExists"),
         badRequest: td("unreachableUrl"),
       });
@@ -172,7 +172,7 @@ export function DiscordWebhookDialog({
       queryClient.invalidateQueries({ queryKey: cacheKey });
       onOpenChange(false);
     } catch (err) {
-      const message = getApiErrorMessage(err, td("invalidUrl"), {
+      const message = getApiErrorMessage(err, td("updateFailed"), {
         badRequest: td("unreachableUrl"),
       });
       toast.error(message);
@@ -197,7 +197,7 @@ export function DiscordWebhookDialog({
     } catch (err) {
       // Revert on failure
       queryClient.setQueryData(cacheKey, webhook);
-      const message = getApiErrorMessage(err, td("invalidUrl"));
+      const message = getApiErrorMessage(err, td("updateFailed"));
       toast.error(message);
     } finally {
       setToggling(false);
