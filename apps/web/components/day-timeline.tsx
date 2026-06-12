@@ -211,6 +211,7 @@ export function DayTimeline({
   function renderItem(item: TimelineItem, i: number, opts?: { selectable?: boolean }) {
     const isFirst = i === 0;
     const isLast = i === merged.length - 1;
+    const isReorderable = isMobile && reorderMode && !disabled;
 
     // Gap k renders above item k; the "after the last item" gap (k === length)
     // renders on the bottom edge of the last item.
@@ -250,6 +251,7 @@ export function DayTimeline({
             crossDayDisplay
             crossDaySourceDayNumber={sourceDayNumber}
             crossDayPosition={crossDayPosition}
+            interactionsDisabled={!!opts?.selectable || isReorderable}
             currency={currency}
           />
         </div>
@@ -261,7 +263,6 @@ export function DayTimeline({
     const scheduleIdx = scheduleIndexById.get(schedule.id) ?? -1;
     // slice is O(n-k) instead of filter O(n); valid because schedules is in sortOrder order
     const schedulesAfter = scheduleIdx >= 0 ? schedules.slice(scheduleIdx + 1) : [];
-    const isReorderable = isMobile && reorderMode && !disabled;
 
     return (
       <div key={schedule.id} className="relative">

@@ -127,4 +127,10 @@ describe("CandidateItem reorder link tap guard", () => {
     const link = screen.getByText("example.com/spot").closest("a");
     expect(link?.closest(".pointer-events-none")).not.toBeNull();
   });
+
+  it("hides the item menu while reordering", () => {
+    renderReorderable();
+
+    expect(screen.queryByRole("button", { name: "Tokyo to Kyotoのメニュー" })).toBeNull();
+  });
 });

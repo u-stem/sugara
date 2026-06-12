@@ -93,6 +93,13 @@ export type ScheduleItemProps = {
   draggable?: boolean;
   /** When true, show ReorderControls instead of DragHandle */
   reorderable?: boolean;
+  /**
+   * Disables link/address taps and hides the item menu without the
+   * selectable/reorderable UI. Used by cross-day entries, which stay
+   * non-selectable and non-reorderable while the rest of the timeline is in
+   * selection/reorder mode.
+   */
+  interactionsDisabled?: boolean;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   mapsEnabled?: boolean;

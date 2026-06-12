@@ -60,6 +60,7 @@ export const PlaceItem = memo(function PlaceItem({
   onSaveToBookmark,
   draggable,
   reorderable,
+  interactionsDisabled,
   onMoveUp,
   onMoveDown,
   mapsEnabled,
@@ -134,7 +135,10 @@ export const PlaceItem = memo(function PlaceItem({
           />
           {(address || urls.length > 0 || memo) && (
             <div
-              className={cn("mt-1 space-y-1", (selectable || reorderable) && "pointer-events-none")}
+              className={cn(
+                "mt-1 space-y-1",
+                (selectable || reorderable || interactionsDisabled) && "pointer-events-none",
+              )}
             >
               {address && (
                 <a
@@ -153,7 +157,7 @@ export const PlaceItem = memo(function PlaceItem({
             </div>
           )}
         </div>
-        {!selectable && (
+        {!selectable && !reorderable && !interactionsDisabled && (
           <ScheduleMenu
             name={name}
             disabled={disabled}
