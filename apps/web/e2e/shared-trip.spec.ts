@@ -82,7 +82,7 @@ test.describe("Shared Trip", () => {
   }) => {
     // Create the member user.
     // Assign a unique synthetic IP so the proxy's session check requests
-    // (to /api/auth/get-session, rate-limited 30/min per IP) don't collapse to
+    // (to /api/auth/get-session, rate-limited 300/min per IP) don't collapse to
     // "unknown" and trigger redirect loops that land the member at /home instead
     // of the requested page.
     const memberContext = await browser.newContext({
