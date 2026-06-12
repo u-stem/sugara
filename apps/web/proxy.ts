@@ -120,7 +120,11 @@ export async function proxy(request: NextRequest) {
     // Forward the caller's identity headers alongside the cookie: the session
     // check is rate-limited per IP (apps/api/src/middleware/rate-limit.ts), and
     // without these every proxy-originated request collapses into one shared
-    // bucket — throttling all users behind a single 30/min ceiling.
+    // bucket — throttling all users behind get-session's single per-IP ceiling
+    // (apps/api/src/routes/auth.ts). Whether Vercel's edge preserves these
+    // headers on re-entry in production is unverified (#161 M-1); even if it
+    // does not, get-session's dedicated 300/min bucket keeps the shared-bucket
+    // failure mode far less likely than under the old 30/min broad ceiling.
     const sessionHeaders: Record<string, string> = { cookie: cookieHeader };
     const realIp = request.headers.get("x-real-ip");
     if (realIp) sessionHeaders["x-real-ip"] = realIp;
