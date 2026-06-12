@@ -1,4 +1,17 @@
-import { createGroupViaUI, expect, test } from "./fixtures/auth";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures/auth";
+
+// Local helper matching the current UI: the create button reads "グループを作成"
+// (tf("createGroup") in the friend namespace) and the members dialog no longer
+// auto-opens after creation. Only this spec creates groups, so it lives here
+// rather than in fixtures/auth.ts.
+async function createGroupViaUI(page: Page, name: string): Promise<void> {
+  await page.goto("/friends");
+  await page.getByRole("button", { name: /グループを作成/ }).click();
+  await page.locator("#group-name").fill(name);
+  await page.getByRole("button", { name: "作成" }).click();
+  await expect(page.getByText("グループを作成しました")).toBeVisible();
+}
 
 test.describe("Groups", () => {
   test("creates a group", async ({ authenticatedPage: page }) => {

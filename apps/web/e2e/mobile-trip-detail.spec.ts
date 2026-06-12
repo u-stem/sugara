@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { VIEW_MODE_COOKIE } from "../lib/view-mode";
 import { createTripViaUI, expect, test } from "./fixtures/auth";
 
 async function openAddScheduleDialog(page: Page): Promise<Locator> {
@@ -35,14 +36,29 @@ async function clickTripMenuAction(page: Page, label: string): Promise<void> {
   await action.click();
 }
 
+async function navigateToSpTrip(page: Page, tripUrl: string): Promise<void> {
+  // createTripViaUI on mobile ends at /trips/uuid (desktop) because the Next.js
+  // RSC prefetch resolves before the proxy can redirect the main-frame navigation.
+  // Pin x-view-mode=sp so the proxy bypasses UA detection and always serves the
+  // SP page regardless of how the RSC layer resolves the initial navigation.
+  const tripId = tripUrl.match(/\/trips\/([a-f0-9-]+)/)?.[1];
+  expect(tripId).toBeTruthy();
+  await page.context().addCookies([
+    { name: VIEW_MODE_COOKIE, value: "sp", domain: "localhost", path: "/" },
+  ]);
+  await page.goto(`/sp/trips/${tripId!}`);
+  await expect(page).toHaveURL(/\/sp\/trips\//, { timeout: 10000 });
+}
+
 test.describe("Mobile trip detail", () => {
   test("schedule form remains editable after category change", async ({
     authenticatedPage: page,
   }) => {
-    await createTripViaUI(page, {
+    const tripUrl = await createTripViaUI(page, {
       title: "Mobile Form Test",
       destination: "Kyoto",
     });
+    await navigateToSpTrip(page, tripUrl);
 
     const dialog = await openAddScheduleDialog(page);
     await dialog.getByLabel("名前").fill("移動テスト");
@@ -62,10 +78,11 @@ test.describe("Mobile trip detail", () => {
   test("day 2 shows reorder controls and item reorder works", async ({
     authenticatedPage: page,
   }) => {
-    await createTripViaUI(page, {
+    const tripUrl = await createTripViaUI(page, {
       title: "Mobile Reorder Test",
       destination: "Osaka",
     });
+    await navigateToSpTrip(page, tripUrl);
 
     await page.getByRole("tab", { name: /2日目/ }).click();
     await addSchedule(page, "Day2-A");
@@ -83,10 +100,17 @@ test.describe("Mobile trip detail", () => {
     await page.getByRole("button", { name: "並び替え" }).click();
     await clickFirstEnabled(page.getByRole("button", { name: "上に移動" }));
 
+    // While reorderMode is active, schedule-item renders ReorderControls instead
+    // of ScheduleMenu, so the "{name}のメニュー" buttons are not in the DOM.
+    // Use the name text spans (translate="yes", always present) to compare
+    // visual order instead.
+    const aName = page.locator('[translate="yes"]').filter({ hasText: /^Day2-A$/ });
+    const bName = page.locator('[translate="yes"]').filter({ hasText: /^Day2-B$/ });
+
     await expect
       .poll(async () => {
-        const aY = (await aMenu.boundingBox())?.y ?? 0;
-        const bY = (await bMenu.boundingBox())?.y ?? 0;
+        const aY = (await aName.boundingBox())?.y ?? 0;
+        const bY = (await bName.boundingBox())?.y ?? 0;
         return bY < aY;
       })
       .toBe(true);
@@ -95,8 +119,8 @@ test.describe("Mobile trip detail", () => {
 
     await expect
       .poll(async () => {
-        const aY = (await aMenu.boundingBox())?.y ?? 0;
-        const bY = (await bMenu.boundingBox())?.y ?? 0;
+        const aY = (await aName.boundingBox())?.y ?? 0;
+        const bY = (await bName.boundingBox())?.y ?? 0;
         return aY < bY;
       })
       .toBe(true);
@@ -105,10 +129,11 @@ test.describe("Mobile trip detail", () => {
   test("opens bookmarks/activity from menu and can return to primary tabs", async ({
     authenticatedPage: page,
   }) => {
-    await createTripViaUI(page, {
+    const tripUrl = await createTripViaUI(page, {
       title: "Mobile Menu Test",
       destination: "Nara",
     });
+    await navigateToSpTrip(page, tripUrl);
 
     await clickTripMenuAction(page, "ブックマーク");
     await expect(

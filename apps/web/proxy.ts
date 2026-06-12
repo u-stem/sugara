@@ -117,8 +117,18 @@ export async function proxy(request: NextRequest) {
   const apiUrl = request.nextUrl.origin;
 
   try {
+    // Forward the caller's identity headers alongside the cookie: the session
+    // check is rate-limited per IP (apps/api/src/middleware/rate-limit.ts), and
+    // without these every proxy-originated request collapses into one shared
+    // bucket — throttling all users behind a single 30/min ceiling.
+    const sessionHeaders: Record<string, string> = { cookie: cookieHeader };
+    const realIp = request.headers.get("x-real-ip");
+    if (realIp) sessionHeaders["x-real-ip"] = realIp;
+    const forwardedFor = request.headers.get("x-forwarded-for");
+    if (forwardedFor) sessionHeaders["x-forwarded-for"] = forwardedFor;
+
     const res = await fetch(`${apiUrl}/api/auth/get-session`, {
-      headers: { cookie: cookieHeader },
+      headers: sessionHeaders,
     });
 
     const body = res.ok ? await res.json() : null;

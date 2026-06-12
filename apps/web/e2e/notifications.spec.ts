@@ -1,11 +1,24 @@
-import { BASE_URL, createTripViaUI, expect, signupUser, test } from "./fixtures/auth";
+import {
+  BASE_URL,
+  clearIdbCache,
+  createTripViaUI,
+  expect,
+  nextTestIp,
+  signupUser,
+  test,
+} from "./fixtures/auth";
 
 test.describe("Notifications", () => {
   test("shows unread badge when member is added to trip", async ({
     authenticatedPage: page,
     browser,
   }) => {
-    const memberContext = await browser.newContext({ baseURL: BASE_URL });
+    // Create member context with a unique IP to avoid rate limiting on
+    // /api/auth/* endpoints (shared "unknown" bucket without the header).
+    const memberContext = await browser.newContext({
+      baseURL: BASE_URL,
+      extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+    });
     const memberPage = await memberContext.newPage();
     await signupUser(memberPage, {
       username: `notif${Date.now()}`,
@@ -27,6 +40,15 @@ test.describe("Notifications", () => {
     await page.getByRole("button", { name: "追加" }).click();
     await expect(page.getByText("メンバーを追加しました")).toBeVisible();
 
+    // notifyUsers is fire-and-forget (void promise) on the server: the 201 is
+    // returned before the DB write completes. Wait briefly so the insert lands
+    // before memberPage's notification query fires on reload.
+    await page.waitForTimeout(500);
+
+    // Clear IDB so the stale unreadCount=0 entry (written when the member first
+    // visited /home) does not suppress the refetch on reload.
+    await clearIdbCache(memberPage);
+
     // Member reloads and should see notification badge
     await memberPage.reload();
     const badge = memberPage.locator("button:has(.lucide-bell) span").first();
@@ -39,7 +61,11 @@ test.describe("Notifications", () => {
     authenticatedPage: page,
     browser,
   }) => {
-    const memberContext = await browser.newContext({ baseURL: BASE_URL });
+    // Create member context with a unique IP to avoid rate limiting
+    const memberContext = await browser.newContext({
+      baseURL: BASE_URL,
+      extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+    });
     const memberPage = await memberContext.newPage();
     await signupUser(memberPage, {
       username: `notif2${Date.now()}`,
@@ -61,8 +87,21 @@ test.describe("Notifications", () => {
     await page.getByRole("button", { name: "追加" }).click();
     await expect(page.getByText("メンバーを追加しました")).toBeVisible();
 
-    // Member opens notification dropdown and marks all as read
+    // notifyUsers is fire-and-forget (void promise) on the server: the 201 is
+    // returned before the DB write completes. Wait briefly so the insert lands
+    // before memberPage's notification query fires on reload.
+    await page.waitForTimeout(500);
+
+    // Clear IDB so the stale unreadCount=0 entry (written when the member first
+    // visited /home) does not suppress the refetch on reload.
+    await clearIdbCache(memberPage);
+
+    // Member opens notification dropdown and marks all as read.
+    // Wait for the badge to confirm the notification arrived before clicking.
     await memberPage.reload();
+    await expect(memberPage.locator("button:has(.lucide-bell) span").first()).toBeVisible({
+      timeout: 15000,
+    });
     await memberPage.locator("button:has(.lucide-bell)").click();
     await expect(memberPage.getByText("すべて既読")).toBeVisible({ timeout: 5000 });
 

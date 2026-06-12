@@ -7,7 +7,7 @@ sugara のコード変更から本番反映までのフローと、関連する�
 ```
 feature branch ── push ──▶ PR 作成
                              │
-                             ├── CI 実行 (check / test / test-integration / CodeQL / cargo-audit)
+                             ├── CI 実行 (check / test / test-integration / test-e2e / CodeQL / cargo-audit)
                              │
                              └── CI green ─ 手動 squash merge ─▶ main
                                                                    │
@@ -59,7 +59,9 @@ gh pr create --title "<type>: <日本語タイトル>" --body "<本文>"
 
 ### 3. CI と preview 確認
 
-- CI 全 green を待つ (check / test / test-integration / CodeQL / cargo-audit)
+- CI 全 green を待つ (check / test / test-integration / test-e2e / CodeQL / cargo-audit)
+  - `test-e2e` は Playwright e2e をローカル同等の Supabase スタック + production build に対して実行する。required check には未登録（実行時間・flakiness の計測中。#149）
+  - `test-e2e` は web に影響しないパスのみの変更（`apps/desktop/**`、ドキュメント等）では `changes` job のパスフィルタによりスキップされる
 - Vercel が生成した preview URL で動作確認
 - preview は Vercel Authentication で保護されているため、ログイン済みの team member のみアクセス可能
 

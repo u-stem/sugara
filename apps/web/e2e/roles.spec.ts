@@ -1,12 +1,15 @@
 import type { Browser, Page } from "@playwright/test";
-import { BASE_URL, createTripViaUI, expect, signupUser, test } from "./fixtures/auth";
+import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
 
 async function setupViewerMember(
   page: Page,
   browser: Browser,
   tripTitle: string,
 ): Promise<{ ctx: Awaited<ReturnType<Browser["newContext"]>>; memberPage: Page; tripUrl: string }> {
-  const ctx = await browser.newContext({ baseURL: BASE_URL });
+  const ctx = await browser.newContext({
+    baseURL: BASE_URL,
+    extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+  });
   const memberPage = await ctx.newPage();
   await signupUser(memberPage, {
     username: `viewer${Date.now()}`,
@@ -93,7 +96,11 @@ test.describe("Roles and Permissions", () => {
     await ctx.close();
   });
 
-  test("viewer cannot see souvenir add button", async ({
+  // Souvenir lists are personal per member (the API gates writes by item
+  // ownership, not trip role — requireTripAccess() at viewer level in
+  // apps/api/src/routes/souvenirs.ts), so unlike schedules/candidates/expenses
+  // the add button is intentionally available to viewers too.
+  test("viewer can see souvenir add button (personal list)", async ({
     authenticatedPage: page,
     browser,
   }) => {
@@ -107,7 +114,7 @@ test.describe("Roles and Permissions", () => {
     await expect(memberPage).toHaveURL(/\/trips\//, { timeout: 10000 });
 
     await memberPage.getByRole("tab", { name: "お土産" }).click();
-    await expect(memberPage.getByRole("button", { name: "お土産を追加" })).not.toBeVisible();
+    await expect(memberPage.getByRole("button", { name: "お土産を追加" })).toBeVisible();
 
     await ctx.close();
   });
@@ -122,7 +129,10 @@ test.describe("Roles and Permissions", () => {
     await page.getByRole("button", { name: "追加", exact: true }).click();
     await expect(page.getByText("候補を追加しました")).toBeVisible();
 
-    const ctx = await browser.newContext({ baseURL: BASE_URL });
+    const ctx = await browser.newContext({
+      baseURL: BASE_URL,
+      extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+    });
     const memberPage = await ctx.newPage();
     await signupUser(memberPage, {
       username: `vreact${Date.now()}`,
@@ -151,16 +161,18 @@ test.describe("Roles and Permissions", () => {
     // Click the candidates tab to ensure the list is loaded.
     await memberPage.getByRole("tab", { name: /候補/ }).click();
     // Wait for the candidate item to appear before checking the reaction button.
-    await expect(memberPage.getByText("金閣寺")).toBeVisible({ timeout: 10000 });
+    // Use .last() to target the desktop panel element — the mobile section (lg:hidden)
+    // is first in the DOM but has display:none at 1280px viewport, so getByText("金閣寺")
+    // returns 2 elements (both panels) and strict mode would throw without disambiguation.
+    await expect(memberPage.getByText("金閣寺").last()).toBeVisible({ timeout: 10000 });
 
     // Viewer can still react to candidates.
     // Use aria-label attribute selector as getByRole struggles with these buttons.
-    await expect(memberPage.locator('[aria-label="いいね"]')).toBeVisible({ timeout: 10000 });
-    await memberPage.locator('[aria-label="いいね"]').click();
-    await expect(memberPage.locator('[aria-label="いいね"]')).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    // Use .last() for the same dual-render reason (mobile panel precedes desktop in DOM).
+    const likeButton = memberPage.locator('[aria-label="いいね"]').last();
+    await expect(likeButton).toBeVisible({ timeout: 10000 });
+    await likeButton.click();
+    await expect(likeButton).toHaveAttribute("aria-pressed", "true");
 
     await ctx.close();
   });
@@ -169,7 +181,10 @@ test.describe("Roles and Permissions", () => {
     authenticatedPage: page,
     browser,
   }) => {
-    const ctx = await browser.newContext({ baseURL: BASE_URL });
+    const ctx = await browser.newContext({
+      baseURL: BASE_URL,
+      extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+    });
     const editorPage = await ctx.newPage();
     await signupUser(editorPage, {
       username: `editor${Date.now()}`,

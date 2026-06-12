@@ -1,12 +1,17 @@
-import { BASE_URL, createTripViaUI, expect, signupUser, test } from "./fixtures/auth";
+import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
 
 test.describe("Settlement", () => {
   test("checks and unchecks a settlement payment", async ({
     authenticatedPage: page,
     browser,
   }) => {
-    // Create a second user
-    const memberContext = await browser.newContext({ baseURL: BASE_URL });
+    // Create a second user. Pass a unique x-forwarded-for header so the sign-up
+    // request is bucketed separately from the primary user and does not exhaust
+    // the per-IP rate limit that the primary context owns.
+    const memberContext = await browser.newContext({
+      baseURL: BASE_URL,
+      extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+    });
     const memberPage = await memberContext.newPage();
     await signupUser(memberPage, {
       username: `settle${Date.now()}`,
@@ -47,28 +52,37 @@ test.describe("Settlement", () => {
     await expenseDialog.getByRole("button", { name: "追加" }).click();
     await expect(expenseDialog).not.toBeVisible({ timeout: 10000 });
 
-    // Settlement section should be visible with a transfer
-    await expect(page.getByText("精算")).toBeVisible();
-    await expect(page.getByText("0/1 完了")).toBeVisible();
+    // Settlement section should be visible with a transfer.
+    // "精算" / "0/1 完了" / "精算完了" are plain <span> elements rendered in both
+    // the mobile (display:none / inert) and desktop panels — getByText matches both
+    // and causes a strict mode violation. Use role-based locators instead:
+    //   settlement section presence  → "立替ごと" tab (accessibility tree, inert excluded)
+    //   unchecked state              → checkbox not checked
+    //   checked state (精算完了)     → checkbox is checked
+    await expect(page.getByRole("tab", { name: "立替ごと" })).toBeVisible();
+    await expect(page.getByRole("checkbox")).not.toBeChecked();
 
     // Check the settlement (mark as paid)
     const checkbox = page.getByRole("checkbox").first();
     await checkbox.click();
 
     // Should show as completed
-    await expect(page.getByText("精算完了")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("checkbox")).toBeChecked({ timeout: 5000 });
 
     // Uncheck the settlement
     await checkbox.click();
-    await expect(page.getByText("0/1 完了")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("checkbox")).not.toBeChecked({ timeout: 5000 });
   });
 
   test("settlement resets when expense is modified", async ({
     authenticatedPage: page,
     browser,
   }) => {
-    // Create a second user
-    const memberContext = await browser.newContext({ baseURL: BASE_URL });
+    // Create a second user with a unique IP to avoid rate-limit collisions.
+    const memberContext = await browser.newContext({
+      baseURL: BASE_URL,
+      extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+    });
     const memberPage = await memberContext.newPage();
     await signupUser(memberPage, {
       username: `reset${Date.now()}`,
@@ -104,9 +118,10 @@ test.describe("Settlement", () => {
     await addDialog.getByRole("button", { name: "追加" }).click();
     await expect(addDialog).not.toBeVisible({ timeout: 10000 });
 
-    // Check the settlement
+    // Check the settlement (see comment in test 1 for why we use checkbox state
+    // instead of text assertions for "精算完了" / "0/1 完了").
     await page.getByRole("checkbox").first().click();
-    await expect(page.getByText("精算完了")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole("checkbox")).toBeChecked({ timeout: 5000 });
 
     // Edit the expense — this should reset settlement
     await page.getByRole("button", { name: "ランチのメニュー" }).click();
@@ -119,7 +134,7 @@ test.describe("Settlement", () => {
     await editDialog.getByRole("button", { name: "更新" }).click();
     await expect(editDialog).not.toBeVisible({ timeout: 10000 });
 
-    // Settlement should be reset (no longer "完了")
-    await expect(page.getByText("0/1 完了")).toBeVisible({ timeout: 5000 });
+    // Settlement should be reset — expense edit resets all checked payments.
+    await expect(page.getByRole("checkbox")).not.toBeChecked({ timeout: 5000 });
   });
 });

@@ -1,4 +1,4 @@
-import { createTripViaUI, expect, test } from "./fixtures/auth";
+import { clearIdbCache, createTripViaUI, expect, test } from "./fixtures/auth";
 
 test.describe("Dashboard", () => {
   test("searches trips by title", async ({ authenticatedPage: page }) => {
@@ -10,11 +10,30 @@ test.describe("Dashboard", () => {
     await page.getByRole("link", { name: "ホーム" }).click();
     await expect(page).toHaveURL(/\/home/);
 
-    await createTripViaUI(page, {
-      title: "Kyoto Trip",
-      destination: "Kyoto",
+    // Create the third trip via API to sidestep the useAuthRedirect race: after
+    // each invalidateAll() the home-page trips query briefly refetches; if a
+    // transient error is treated as 401, useAuthRedirect redirects the page away
+    // before createTripViaUI can observe the new trip link.
+    const kyotoResp = await page.request.post("/api/trips", {
+      data: {
+        title: "Kyoto Trip",
+        destination: "Kyoto",
+        startDate: new Date(Date.now() + 86400000 * 20).toISOString().slice(0, 10),
+        endDate: new Date(Date.now() + 86400000 * 22).toISOString().slice(0, 10),
+      },
     });
-    await page.getByRole("link", { name: "ホーム" }).click();
+    expect(kyotoResp.status()).toBe(201);
+    // The trips list is in IDB from the last home visit (Osaka + Tokyo only).
+    // staleTime: 15_000 means the restored snapshot would be used as-is and
+    // Kyoto would never appear.  Wipe the entry so goto fires a fresh fetch.
+    await clearIdbCache(page);
+    // Wait for the trips list response instead of networkidle — the Realtime
+    // WebSocket keep-alive can keep the network busy and time the latter out.
+    const tripsLoaded = page.waitForResponse(
+      (res) => res.url().includes("/api/trips") && res.ok(),
+    );
+    await page.goto("/home");
+    await tripsLoaded;
     await expect(page).toHaveURL(/\/home/);
 
     await expect(page.getByText("Tokyo Trip")).toBeVisible();

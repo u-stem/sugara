@@ -1,10 +1,12 @@
-import { expect, test } from "@playwright/test";
+// Imported from the shared fixture so each test gets a unique synthetic client
+// IP (per-IP auth rate limits would otherwise throttle repeated signups).
+import { expect, test } from "./fixtures/auth";
 
 // Verifies the self-hosted Scalar bundle actually boots and renders the v1
 // spec — this is the real compatibility check between the pinned
 // @scalar/api-reference bundle and @scalar/hono-api-reference's generated
 // config. A broken pairing would serve the HTML (200) but render nothing.
-// Manual regression (not run in CI), like api-keys.spec.ts.
+// Runs in CI as part of the test-e2e job, like api-keys.spec.ts.
 test.describe("API reference (Scalar UI)", () => {
   test.use({ locale: "ja-JP" });
 

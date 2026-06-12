@@ -3,12 +3,17 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
-  retries: 0,
+  // One retry on CI pairs with trace: "on-first-retry" — a flake gets absorbed
+  // AND leaves a trace artifact for diagnosis. Locally fail fast.
+  retries: process.env.CI ? 1 : 0,
   // Prevent dev-server overload: tests share real DB state so parallel execution causes flakiness
   workers: 1,
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000",
     trace: "on-first-retry",
+    // The specs assert Japanese UI text; locale resolution falls back to
+    // Accept-Language (i18n/request.ts), so pin the browser to ja explicitly.
+    locale: "ja-JP",
   },
   projects: [
     {

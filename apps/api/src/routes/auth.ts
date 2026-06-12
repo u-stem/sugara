@@ -17,7 +17,18 @@ authRoutes.use("/api/auth/sign-in/anonymous", rateLimitByIp({ window: 60, max: 3
 authRoutes.use("/api/auth/sign-up/*", rateLimitByIp({ window: 60, max: 3 }));
 authRoutes.use("/api/auth/change-password", rateLimitByIp({ window: 60, max: 3 }));
 authRoutes.use("/api/auth/sign-in/*", rateLimitByIp({ window: 60, max: 5 }));
-authRoutes.use("/api/auth/*", rateLimitByIp({ window: 60, max: 30 }));
+// The broad ceiling counts every session check a full page load makes (proxy
+// guard + client bootstrap). E2E suites drive far more full page loads per
+// IP-minute than real browsing, so they may raise it explicitly via env;
+// production never sets this and keeps the default of 30. Only positive
+// integers are honored (a stray "-5" or "0" must not zero out the auth
+// surface). No NODE_ENV gate: CI runs the e2e suite against a production
+// build (`next start`), so gating on NODE_ENV would disable the knob there.
+function resolveBroadAuthLimit(): number {
+  const parsed = Number(process.env.E2E_AUTH_RATE_LIMIT_MAX);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 30;
+}
+authRoutes.use("/api/auth/*", rateLimitByIp({ window: 60, max: resolveBroadAuthLimit() }));
 
 // Block email/password signup when the admin has disabled new registrations.
 // Anonymous sign-in (/api/auth/sign-in/anonymous) is intentionally not blocked

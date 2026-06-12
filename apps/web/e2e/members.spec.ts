@@ -1,12 +1,17 @@
-import { BASE_URL, createTripViaUI, expect, signupUser, test } from "./fixtures/auth";
+import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
 
 test.describe("Members", () => {
   test("adds a member and changes role", async ({
     authenticatedPage: page,
     browser,
   }) => {
-    // Create a second user in a separate context
-    const memberContext = await browser.newContext({ baseURL: BASE_URL });
+    // Create a second user in a separate context with a unique IP to avoid
+    // rate limiting on /api/auth/* endpoints (shared "unknown" bucket would
+    // be exhausted without the header).
+    const memberContext = await browser.newContext({
+      baseURL: BASE_URL,
+      extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+    });
     const memberPage = await memberContext.newPage();
     await signupUser(memberPage, {
       username: `member${Date.now()}`,
@@ -43,8 +48,11 @@ test.describe("Members", () => {
   });
 
   test("removes a member", async ({ authenticatedPage: page, browser }) => {
-    // Create a second user
-    const memberContext = await browser.newContext({ baseURL: BASE_URL });
+    // Create a second user with a unique IP to avoid rate limiting
+    const memberContext = await browser.newContext({
+      baseURL: BASE_URL,
+      extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+    });
     const memberPage = await memberContext.newPage();
     await signupUser(memberPage, {
       username: `remove${Date.now()}`,
@@ -70,8 +78,9 @@ test.describe("Members", () => {
     await expect(page.getByText("メンバーを追加しました")).toBeVisible();
     await expect(page.getByText("Remove User")).toBeVisible();
 
-    // Remove the member - click delete icon, then confirm
-    await page.getByRole("button", { name: "Remove Userを削除" }).click();
+    // Remove the member - open the per-member action menu, then confirm deletion.
+    // aria-label is tc("itemMenu", { name: member.name }) = "{name}のメニュー".
+    await page.getByRole("button", { name: "Remove Userのメニュー" }).click();
     await page.getByRole("button", { name: "削除する" }).click();
     await expect(page.getByText("メンバーを削除しました")).toBeVisible();
     await expect(page.getByText("Remove User")).not.toBeVisible();

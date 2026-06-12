@@ -1,4 +1,12 @@
-import { BASE_URL, createTripViaUI, expect, signupUser, test } from "./fixtures/auth";
+import {
+  BASE_URL,
+  clearIdbCache,
+  createTripViaUI,
+  expect,
+  nextTestIp,
+  signupUser,
+  test,
+} from "./fixtures/auth";
 
 test.describe("Shared Trip", () => {
   test("generates share link and views shared trip", async ({
@@ -55,11 +63,15 @@ test.describe("Shared Trip", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).not.toBeVisible();
 
-    // Regenerate share link
+    // Regenerate share link. The button only renders while the component holds
+    // shareUrl state from the first request, so wait for it explicitly before
+    // arming the response listener (observed flaky on CI otherwise).
+    const regenerateButton = page.getByRole("button", { name: "共有リンクを再生成" });
+    await expect(regenerateButton).toBeVisible({ timeout: 10000 });
     const secondResponse = page.waitForResponse(
       (res) => res.url().includes("/api/trips/") && res.url().endsWith("/share") && res.ok(),
     );
-    await page.getByRole("button", { name: "共有リンクを再生成" }).click();
+    await regenerateButton.click();
     await secondResponse;
     await expect(page.getByText("共有リンクを再生成してコピーしました")).toBeVisible();
   });
@@ -68,17 +80,27 @@ test.describe("Shared Trip", () => {
     authenticatedPage: page,
     browser,
   }) => {
-    // Create the member user
-    const memberContext = await browser.newContext({ baseURL: BASE_URL });
+    // Create the member user.
+    // Assign a unique synthetic IP so the proxy's session check requests
+    // (to /api/auth/get-session, rate-limited 30/min per IP) don't collapse to
+    // "unknown" and trigger redirect loops that land the member at /home instead
+    // of the requested page.
+    const memberContext = await browser.newContext({
+      baseURL: BASE_URL,
+      extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
+    });
     const memberPage = await memberContext.newPage();
     await signupUser(memberPage, {
       username: `shared${Date.now()}`,
       name: "Shared List User",
     });
 
-    // Get member's user ID from my page
-    await memberPage.goto("/my");
-    const memberId = await memberPage.locator('[data-testid="user-id"]').textContent();
+    // Retrieve the member's user ID via the session API to avoid navigating to
+    // /my: the proxy's rate-limit redirect loop can steer secondary contexts to
+    // /home instead of /my, causing [data-testid="user-id"] to never appear.
+    const sessionRes = await memberPage.request.get("/api/auth/get-session");
+    const sessionData = (await sessionRes.json()) as { user?: { id: string } };
+    const memberId = sessionData?.user?.id;
     expect(memberId).toBeTruthy();
 
     // Owner creates a trip
@@ -94,10 +116,33 @@ test.describe("Shared Trip", () => {
     await page.getByRole("button", { name: "追加" }).click();
     await expect(page.getByText("メンバーを追加しました")).toBeVisible();
 
+    // The member's home page fetched shared trips (returning []) during
+    // signupUser and wrote the result to IDB.  staleTime: 15_000 means
+    // React Query would restore that empty snapshot without refetching.
+    // Wipe the IDB entry so the next goto fires a fresh shared-trips fetch
+    // that now includes the newly-added trip.
+    await clearIdbCache(memberPage);
+
+    // Both queries (owned and shared) fire on mount regardless of the active
+    // tab.  Register the response interceptor before navigation so the
+    // shared-trips fetch is captured even if it completes before the tab
+    // click, avoiding waitForLoadState("networkidle") which can time out in
+    // the full suite due to Realtime WebSocket keep-alive traffic.
+    const sharedTripsResponse = memberPage.waitForResponse(
+      (res) => res.url().includes("scope=shared") && res.ok(),
+    );
+
     // Member navigates to home and switches to shared tab
     await memberPage.goto("/home");
     await expect(memberPage).toHaveURL(/\/home/, { timeout: 10000 });
-    await memberPage.getByRole("button", { name: "共有された旅行" }).click();
+
+    // Await the shared-trips API response so the data is in React Query's
+    // cache before we switch the tab.
+    await sharedTripsResponse;
+
+    // The home page tab has explicit role="tab", not role="button"; getByRole
+    // uses the ARIA role so "button" would not match a role="tab" element.
+    await memberPage.getByRole("tab", { name: "共有された旅行" }).click();
     await expect(memberPage.getByText("Shared List Trip")).toBeVisible({
       timeout: 10000,
     });
@@ -110,8 +155,11 @@ test.describe("Shared Trip", () => {
     const page = await context.newPage();
     await page.goto("/shared/invalidtoken123");
 
+    // The shared-trip page uses server-side rendering: when the API returns a
+    // non-ok response notFound() is called, which renders the Next.js 404 page
+    // instead of a client-side error message. Accept all known error surfaces.
     await expect(
-      page.getByText(/このリンクは無効か|旅行の取得に失敗しました/),
+      page.getByText(/このリンクは無効か|旅行の取得に失敗しました|ページが見つかりません/),
     ).toBeVisible({ timeout: 15000 });
     await context.close();
   });

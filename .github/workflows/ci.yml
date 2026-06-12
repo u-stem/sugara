@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+# Least privilege for GITHUB_TOKEN; jobs that need more declare it themselves.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -140,3 +144,157 @@ jobs:
         env:
           TEST_DATABASE_URL: postgresql://sugara:sugara@127.0.0.1:54322/sugara_test
         run: bun run --filter @sugara/api test:integration
+
+  # Detects whether the diff touches anything the e2e suite exercises, so
+  # desktop-only / docs-only changes skip the heaviest job entirely (same idea
+  # as Vercel's native skipping).
+  changes:
+    runs-on: ubuntu-latest
+    # Job-level permissions replace the workflow-level block entirely, so
+    # contents: read must be restated for checkout.
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'apps/api/**'
+              - 'packages/shared/**'
+              - 'supabase/**'
+              - 'bun.lock'
+              - 'package.json'
+              - 'turbo.json'
+              - '.github/workflows/ci.yml'
+
+  # Playwright suite against a production build backed by the same local Supabase
+  # stack developers use (Postgres 55322 / Realtime / Storage), so CI mirrors
+  # `bun run test:e2e`. Not a Branch Protection required check yet — duration and
+  # flakiness are being measured first (#149).
+  test-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: changes
+    # Run unconditionally on pushes to main; gate only PR runs on the path filter.
+    if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
+    env:
+      # Throwaway secret for the job-local ephemeral database; not a real credential.
+      BETTER_AUTH_SECRET: e2e-ci-only-secret
+      # apps/api/src/lib/env.ts getters are lazy but throw when reached; no e2e
+      # flow sends mail (signup is username-based), so harmless dummies suffice.
+      GMAIL_USER: ci-dummy@example.com
+      GMAIL_APP_PASSWORD: ci-dummy
+      # E2E page.goto() full loads hit /api/auth/* far more often per IP-minute
+      # than real browsing; raise the broad auth ceiling for the suite only
+      # (routes/auth.ts defaults to 30 when unset — production is unaffected).
+      E2E_AUTH_RATE_LIMIT_MAX: "120"
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.3.2"
+
+      - name: Cache bun downloads
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
+            bun install --ignore-scripts
+          else
+            bun install --frozen-lockfile --ignore-scripts
+          fi
+
+      # The browser build is pinned by @playwright/test in bun.lock, so the
+      # lockfile hash keys the cache; on a hit the install step only verifies.
+      - name: Cache Playwright browsers
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: playwright-${{ runner.os }}-
+
+      # Next.js incremental compilation cache — keyed on sources so warm builds
+      # reuse unchanged modules. restore-keys makes any prior cache a useful base.
+      - name: Cache Next.js build cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: apps/web/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ hashFiles('apps/web/**/*.ts', 'apps/web/**/*.tsx', 'apps/api/src/**', 'packages/shared/src/**') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+            nextjs-${{ runner.os }}-
+
+      # Pinned to the CLI version used for local development so config.toml is
+      # interpreted identically.
+      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v2.1.1
+        with:
+          version: "2.76.7"
+
+      # Studio and the mail-test UI are dev conveniences no test touches.
+      - name: Start Supabase stack
+        run: supabase start -x studio,inbucket
+
+      # The local stack issues deterministic demo keys (not production secrets);
+      # export them for the Next.js build (NEXT_PUBLIC_*) and the API runtime.
+      - name: Export Supabase keys
+        run: |
+          eval "$(supabase status -o env)"
+          {
+            echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL"
+            echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY"
+          } >> "$GITHUB_ENV"
+
+      # MIGRATION_URL defaults to 127.0.0.1:55322, which is exactly where
+      # `supabase start` puts Postgres, so no override is needed. db:seed is
+      # intentionally skipped: it provisions users through the auth HTTP API
+      # (server not yet running here) and e2e tests sign up their own users;
+      # only the FAQ seed (direct Postgres) is needed for page content.
+      - name: Apply migrations and seed
+        run: |
+          bun run db:migrate
+          bun run db:seed-faqs
+
+      - name: Install Playwright browsers
+        run: bun run --filter @sugara/web test:e2e:install
+
+      - name: Build web
+        run: bun run --filter @sugara/web build
+
+      - name: Start web server
+        run: |
+          bun run --filter @sugara/web start &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:3000 > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Web server failed to start"
+          exit 1
+
+      - name: Playwright e2e
+        run: bun run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7
+          if-no-files-found: ignore

@@ -17,6 +17,7 @@
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install --with-deps chromium",
     "check-i18n": "bun run scripts/check-i18n-symmetry.ts"
   },
   "dependencies": {
