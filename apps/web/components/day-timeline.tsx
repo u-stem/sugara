@@ -57,6 +57,12 @@ type DayTimelineProps = {
   date: string;
   schedules: ScheduleResponse[];
   onRefresh: () => void;
+  /**
+   * Post-add callback that must not refetch the trip detail: the add dialog
+   * already wrote the POST response into the cache, and an immediate stale
+   * refetch can clobber it (#123). Falls back to onRefresh when omitted.
+   */
+  onScheduleAdded?: () => void;
   disabled?: boolean;
   headerContent?: React.ReactNode;
   maxEndDayOffset?: number;
@@ -82,6 +88,7 @@ export function DayTimeline({
   date,
   schedules,
   onRefresh,
+  onScheduleAdded,
   disabled,
   headerContent,
   maxEndDayOffset,
@@ -401,7 +408,7 @@ export function DayTimeline({
                   tripId={tripId}
                   dayId={dayId}
                   patternId={patternId}
-                  onAdd={onRefresh}
+                  onAdd={onScheduleAdded ?? onRefresh}
                   disabled={disabled}
                   maxEndDayOffset={maxEndDayOffset}
                   open={addScheduleOpen}
@@ -414,7 +421,7 @@ export function DayTimeline({
                 tripId={tripId}
                 dayId={dayId}
                 patternId={patternId}
-                onAdd={onRefresh}
+                onAdd={onScheduleAdded ?? onRefresh}
                 disabled={disabled}
                 maxEndDayOffset={maxEndDayOffset}
                 open={addScheduleOpen}
