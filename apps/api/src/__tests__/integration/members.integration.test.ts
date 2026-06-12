@@ -16,6 +16,7 @@ vi.mock("../../lib/auth", () => ({
   },
 }));
 
+import { handleError } from "../../lib/error-handler";
 import { memberRoutes } from "../../routes/members";
 import { tripRoutes } from "../../routes/trips";
 import { cleanupTables, createTestUser, teardownTestDb } from "./setup";
@@ -24,6 +25,9 @@ function createApp() {
   const app = new Hono();
   app.route("/api/trips", tripRoutes);
   app.route("/api/trips", memberRoutes);
+  // Mirror production error handling (app.ts registers the same handler);
+  // routes now surface conflicts by throwing AppError instead of returning.
+  app.onError(handleError);
   return app;
 }
 
