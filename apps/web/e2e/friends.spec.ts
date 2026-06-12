@@ -1,39 +1,4 @@
-import { BASE_URL, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
-
-// PersistQueryClientProvider stores React Query cache in IDB ('keyval-store' / 'keyval').
-// When bottom-nav fetches friends/requests on /home or /my and caches [] there,
-// staleTime: 60_000 in useFriendsPage prevents a refetch on /friends within that window.
-// Clear the persisted cache entry before navigating to /friends so a fresh fetch fires.
-async function clearIdbCache(page: import("@playwright/test").Page): Promise<void> {
-  await page.evaluate(async () => {
-    await new Promise<void>((resolve) => {
-      const req = indexedDB.open("keyval-store");
-      req.onerror = () => resolve();
-      req.onsuccess = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains("keyval")) {
-          db.close();
-          resolve();
-          return;
-        }
-        const tx = db.transaction("keyval", "readwrite");
-        tx.objectStore("keyval").delete("sugara-query-cache");
-        tx.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        tx.onerror = () => {
-          db.close();
-          resolve();
-        };
-        tx.onabort = () => {
-          db.close();
-          resolve();
-        };
-      };
-    });
-  });
-}
+import { BASE_URL, clearIdbCache, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
 
 test.describe("Friends", () => {
   test("sends a friend request, accepts it, and removes friend", async ({

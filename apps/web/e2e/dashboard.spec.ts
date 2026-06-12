@@ -1,40 +1,4 @@
-import { createTripViaUI, expect, test } from "./fixtures/auth";
-
-// PersistQueryClientProvider writes the React Query cache to IDB
-// ('keyval-store' / 'sugara-query-cache').  On full browser navigation the
-// in-memory cache clears but the IDB snapshot survives; staleTime: 15_000
-// means React Query restores the snapshot and skips the refetch.  Delete the
-// cache entry so the next page load fires a fresh fetch.
-async function clearIdbCache(page: import("@playwright/test").Page): Promise<void> {
-  await page.evaluate(async () => {
-    await new Promise<void>((resolve) => {
-      const req = indexedDB.open("keyval-store");
-      req.onerror = () => resolve();
-      req.onsuccess = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains("keyval")) {
-          db.close();
-          resolve();
-          return;
-        }
-        const tx = db.transaction("keyval", "readwrite");
-        tx.objectStore("keyval").delete("sugara-query-cache");
-        tx.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        tx.onerror = () => {
-          db.close();
-          resolve();
-        };
-        tx.onabort = () => {
-          db.close();
-          resolve();
-        };
-      };
-    });
-  });
-}
+import { clearIdbCache, createTripViaUI, expect, test } from "./fixtures/auth";
 
 test.describe("Dashboard", () => {
   test("searches trips by title", async ({ authenticatedPage: page }) => {
@@ -63,8 +27,13 @@ test.describe("Dashboard", () => {
     // staleTime: 15_000 means the restored snapshot would be used as-is and
     // Kyoto would never appear.  Wipe the entry so goto fires a fresh fetch.
     await clearIdbCache(page);
+    // Wait for the trips list response instead of networkidle — the Realtime
+    // WebSocket keep-alive can keep the network busy and time the latter out.
+    const tripsLoaded = page.waitForResponse(
+      (res) => res.url().includes("/api/trips") && res.ok(),
+    );
     await page.goto("/home");
-    await page.waitForLoadState("networkidle");
+    await tripsLoaded;
     await expect(page).toHaveURL(/\/home/);
 
     await expect(page.getByText("Tokyo Trip")).toBeVisible();

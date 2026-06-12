@@ -35,9 +35,47 @@ let testIpCounter = Math.floor(Math.random() * 16_777_115);
 // created inside test bodies via browser.newContext()). These contexts don't receive
 // the extraHTTPHeaders fixture, so callers must pass a header explicitly. Each call
 // increments the shared counter, keeping secondary IPs distinct from primary ones.
-export function nextTestIp(workerIndex = 0): string {
+// The worker octet comes from Playwright's own TEST_WORKER_INDEX env so the
+// default stays collision-free even if workers > 1 is ever enabled.
+export function nextTestIp(): string {
+  const workerIndex = Number(process.env.TEST_WORKER_INDEX) || 0;
   testIpCounter += 1;
   return `10.${workerIndex}.${Math.floor(testIpCounter / 256)}.${testIpCounter % 256}`;
+}
+
+// Drop the persisted React Query snapshot (PersistQueryClientProvider writes it
+// to IndexedDB). A full page load restores that snapshot and, within staleTime,
+// uses it without refetching — so data created outside the page (API calls,
+// another context) stays invisible until the entry is wiped.
+export async function clearIdbCache(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.open("keyval-store");
+      req.onerror = () => resolve();
+      req.onsuccess = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("keyval")) {
+          db.close();
+          resolve();
+          return;
+        }
+        const tx = db.transaction("keyval", "readwrite");
+        tx.objectStore("keyval").delete("sugara-query-cache");
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          resolve();
+        };
+        tx.onabort = () => {
+          db.close();
+          resolve();
+        };
+      };
+    });
+  });
 }
 
 export const test = base.extend<AuthFixtures>({
@@ -114,25 +152,6 @@ export async function createBookmarkListViaUI(
   await page.locator("#new-list-name").fill(name);
   await page.getByRole("button", { name: "作成" }).click();
   await expect(page.getByText("リストを作成しました")).toBeVisible();
-}
-
-export async function createGroupViaUI(
-  page: Page,
-  name: string,
-): Promise<void> {
-  await page.goto("/friends");
-  await page
-    .locator("div")
-    .filter({ hasText: /^グループ/ })
-    .getByRole("button", { name: "新規作成" })
-    .click();
-  await page.locator("#group-name").fill(name);
-  await page.getByRole("button", { name: "作成" }).click();
-  await expect(page.getByText("グループを作成しました")).toBeVisible();
-  // Members dialog auto-opens after group creation; wait for it before dismissing
-  await expect(page.getByText(/人のメンバー/)).toBeVisible({ timeout: 5000 });
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("dialog")).not.toBeVisible();
 }
 
 export async function createTripViaUI(

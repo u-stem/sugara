@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { VIEW_MODE_COOKIE } from "../lib/view-mode";
 import { createTripViaUI, expect, test } from "./fixtures/auth";
 
 async function openAddScheduleDialog(page: Page): Promise<Locator> {
@@ -43,7 +44,7 @@ async function navigateToSpTrip(page: Page, tripUrl: string): Promise<void> {
   const tripId = tripUrl.match(/\/trips\/([a-f0-9-]+)/)?.[1];
   expect(tripId).toBeTruthy();
   await page.context().addCookies([
-    { name: "x-view-mode", value: "sp", domain: "localhost", path: "/" },
+    { name: VIEW_MODE_COOKIE, value: "sp", domain: "localhost", path: "/" },
   ]);
   await page.goto(`/sp/trips/${tripId!}`);
   await expect(page).toHaveURL(/\/sp\/trips\//, { timeout: 10000 });

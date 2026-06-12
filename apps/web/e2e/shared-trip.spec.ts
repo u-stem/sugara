@@ -1,40 +1,12 @@
-import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
-
-// PersistQueryClientProvider writes the React Query cache to IDB
-// ('keyval-store' / 'sugara-query-cache').  On full browser navigation the
-// in-memory cache clears but the IDB snapshot survives; staleTime: 15_000
-// means React Query restores the snapshot and skips the refetch.  Delete the
-// cache entry so the next page load fires a fresh fetch.
-async function clearIdbCache(page: import("@playwright/test").Page): Promise<void> {
-  await page.evaluate(async () => {
-    await new Promise<void>((resolve) => {
-      const req = indexedDB.open("keyval-store");
-      req.onerror = () => resolve();
-      req.onsuccess = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains("keyval")) {
-          db.close();
-          resolve();
-          return;
-        }
-        const tx = db.transaction("keyval", "readwrite");
-        tx.objectStore("keyval").delete("sugara-query-cache");
-        tx.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        tx.onerror = () => {
-          db.close();
-          resolve();
-        };
-        tx.onabort = () => {
-          db.close();
-          resolve();
-        };
-      };
-    });
-  });
-}
+import {
+  BASE_URL,
+  clearIdbCache,
+  createTripViaUI,
+  expect,
+  nextTestIp,
+  signupUser,
+  test,
+} from "./fixtures/auth";
 
 test.describe("Shared Trip", () => {
   test("generates share link and views shared trip", async ({

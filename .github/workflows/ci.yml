@@ -6,6 +6,10 @@ on:
       - main
   pull_request:
 
+# Least privilege for GITHUB_TOKEN; jobs that need more declare it themselves.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -146,7 +150,10 @@ jobs:
   # as Vercel's native skipping).
   changes:
     runs-on: ubuntu-latest
+    # Job-level permissions replace the workflow-level block entirely, so
+    # contents: read must be restated for checkout.
     permissions:
+      contents: read
       pull-requests: read
     outputs:
       web: ${{ steps.filter.outputs.web }}
@@ -224,7 +231,7 @@ jobs:
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: apps/web/.next/cache
-          key: nextjs-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ hashFiles('apps/web/**/*.ts', 'apps/web/**/*.tsx', 'packages/shared/src/**') }}
+          key: nextjs-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ hashFiles('apps/web/**/*.ts', 'apps/web/**/*.tsx', 'apps/api/src/**', 'packages/shared/src/**') }}
           restore-keys: |
             nextjs-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
             nextjs-${{ runner.os }}-

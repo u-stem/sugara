@@ -1,43 +1,10 @@
-import { BASE_URL, expect, signupUser, test } from "./fixtures/auth";
+import { BASE_URL, clearIdbCache, expect, signupUser, test } from "./fixtures/auth";
 
 const PASSWORD = "TestPassword123!";
 const DELETE_TIMEOUT_MS = 20000;
 
 function shortId() {
   return Date.now().toString(36).slice(-6);
-}
-
-// Same stale-IDB issue as friends.spec.ts: clear the persisted React Query cache
-// entry before navigating to /friends so useFriendsPage fetches fresh data.
-async function clearIdbCache(page: import("@playwright/test").Page): Promise<void> {
-  await page.evaluate(async () => {
-    await new Promise<void>((resolve) => {
-      const req = indexedDB.open("keyval-store");
-      req.onerror = () => resolve();
-      req.onsuccess = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains("keyval")) {
-          db.close();
-          resolve();
-          return;
-        }
-        const tx = db.transaction("keyval", "readwrite");
-        tx.objectStore("keyval").delete("sugara-query-cache");
-        tx.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        tx.onerror = () => {
-          db.close();
-          resolve();
-        };
-        tx.onabort = () => {
-          db.close();
-          resolve();
-        };
-      };
-    });
-  });
 }
 
 async function assignUniqueClientIp(page: import("@playwright/test").Page, seed?: string) {
@@ -250,9 +217,10 @@ test.describe("Delete Account", () => {
     // Verify via API that pageB's data is intact after User A's deletion.
     // Navigating to /home would trigger the proxy middleware (proxy.ts) which
     // calls /api/auth/get-session server-side; this intermittently redirects to
-    // /auth/login even when the session is valid (exact root cause unclear).
-    // The diagnostic checks above already confirm the session is intact, so API
-    // calls are sufficient and more reliable for the data-state assertions.
+    // /auth/login even when the session is valid — reproduced after the PR #160
+    // rate-limit fix, root cause tracked in issue #162 (restore the UI-based
+    // assertion once resolved). The diagnostic checks above already confirm the
+    // session is intact, so API calls cover the data-state assertions for now.
 
     // A's trip should be gone (CASCADE deleted with user A's account)
     const aTripResp = await pageB.request.get(`/api/trips/${aTripId}`);

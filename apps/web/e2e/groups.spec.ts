@@ -1,11 +1,10 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures/auth";
 
-// createGroupViaUI is defined locally because the fixture version uses a
-// button locator ("新規作成") that no longer exists. The current UI renders
-// the button as "グループを作成" (tf("createGroup") in the friend namespace).
-// The members-auto-open behaviour that the fixture expected was also removed.
-// A fixture diff is proposed in the final report.
+// Local helper matching the current UI: the create button reads "グループを作成"
+// (tf("createGroup") in the friend namespace) and the members dialog no longer
+// auto-opens after creation. Only this spec creates groups, so it lives here
+// rather than in fixtures/auth.ts.
 async function createGroupViaUI(page: Page, name: string): Promise<void> {
   await page.goto("/friends");
   await page.getByRole("button", { name: /グループを作成/ }).click();

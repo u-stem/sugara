@@ -1,39 +1,12 @@
-import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
-
-// The notifications query inherits the global staleTime (15 s) and is persisted
-// in IDB by PersistQueryClientProvider. After reload the IDB-restored data
-// (unreadCount=0 from the member's first page visit) is still fresh → no
-// refetch → badge never appears.  Deleting the cache key forces a fresh fetch.
-async function clearIdbCache(page: import("@playwright/test").Page): Promise<void> {
-  await page.evaluate(async () => {
-    await new Promise<void>((resolve) => {
-      const req = indexedDB.open("keyval-store");
-      req.onerror = () => resolve();
-      req.onsuccess = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains("keyval")) {
-          db.close();
-          resolve();
-          return;
-        }
-        const tx = db.transaction("keyval", "readwrite");
-        tx.objectStore("keyval").delete("sugara-query-cache");
-        tx.oncomplete = () => {
-          db.close();
-          resolve();
-        };
-        tx.onerror = () => {
-          db.close();
-          resolve();
-        };
-        tx.onabort = () => {
-          db.close();
-          resolve();
-        };
-      };
-    });
-  });
-}
+import {
+  BASE_URL,
+  clearIdbCache,
+  createTripViaUI,
+  expect,
+  nextTestIp,
+  signupUser,
+  test,
+} from "./fixtures/auth";
 
 test.describe("Notifications", () => {
   test("shows unread badge when member is added to trip", async ({
