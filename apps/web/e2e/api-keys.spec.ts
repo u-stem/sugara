@@ -1,4 +1,6 @@
-import { expect, test } from "@playwright/test";
+// Imported from the shared fixture so each test gets a unique synthetic client
+// IP (per-IP auth rate limits would otherwise throttle repeated signups).
+import { expect, test } from "./fixtures/auth";
 
 // Covers the full API key lifecycle through the real UI: issue a key from the
 // settings tab, read /api/v1 with it, verify scope enforcement, then revoke it
@@ -75,7 +77,11 @@ test.describe("API keys", () => {
   });
 
   test("write scope allows POST while a read-only key is rejected", async ({ page, request }) => {
-    const writeUser = `e2e_apikey_w_${Date.now()}`;
+    // Prefix kept to 6 chars so the full 13-digit timestamp fits inside
+    // the username input's maxLength={20} (6 + 13 = 19 ≤ 20).
+    // The original "e2e_apikey_w_" (13 chars) left only 7 timestamp digits,
+    // causing username collisions within a ~16-minute window.
+    const writeUser = `e2eaw_${Date.now()}`;
 
     // Sign up a fresh (non-guest) user
     await page.goto("/auth/signup");
@@ -94,14 +100,26 @@ test.describe("API keys", () => {
     // the one-time dialog before it closes.
     const issueKey = async (keyName: string, scopeLabel: string): Promise<string> => {
       await page.getByLabel("名前").fill(keyName);
-      await page.getByLabel(scopeLabel, { exact: true }).check({ force: true });
+      // handleSubmit resets selectedScopes to an empty Set on success. Use click()
+      // instead of check() because check() verifies the resulting state immediately
+      // without retrying; the controlled checkbox may not have re-rendered yet if
+      // loadKeys() from a previous dialog close is still in-flight.
+      const scopeCheckbox = page.getByLabel(scopeLabel, { exact: true });
+      await scopeCheckbox.click({ force: true });
+      await expect(scopeCheckbox).toBeChecked();
       await page.getByRole("button", { name: "発行", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByText("キーを発行しました")).toBeVisible();
       const raw = (await dialog.locator("code").innerText()).trim();
       await dialog.getByRole("button", { name: "閉じる" }).click();
-      // Scope checkboxes keep their state between issues; uncheck for the next round
-      await page.getByLabel(scopeLabel, { exact: true }).uncheck({ force: true });
+      // The dialog has a CSS closing animation (duration-150). While the backdrop
+      // is still mounted it intercepts pointer events — the next issueKey call's
+      // checkbox click lands on the overlay rather than the form element. Wait
+      // for the dialog to fully unmount before checking for the key in the list.
+      await expect(page.getByRole("dialog")).not.toBeVisible();
+      // Wait for loadKeys() triggered by dialog close to complete; the issued key
+      // appears in the list once keysLoading returns to false.
+      await expect(page.getByText(keyName)).toBeVisible();
       return raw;
     };
 

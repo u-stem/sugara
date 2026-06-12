@@ -13,7 +13,9 @@ test.describe("Souvenirs", () => {
     await dialog.getByRole("button", { name: "追加", exact: true }).click();
 
     await expect(dialog).not.toBeVisible({ timeout: 10000 });
-    await expect(page.getByText("八つ橋")).toBeVisible();
+    // Use the menu button to confirm the item exists — getByText would match both
+    // the mobile (display:none) and desktop panels and trigger a strict mode violation.
+    await expect(page.getByRole("button", { name: "八つ橋 メニュー" })).toBeVisible();
   });
 
   test("adds a souvenir with priority and recipient", async ({ authenticatedPage: page }) => {
@@ -30,7 +32,7 @@ test.describe("Souvenirs", () => {
     await dialog.getByRole("button", { name: "追加", exact: true }).click();
 
     await expect(dialog).not.toBeVisible({ timeout: 10000 });
-    await expect(page.getByText("抹茶スイーツ")).toBeVisible();
+    await expect(page.getByRole("button", { name: "抹茶スイーツ メニュー" })).toBeVisible();
   });
 
   test("shows add button disabled when name is empty", async ({ authenticatedPage: page }) => {
@@ -58,11 +60,13 @@ test.describe("Souvenirs", () => {
     // Toggle to purchased
     await page.getByRole("checkbox", { name: "購入済みにする" }).click();
 
-    // Purchased section header should appear
-    await expect(page.getByText(/購入済み/)).toBeVisible({ timeout: 5000 });
+    // Purchased section header should appear — use getByRole to avoid strict mode
+    // violation from the dual mobile+desktop render (mobile panel has display:none
+    // but getByText still matches elements within it).
+    await expect(page.getByRole("button", { name: /購入済み/ })).toBeVisible({ timeout: 5000 });
 
     // Expand the purchased section to verify the item moved there
-    await page.getByText(/購入済み/).first().click();
+    await page.getByRole("button", { name: /購入済み/ }).click();
     await expect(page.getByRole("checkbox", { name: "購入済みを取り消す" })).toBeVisible();
   });
 
@@ -77,7 +81,8 @@ test.describe("Souvenirs", () => {
     await addDialog.getByRole("button", { name: "追加", exact: true }).click();
     await expect(addDialog).not.toBeVisible({ timeout: 10000 });
 
-    await page.getByRole("button", { name: "明太子のメニュー" }).click();
+    // Menu button label: "{name} メニュー" (space-separated, not "のメニュー")
+    await page.getByRole("button", { name: "明太子 メニュー" }).click();
     await page.getByRole("menuitem", { name: "編集" }).click();
 
     const editDialog = page.getByRole("dialog", { name: "お土産を編集" });
@@ -87,7 +92,9 @@ test.describe("Souvenirs", () => {
     await editDialog.getByRole("button", { name: "更新" }).click();
 
     await expect(editDialog).not.toBeVisible({ timeout: 10000 });
-    await expect(page.getByText("辛子明太子")).toBeVisible();
+    // Confirm the new name's menu button is visible (avoids dual-panel strict mode violation)
+    await expect(page.getByRole("button", { name: "辛子明太子 メニュー" })).toBeVisible();
+    // After rename, exact text "明太子" no longer exists in either panel → passes
     await expect(page.getByText("明太子", { exact: true })).not.toBeVisible();
   });
 
@@ -102,11 +109,14 @@ test.describe("Souvenirs", () => {
     await addDialog.getByRole("button", { name: "追加", exact: true }).click();
     await expect(addDialog).not.toBeVisible({ timeout: 10000 });
 
-    await page.getByRole("button", { name: "もみじ饅頭のメニュー" }).click();
+    await page.getByRole("button", { name: "もみじ饅頭 メニュー" }).click();
     await page.getByRole("menuitem", { name: "削除" }).click();
     await page.getByRole("button", { name: "削除する" }).click();
 
-    await expect(page.getByText("もみじ饅頭")).not.toBeVisible();
+    // After deletion, use getByRole so the mobile panel (lg:hidden / display:none at
+    // 1280px) is excluded from the search — getByText would find both the mobile and
+    // desktop DOM elements and trigger a strict mode violation even for not.toBeVisible().
+    await expect(page.getByRole("button", { name: "もみじ饅頭 メニュー" })).not.toBeVisible();
   });
 
   test("bulk deletes souvenirs in selection mode", async ({ authenticatedPage: page }) => {
@@ -123,12 +133,22 @@ test.describe("Souvenirs", () => {
     }
 
     await page.getByRole("button", { name: "選択" }).click();
-    await page.getByRole("button", { name: "全選択" }).click();
+    // Click individual items rather than "全選択" to avoid a race where
+    // useSession() hasn't resolved yet (currentUserId undefined → ownItems []
+    // → selectedCount === ownItems.length → button shows "全解除" and selects 0).
+    // In select mode each item row gets role="button" with the item name as its
+    // accessible name; the mobile panel is display:none so getByRole finds only
+    // the desktop panel's items.
+    await page.getByRole("button", { name: "神戸プリン" }).click();
+    await page.getByRole("button", { name: "スヌーピーグッズ" }).click();
     await page.getByRole("button", { name: "削除" }).click();
     await page.getByRole("button", { name: "削除する" }).click();
 
-    await expect(page.getByText("神戸プリン")).not.toBeVisible();
-    await expect(page.getByText("スヌーピーグッズ")).not.toBeVisible();
+    // After deletion, use getByRole so the mobile panel (lg:hidden / display:none at
+    // 1280px) is excluded from the search — getByText would find both the mobile and
+    // desktop DOM elements and trigger a strict mode violation even for not.toBeVisible().
+    await expect(page.getByRole("button", { name: "神戸プリン メニュー" })).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "スヌーピーグッズ メニュー" })).not.toBeVisible();
   });
 
   test("sorts souvenirs", async ({ authenticatedPage: page }) => {

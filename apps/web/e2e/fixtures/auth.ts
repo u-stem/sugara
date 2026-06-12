@@ -24,7 +24,35 @@ export async function signupUser(
   await expect(page).toHaveURL(/\/home/, { timeout: 10000 });
 }
 
+// Per-test counter for synthetic client IPs (workers: 1, so module scope is safe
+// per worker; workerIndex keeps parallel workers collision-free if ever enabled).
+// Start at a random offset so consecutive runs don't reuse the same IPs — the
+// dev server's in-memory rate-limit cache persists within the 60-second window,
+// and fixed-start counters (e.g. 0) cause accumulated counts to trip the limits.
+let testIpCounter = Math.floor(Math.random() * 16_777_115);
+
+// Generate a unique synthetic IP for secondary browser contexts (viewer/editor users
+// created inside test bodies via browser.newContext()). These contexts don't receive
+// the extraHTTPHeaders fixture, so callers must pass a header explicitly. Each call
+// increments the shared counter, keeping secondary IPs distinct from primary ones.
+export function nextTestIp(workerIndex = 0): string {
+  testIpCounter += 1;
+  return `10.${workerIndex}.${Math.floor(testIpCounter / 256)}.${testIpCounter % 256}`;
+}
+
 export const test = base.extend<AuthFixtures>({
+  // Give every test a unique synthetic client IP. The auth endpoints are
+  // rate-limited per IP (apps/api/src/middleware/rate-limit.ts; sign-up is
+  // 3/min), and without a proxy header all local/CI traffic collapses into the
+  // single "unknown" bucket, throttling the suite. resolveIp trusts the last
+  // x-forwarded-for entry only when no x-real-ip is present, which is never the
+  // case behind Vercel — so this spoof works exactly and only in local/CI runs.
+  extraHTTPHeaders: async ({}, use, testInfo) => {
+    testIpCounter += 1;
+    const ip = `10.${testInfo.workerIndex}.${Math.floor(testIpCounter / 256)}.${testIpCounter % 256}`;
+    await use({ "x-forwarded-for": ip });
+  },
+
   userCredentials: async ({}, use) => {
     const credentials = {
       username: `e2e_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,

@@ -9,6 +9,9 @@ export default defineConfig({
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000",
     trace: "on-first-retry",
+    // The specs assert Japanese UI text; locale resolution falls back to
+    // Accept-Language (i18n/request.ts), so pin the browser to ja explicitly.
+    locale: "ja-JP",
   },
   projects: [
     {

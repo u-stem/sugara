@@ -13,7 +13,9 @@ test.describe("Candidates", () => {
     await page.getByRole("button", { name: "追加", exact: true }).click();
 
     await expect(page.getByText("候補を追加しました")).toBeVisible();
-    await expect(page.getByText("鶴岡八幡宮")).toBeVisible();
+    // Use the menu button to confirm the item exists — getByText would match both
+    // the mobile (display:none) and desktop panels and trigger a strict mode violation.
+    await expect(page.getByRole("button", { name: "鶴岡八幡宮のメニュー" })).toBeVisible();
   });
 
   test("edits a candidate", async ({ authenticatedPage: page }) => {
@@ -37,7 +39,8 @@ test.describe("Candidates", () => {
     await page.getByRole("button", { name: "更新" }).click();
 
     await expect(page.getByText("候補を更新しました")).toBeVisible();
-    await expect(page.getByText("高徳院")).toBeVisible();
+    // Use the menu button — getByText matches the mobile (display:none) panel too.
+    await expect(page.getByRole("button", { name: "高徳院のメニュー" })).toBeVisible();
   });
 
   test("deletes a candidate", async ({ authenticatedPage: page }) => {

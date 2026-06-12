@@ -1,4 +1,18 @@
-import { createGroupViaUI, expect, test } from "./fixtures/auth";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./fixtures/auth";
+
+// createGroupViaUI is defined locally because the fixture version uses a
+// button locator ("新規作成") that no longer exists. The current UI renders
+// the button as "グループを作成" (tf("createGroup") in the friend namespace).
+// The members-auto-open behaviour that the fixture expected was also removed.
+// A fixture diff is proposed in the final report.
+async function createGroupViaUI(page: Page, name: string): Promise<void> {
+  await page.goto("/friends");
+  await page.getByRole("button", { name: /グループを作成/ }).click();
+  await page.locator("#group-name").fill(name);
+  await page.getByRole("button", { name: "作成" }).click();
+  await expect(page.getByText("グループを作成しました")).toBeVisible();
+}
 
 test.describe("Groups", () => {
   test("creates a group", async ({ authenticatedPage: page }) => {
