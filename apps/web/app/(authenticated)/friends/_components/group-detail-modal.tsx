@@ -1,6 +1,12 @@
 "use client";
 
-import type { FriendResponse, GroupMemberResponse, GroupResponse } from "@sugara/shared";
+import {
+  ERROR_CODE,
+  type FriendResponse,
+  type GroupMemberResponse,
+  type GroupResponse,
+  MAX_MEMBERS_PER_GROUP,
+} from "@sugara/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { UserMinus, UserPlus } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -59,6 +65,12 @@ export function GroupDetailModal({ group, onOpenChange }: Props) {
     queryClient.invalidateQueries({ queryKey: queryKeys.groups.list() });
   };
 
+  const groupMemberErrorByCode = {
+    [ERROR_CODE.ALREADY_GROUP_MEMBER]: tm("groupMemberAlready"),
+    [ERROR_CODE.LIMIT_GROUP_MEMBERS]: (max: number | undefined) =>
+      tm("limitGroupMembers", { max: max ?? MAX_MEMBERS_PER_GROUP }),
+  };
+
   async function handleRemoveMember(memberId: string) {
     setRemovingMemberId(memberId);
 
@@ -104,6 +116,7 @@ export function GroupDetailModal({ group, onOpenChange }: Props) {
           badRequest: tm("invalidUserId") as string,
           notFound: tm("userNotFound") as string,
           conflict: tm("groupMemberAlready") as string,
+          byCode: groupMemberErrorByCode,
         }),
       );
     } finally {
@@ -121,7 +134,11 @@ export function GroupDetailModal({ group, onOpenChange }: Props) {
       toast.success(tm("groupMemberAdded"));
       invalidateAll();
     } catch (err) {
-      toast.error(getApiErrorMessage(err, tm("groupMemberAddFailed") as string));
+      toast.error(
+        getApiErrorMessage(err, tm("groupMemberAddFailed") as string, {
+          byCode: groupMemberErrorByCode,
+        }),
+      );
     } finally {
       setAddingFriendId(null);
     }

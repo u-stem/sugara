@@ -70,7 +70,7 @@ vi.mock("../lib/notifications", () => ({
     mockNotifyArticleOwnersOnMemberAdded(...args),
 }));
 
-import { MAX_MEMBERS_PER_TRIP } from "@sugara/shared";
+import { ERROR_CODE, MAX_MEMBERS_PER_TRIP } from "@sugara/shared";
 import { articleTrips } from "../db/schema";
 import { memberRoutes } from "../routes/members";
 
@@ -234,6 +234,26 @@ describe("Member routes", () => {
       expect(res.status).toBe(409);
     });
 
+    it("returns ALREADY_MEMBER code when user is already a member", async () => {
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: fakeUser2Id,
+        name: "Existing",
+      });
+      mockDbQuery.tripMembers.findFirst
+        .mockResolvedValueOnce({ tripId, userId: fakeUserId, role: "owner" })
+        .mockResolvedValueOnce({ tripId, userId: fakeUser2Id, role: "editor" });
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      const res = await app.request(basePath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: fakeUser2Id, role: "editor" }),
+      });
+      const body = await res.json();
+
+      expect(body.code).toBe(ERROR_CODE.ALREADY_MEMBER);
+    });
+
     it("returns 400 with invalid userId", async () => {
       const app = createTestApp(memberRoutes, "/api/trips");
       const res = await app.request(basePath, {
@@ -260,6 +280,60 @@ describe("Member routes", () => {
       });
 
       expect(res.status).toBe(409);
+    });
+
+    it("returns LIMIT_MEMBERS code when member limit reached", async () => {
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: fakeUser2Id,
+        name: "New Member",
+      });
+      mockDbQuery.tripMembers.findFirst.mockResolvedValueOnce({
+        tripId,
+        userId: fakeUserId,
+        role: "owner",
+      });
+      mockDbSelect.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: MAX_MEMBERS_PER_TRIP }]),
+        }),
+      });
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      const res = await app.request(basePath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: fakeUser2Id, role: "editor" }),
+      });
+      const body = await res.json();
+
+      expect(body.code).toBe(ERROR_CODE.LIMIT_MEMBERS);
+    });
+
+    it("returns details.max equal to MAX_MEMBERS_PER_TRIP when member limit reached", async () => {
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: fakeUser2Id,
+        name: "New Member",
+      });
+      mockDbQuery.tripMembers.findFirst.mockResolvedValueOnce({
+        tripId,
+        userId: fakeUserId,
+        role: "owner",
+      });
+      mockDbSelect.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: MAX_MEMBERS_PER_TRIP }]),
+        }),
+      });
+
+      const app = createTestApp(memberRoutes, "/api/trips");
+      const res = await app.request(basePath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: fakeUser2Id, role: "editor" }),
+      });
+      const body = await res.json();
+
+      expect(body.details.max).toBe(MAX_MEMBERS_PER_TRIP);
     });
 
     it("POST: メンバー追加時に createNotification を呼ぶ", async () => {

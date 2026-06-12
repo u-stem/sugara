@@ -199,6 +199,54 @@ describe("getApiErrorMessage", () => {
 
     expect(getApiErrorMessage(error, "通信に失敗しました")).toBe("通信に失敗しました");
   });
+
+  it("byCode string value takes priority over conflict opts", () => {
+    const error = new ApiError("Already a member", 409, "ALREADY_MEMBER");
+
+    expect(
+      getApiErrorMessage(error, "fallback", {
+        conflict: "conflict msg",
+        byCode: { ALREADY_MEMBER: "すでにメンバーです" },
+      }),
+    ).toBe("すでにメンバーです");
+  });
+
+  it("byCode function receives details.max when present", () => {
+    const error = new ApiError("limit", 409, "LIMIT_MEMBERS", { max: 20 });
+    const handler = vi.fn().mockReturnValue("20人まで");
+
+    getApiErrorMessage(error, "fallback", { byCode: { LIMIT_MEMBERS: handler } });
+
+    expect(handler).toHaveBeenCalledWith(20);
+  });
+
+  it("byCode function receives undefined when details are missing", () => {
+    const error = new ApiError("limit", 409, "LIMIT_MEMBERS");
+    const handler = vi.fn().mockReturnValue("上限に達しました");
+
+    getApiErrorMessage(error, "fallback", { byCode: { LIMIT_MEMBERS: handler } });
+
+    expect(handler).toHaveBeenCalledWith(undefined);
+  });
+
+  it("falls back to conflict opts when code is not in byCode map", () => {
+    const error = new ApiError("Already a member", 409, "ALREADY_MEMBER");
+
+    expect(
+      getApiErrorMessage(error, "fallback", {
+        conflict: "conflict msg",
+        byCode: { LIMIT_MEMBERS: "limit msg" },
+      }),
+    ).toBe("conflict msg");
+  });
+
+  it("returns fallback when neither byCode nor status opts match", () => {
+    const error = new ApiError("Already a member", 409, "ALREADY_MEMBER");
+
+    expect(getApiErrorMessage(error, "fallback", { byCode: { LIMIT_MEMBERS: "limit msg" } })).toBe(
+      "fallback",
+    );
+  });
 });
 
 describe("fetchApi error shape parsing", () => {

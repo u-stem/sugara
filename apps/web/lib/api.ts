@@ -1,3 +1,4 @@
+import { type ErrorCode, LimitDetailsSchema } from "@sugara/shared";
 import { reportError } from "@/lib/report-error";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -107,6 +108,15 @@ export async function apiVoid(path: string, options: FetchOptions = {}): Promise
   await fetchApi(path, options);
 }
 
+// Type guard: narrows a string to ErrorCode if it is a key in the given map.
+// Using hasOwnProperty avoids matching prototype-chain properties.
+function isKnownErrorCode(
+  code: string,
+  map: Partial<Record<ErrorCode, unknown>>,
+): code is ErrorCode {
+  return Object.hasOwn(map, code);
+}
+
 /**
  * Extract a user-facing error message from an unknown catch value.
  *
@@ -115,13 +125,32 @@ export async function apiVoid(path: string, options: FetchOptions = {}): Promise
  * shown to users. Callers supply a localized {@link fallback} and may pass
  * per-status overrides; when no override matches, the localized fallback is
  * returned. This guarantees the user always sees a translated message.
+ *
+ * The optional {@link opts.byCode} map takes priority over status-based opts.
+ * Values may be a string or a function that receives `details.max` (if the
+ * error carries a {@link LimitDetailsSchema}-shaped details payload).
  */
 export function getApiErrorMessage(
   err: unknown,
   fallback: string,
-  opts?: { badRequest?: string; conflict?: string; notFound?: string },
+  opts?: {
+    badRequest?: string;
+    conflict?: string;
+    notFound?: string;
+    byCode?: Partial<Record<ErrorCode, string | ((max: number | undefined) => string)>>;
+  },
 ): string {
   if (err instanceof ApiError) {
+    if (err.code !== undefined && opts?.byCode !== undefined) {
+      if (isKnownErrorCode(err.code, opts.byCode)) {
+        const handler = opts.byCode[err.code];
+        if (handler !== undefined) {
+          if (typeof handler === "string") return handler;
+          const parsed = LimitDetailsSchema.safeParse(err.details);
+          return handler(parsed.success ? parsed.data.max : undefined);
+        }
+      }
+    }
     if (err.status === 400) return opts?.badRequest ?? fallback;
     if (err.status === 409) return opts?.conflict ?? fallback;
     if (err.status === 404) return opts?.notFound ?? fallback;

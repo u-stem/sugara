@@ -1,4 +1,10 @@
-import { createTripSchema, createTripWithPollSchema, updateTripSchema } from "@sugara/shared";
+import {
+  AppError,
+  createTripSchema,
+  createTripWithPollSchema,
+  ERROR_CODE,
+  updateTripSchema,
+} from "@sugara/shared";
 import { and, count, desc, eq, getTableColumns, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
@@ -133,7 +139,10 @@ tripRoutes.post("/", async (c) => {
       // catch race conditions and return the same error code as the pre-check.
       const limit = user.isAnonymous ? 1 : await resolveTripLimit(tx, user.id);
       if (tripCount.count >= limit) {
-        return user.isAnonymous ? ("GUEST_LIMIT" as const) : null;
+        if (!user.isAnonymous) {
+          throw new AppError(ERROR_MSG.LIMIT_TRIPS, ERROR_CODE.LIMIT_TRIPS, 409, { max: limit });
+        }
+        return "GUEST_LIMIT" as const;
       }
 
       const [created] = await tx
@@ -185,9 +194,6 @@ tripRoutes.post("/", async (c) => {
     if (trip === "GUEST_LIMIT") {
       return c.json({ error: ERROR_MSG.GUEST_TRIP_LIMIT }, 403);
     }
-    if (!trip) {
-      return c.json({ error: ERROR_MSG.LIMIT_TRIPS }, 409);
-    }
 
     logActivity({
       tripId: trip.id,
@@ -233,7 +239,10 @@ tripRoutes.post("/", async (c) => {
     // catch race conditions and return the same error code as the pre-check.
     const limit = user.isAnonymous ? 1 : await resolveTripLimit(tx, user.id);
     if (tripCount.count >= limit) {
-      return user.isAnonymous ? ("GUEST_LIMIT" as const) : null;
+      if (!user.isAnonymous) {
+        throw new AppError(ERROR_MSG.LIMIT_TRIPS, ERROR_CODE.LIMIT_TRIPS, 409, { max: limit });
+      }
+      return "GUEST_LIMIT" as const;
     }
 
     const [created] = await tx
@@ -264,9 +273,6 @@ tripRoutes.post("/", async (c) => {
 
   if (trip === "GUEST_LIMIT") {
     return c.json({ error: ERROR_MSG.GUEST_TRIP_LIMIT }, 403);
-  }
-  if (!trip) {
-    return c.json({ error: ERROR_MSG.LIMIT_TRIPS }, 409);
   }
 
   logActivity({
@@ -435,9 +441,9 @@ tripRoutes.post("/:id/duplicate", requireTripAccess("viewer", "id"), async (c) =
       .select({ count: count() })
       .from(trips)
       .where(eq(trips.ownerId, user.id));
-    const limit = user.isAnonymous ? 1 : await resolveTripLimit(tx, user.id);
+    const limit = await resolveTripLimit(tx, user.id);
     if (tripCount.count >= limit) {
-      return null;
+      throw new AppError(ERROR_MSG.LIMIT_TRIPS, ERROR_CODE.LIMIT_TRIPS, 409, { max: limit });
     }
 
     const [created] = await tx
@@ -538,10 +544,6 @@ tripRoutes.post("/:id/duplicate", requireTripAccess("viewer", "id"), async (c) =
 
     return created;
   });
-
-  if (!newTrip) {
-    return c.json({ error: ERROR_MSG.LIMIT_TRIPS }, 409);
-  }
 
   // Copy cover image file in Storage (outside transaction to avoid holding locks)
   if (source.coverImageUrl) {

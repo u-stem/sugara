@@ -1,5 +1,7 @@
 import {
+  AppError,
   addMemberSchema,
+  ERROR_CODE,
   MAX_MEMBERS_PER_TRIP,
   ROLE_LABELS,
   updateMemberRoleSchema,
@@ -81,7 +83,7 @@ memberRoutes.post("/:tripId/members", requireTripAccess("owner"), async (c) => {
     return c.json({ error: ERROR_MSG.USER_NOT_FOUND }, 404);
   }
 
-  const result = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const [[{ count: memberCount }], existing] = await Promise.all([
       tx.select({ count: count() }).from(tripMembers).where(eq(tripMembers.tripId, tripId)),
       tx.query.tripMembers.findFirst({
@@ -89,10 +91,12 @@ memberRoutes.post("/:tripId/members", requireTripAccess("owner"), async (c) => {
       }),
     ]);
     if (memberCount >= MAX_MEMBERS_PER_TRIP) {
-      return "limit" as const;
+      throw new AppError(ERROR_MSG.LIMIT_MEMBERS, ERROR_CODE.LIMIT_MEMBERS, 409, {
+        max: MAX_MEMBERS_PER_TRIP,
+      });
     }
     if (existing) {
-      return "duplicate" as const;
+      throw new AppError(ERROR_MSG.ALREADY_MEMBER, ERROR_CODE.ALREADY_MEMBER, 409);
     }
 
     await tx.insert(tripMembers).values({
@@ -100,16 +104,7 @@ memberRoutes.post("/:tripId/members", requireTripAccess("owner"), async (c) => {
       userId: targetUser.id,
       role: parsed.data.role,
     });
-
-    return "ok" as const;
   });
-
-  if (result === "limit") {
-    return c.json({ error: ERROR_MSG.LIMIT_MEMBERS }, 409);
-  }
-  if (result === "duplicate") {
-    return c.json({ error: ERROR_MSG.ALREADY_MEMBER }, 409);
-  }
 
   logActivity({
     tripId,

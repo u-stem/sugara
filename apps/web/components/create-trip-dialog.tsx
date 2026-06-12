@@ -3,6 +3,8 @@
 import {
   CURRENCIES,
   type CurrencyCode,
+  ERROR_CODE,
+  MAX_TRIPS_PER_USER,
   TRIP_DESTINATION_MAX_LENGTH,
   TRIP_TITLE_MAX_LENGTH,
 } from "@sugara/shared";
@@ -155,7 +157,14 @@ export function CreateTripDialog({ open, onOpenChange, onCreated }: CreateTripDi
         if (err instanceof ApiError && err.status === 403 && err.message.includes("Guest")) {
           setError(tm("authGuestTripLimit"));
         } else {
-          setError(getApiErrorMessage(err, tm("tripCreateFailed")));
+          setError(
+            getApiErrorMessage(err, tm("tripCreateFailed"), {
+              byCode: {
+                [ERROR_CODE.LIMIT_TRIPS]: (max) =>
+                  tm("limitTrips", { max: max ?? MAX_TRIPS_PER_USER }),
+              },
+            }),
+          );
         }
       } finally {
         setLoading(false);
@@ -198,7 +207,14 @@ export function CreateTripDialog({ open, onOpenChange, onCreated }: CreateTripDi
         if (err instanceof ApiError && err.status === 403 && err.message.includes("Guest")) {
           setError(tm("authGuestTripLimit"));
         } else {
-          setError(getApiErrorMessage(err, tm("tripCreateFailed")));
+          setError(
+            getApiErrorMessage(err, tm("tripCreateFailed"), {
+              byCode: {
+                [ERROR_CODE.LIMIT_TRIPS]: (max) =>
+                  tm("limitTrips", { max: max ?? MAX_TRIPS_PER_USER }),
+              },
+            }),
+          );
         }
       } finally {
         setLoading(false);

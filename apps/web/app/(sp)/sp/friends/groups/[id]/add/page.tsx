@@ -1,10 +1,12 @@
 "use client";
 
-import type {
-  BulkAddMembersResponse,
-  FriendResponse,
-  GroupMemberResponse,
-  GroupResponse,
+import {
+  type BulkAddMembersResponse,
+  ERROR_CODE,
+  type FriendResponse,
+  type GroupMemberResponse,
+  type GroupResponse,
+  MAX_MEMBERS_PER_GROUP,
 } from "@sugara/shared";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CheckCheck, SquareMousePointer, UserPlus, X } from "lucide-react";
@@ -66,6 +68,12 @@ export default function SpGroupAddMemberPage() {
     queryClient.invalidateQueries({ queryKey: queryKeys.groups.list() });
   };
 
+  const groupMemberErrorByCode = {
+    [ERROR_CODE.ALREADY_GROUP_MEMBER]: tm("groupMemberAlready"),
+    [ERROR_CODE.LIMIT_GROUP_MEMBERS]: (max: number | undefined) =>
+      tm("limitGroupMembers", { max: max ?? MAX_MEMBERS_PER_GROUP }),
+  };
+
   function exitSelectionMode() {
     setSelectionMode(false);
     setSelectedIds(new Set());
@@ -90,7 +98,11 @@ export default function SpGroupAddMemberPage() {
       toast.success(tm("groupMemberAdded"));
       invalidateAll();
     } catch (err) {
-      toast.error(getApiErrorMessage(err, tm("groupMemberAddFailed") as string));
+      toast.error(
+        getApiErrorMessage(err, tm("groupMemberAddFailed") as string, {
+          byCode: groupMemberErrorByCode,
+        }),
+      );
     } finally {
       setAdding(false);
     }
@@ -112,7 +124,11 @@ export default function SpGroupAddMemberPage() {
       exitSelectionMode();
       invalidateAll();
     } catch (err) {
-      toast.error(getApiErrorMessage(err, tm("groupMemberAddFailed") as string));
+      toast.error(
+        getApiErrorMessage(err, tm("groupMemberAddFailed") as string, {
+          byCode: groupMemberErrorByCode,
+        }),
+      );
     } finally {
       setAdding(false);
     }
@@ -133,7 +149,11 @@ export default function SpGroupAddMemberPage() {
       setUserId("");
       invalidateAll();
     } catch (err) {
-      toast.error(getApiErrorMessage(err, tm("groupMemberAddFailed") as string));
+      toast.error(
+        getApiErrorMessage(err, tm("groupMemberAddFailed") as string, {
+          byCode: groupMemberErrorByCode,
+        }),
+      );
     } finally {
       setAdding(false);
     }
