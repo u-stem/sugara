@@ -238,6 +238,29 @@ export function updateCandidate(
   };
 }
 
+/**
+ * Apply a confirmed reaction change to a cached candidate. `counts` are the
+ * server's authoritative like/hmm totals (other users may have reacted
+ * concurrently); `myReaction` is the current user's own state. Written
+ * directly into the cache so the optimistic delta is reconciled without a
+ * refetch that could clobber it with a stale read (#155).
+ */
+export function setCandidateReaction(
+  trip: TripResponse,
+  candidateId: string,
+  myReaction: "like" | "hmm" | null,
+  counts: { likeCount: number; hmmCount: number },
+): TripResponse {
+  return {
+    ...trip,
+    candidates: trip.candidates.map((c) =>
+      c.id === candidateId
+        ? { ...c, myReaction, likeCount: counts.likeCount, hmmCount: counts.hmmCount }
+        : c,
+    ),
+  };
+}
+
 export function removeCandidate(trip: TripResponse, scheduleId: string): TripResponse {
   if (!trip.candidates.some((c) => c.id === scheduleId)) return trip;
 

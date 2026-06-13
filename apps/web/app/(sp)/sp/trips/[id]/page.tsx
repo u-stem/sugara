@@ -163,7 +163,7 @@ export default function SpTripDetailPage() {
 
   // Mutation callbacks: refetch + broadcast to other clients (see hook for
   // why schedule adds and reorders skip the refetch, #123 / #166)
-  const { onMutate, onScheduleAdded, onSchedulesReordered, onCandidatesReordered } =
+  const { onMutate, onCacheWritten, onSchedulesReordered, onCandidatesReordered } =
     useTripMutationCallbacks({
       tripId: tripId ?? "",
       invalidateTrip,
@@ -370,7 +370,7 @@ export default function SpTripDetailPage() {
                   date={currentDay.date}
                   schedules={dnd.localSchedules}
                   onRefresh={onMutate}
-                  onScheduleAdded={onScheduleAdded}
+                  onScheduleAdded={onCacheWritten}
                   disabled={!online || !canEdit}
                   addScheduleOpen={addScheduleOpen}
                   onAddScheduleOpenChange={setAddScheduleOpen}
@@ -419,6 +419,7 @@ export default function SpTripDetailPage() {
               currentDayId={currentDay?.id}
               currentPatternId={currentPattern?.id}
               onRefresh={onMutate}
+              onCacheWritten={onCacheWritten}
               disabled={!online || !canEdit}
               draggable={false}
               addDialogOpen={addCandidateOpen}
@@ -558,7 +559,7 @@ export default function SpTripDetailPage() {
                   isConnected={isConnected}
                   online={online}
                   canEdit={canEdit}
-                  onMutate={onMutate}
+                  onCacheWritten={onCacheWritten}
                   onEditOpen={() => setEditOpen(true)}
                   onOpenBookmarks={
                     isGuest

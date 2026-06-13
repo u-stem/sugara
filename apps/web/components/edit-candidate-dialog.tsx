@@ -33,7 +33,12 @@ type EditCandidateDialogProps = {
   schedule: ScheduleResponse;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdate: () => void;
+  // Called after the server-confirmed row is written into the cache; skips
+  // the refetch (#155).
+  onSaved: () => void;
+  // Called on an optimistic-lock conflict (409/404), where the cache is stale
+  // and a refetch is required to recover the true state.
+  onConflict: () => void;
   maxEndDayOffset?: number;
 };
 
@@ -42,7 +47,8 @@ export function EditCandidateDialog({
   schedule,
   open,
   onOpenChange,
-  onUpdate,
+  onSaved,
+  onConflict,
   maxEndDayOffset = 0,
 }: EditCandidateDialogProps) {
   const tm = useTranslations("messages");
@@ -112,7 +118,7 @@ export function EditCandidateDialog({
 
     const { expectedUpdatedAt: _, ...updateFields } = data;
 
-    queryClient.cancelQueries({ queryKey: cacheKey });
+    await queryClient.cancelQueries({ queryKey: cacheKey });
     const prev = queryClient.getQueryData<TripResponse>(cacheKey);
     if (prev) {
       queryClient.setQueryData(
@@ -124,16 +130,31 @@ export function EditCandidateDialog({
     toast.success(tm("candidateUpdated"));
 
     try {
-      await api(`/api/trips/${tripId}/candidates/${schedule.id}`, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      });
-      onUpdate();
+      // Reconcile the cache with the server-confirmed row (fresh updatedAt for
+      // the next optimistic-lock check) and skip the refetch (#155). The
+      // optimistic write above gives instant feedback; this corrects it.
+      const updated = await api<Record<string, unknown>>(
+        `/api/trips/${tripId}/candidates/${schedule.id}`,
+        { method: "PATCH", body: JSON.stringify(data) },
+      );
+      const fresh = queryClient.getQueryData<TripResponse>(cacheKey);
+      if (fresh) {
+        queryClient.setQueryData(
+          cacheKey,
+          updateCandidate(fresh, schedule.id, toCandidateResponse(updated)),
+        );
+        onSaved();
+      } else {
+        // The cache was evicted during the round-trip, so the server's fresh
+        // updatedAt isn't stored. Refetch to recover it; otherwise the next
+        // edit would send a stale expectedUpdatedAt and hit a spurious 409.
+        onConflict();
+      }
     } catch (err) {
       if (prev) queryClient.setQueryData(cacheKey, prev);
       if (err instanceof ApiError && (err.status === 409 || err.status === 404)) {
         toast.error(err.status === 409 ? tm("conflict") : tm("conflictDeleted"));
-        onUpdate();
+        onConflict();
       } else {
         toast.error(tm("candidateUpdateFailed"));
       }
