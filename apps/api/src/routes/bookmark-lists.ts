@@ -71,6 +71,7 @@ bookmarkListRoutes.post("/", async (c) => {
       bookmarkLists.sortOrder,
       bookmarkLists,
       eq(bookmarkLists.userId, user.id),
+      `bookmark_list:user:${user.id}`,
     );
 
     const [result] = await tx
@@ -186,6 +187,7 @@ bookmarkListRoutes.post("/:listId/duplicate", async (c) => {
       bookmarkLists.sortOrder,
       bookmarkLists,
       eq(bookmarkLists.userId, user.id),
+      `bookmark_list:user:${user.id}`,
     );
 
     const [newList] = await tx
@@ -277,6 +279,7 @@ bookmarkListRoutes.post("/batch-duplicate", async (c) => {
       bookmarkLists.sortOrder,
       bookmarkLists,
       eq(bookmarkLists.userId, user.id),
+      `bookmark_list:user:${user.id}`,
     );
 
     for (let i = 0; i < sources.length; i++) {

@@ -82,6 +82,7 @@ scheduleRoutes.post("/:tripId/days/:dayId/patterns/:patternId/schedules", async 
       schedules.sortOrder,
       schedules,
       eq(schedules.dayPatternId, patternId),
+      `schedule:pattern:${patternId}`,
     );
 
     // Anchors are never set on create — they can only be set via the reorder
@@ -316,15 +317,6 @@ scheduleRoutes.post(
       return c.json({ error: ERROR_MSG.SCHEDULE_NOT_FOUND }, 404);
     }
 
-    const nextOrder = await getNextSortOrder(
-      db,
-      schedules.sortOrder,
-      schedules,
-      eq(schedules.dayPatternId, patternId),
-    );
-
-    let currentOrder = nextOrder;
-
     const scheduleById = new Map(targetSchedules.map((s) => [s.id, s]));
     const ordered = parsed.data.scheduleIds.reduce<typeof targetSchedules>((acc, id) => {
       const schedule = scheduleById.get(id);
@@ -332,16 +324,26 @@ scheduleRoutes.post(
       return acc;
     }, []);
 
-    const duplicated = await db
-      .insert(schedules)
-      .values(
-        ordered.map((schedule) => ({
-          tripId,
-          dayPatternId: patternId,
-          ...buildScheduleCloneValues(schedule, { sortOrder: currentOrder++ }),
-        })),
-      )
-      .returning();
+    const duplicated = await db.transaction(async (tx) => {
+      let currentOrder = await getNextSortOrder(
+        tx,
+        schedules.sortOrder,
+        schedules,
+        eq(schedules.dayPatternId, patternId),
+        `schedule:pattern:${patternId}`,
+      );
+
+      return tx
+        .insert(schedules)
+        .values(
+          ordered.map((schedule) => ({
+            tripId,
+            dayPatternId: patternId,
+            ...buildScheduleCloneValues(schedule, { sortOrder: currentOrder++ }),
+          })),
+        )
+        .returning();
+    });
 
     logActivity({
       tripId,
@@ -620,6 +622,7 @@ scheduleRoutes.post("/:tripId/schedules/batch-unassign", requireTripAccess("edit
       schedules.sortOrder,
       schedules,
       and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
+      `schedule:candidates:${tripId}`,
     );
 
     const ids = parsed.data.scheduleIds;
@@ -667,25 +670,30 @@ scheduleRoutes.post(
       return c.json({ error: ERROR_MSG.SCHEDULE_NOT_FOUND }, 404);
     }
 
-    const nextOrder = await getNextSortOrder(
-      db,
-      schedules.sortOrder,
-      schedules,
-      and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
-    );
-
     // Candidates cannot have anchors (no dayPatternId → no cross-day context).
-    const [updated] = await db
-      .update(schedules)
-      .set({
-        dayPatternId: null,
-        sortOrder: nextOrder,
-        crossDayAnchor: null,
-        crossDayAnchorSourceId: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(schedules.id, scheduleId))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const nextOrder = await getNextSortOrder(
+        tx,
+        schedules.sortOrder,
+        schedules,
+        and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
+        `schedule:candidates:${tripId}`,
+      );
+
+      const [row] = await tx
+        .update(schedules)
+        .set({
+          dayPatternId: null,
+          sortOrder: nextOrder,
+          crossDayAnchor: null,
+          crossDayAnchorSourceId: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(schedules.id, scheduleId))
+        .returning();
+
+      return row;
+    });
 
     logActivity({
       tripId,

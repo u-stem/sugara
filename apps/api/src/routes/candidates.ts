@@ -59,6 +59,7 @@ candidateRoutes.post("/:tripId/candidates", requireTripAccess("editor"), async (
       schedules.sortOrder,
       schedules,
       and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
+      `schedule:candidates:${tripId}`,
     );
 
     // Anchors cannot be set on candidates (they have no dayPatternId and
@@ -136,6 +137,7 @@ candidateRoutes.post("/:tripId/candidates/batch-assign", requireTripAccess("edit
       schedules.sortOrder,
       schedules,
       eq(schedules.dayPatternId, parsed.data.dayPatternId),
+      `schedule:pattern:${parsed.data.dayPatternId}`,
     );
 
     const ids = parsed.data.scheduleIds;
@@ -235,13 +237,6 @@ candidateRoutes.post(
       return c.json({ error: ERROR_MSG.CANDIDATE_NOT_FOUND }, 404);
     }
 
-    let nextOrder = await getNextSortOrder(
-      db,
-      schedules.sortOrder,
-      schedules,
-      and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
-    );
-
     // Preserve the order of scheduleIds in the request
     const scheduleById = new Map(candidates.map((s) => [s.id, s]));
     const ordered = parsed.data.scheduleIds.reduce<typeof candidates>((acc, id) => {
@@ -250,15 +245,25 @@ candidateRoutes.post(
       return acc;
     }, []);
 
-    const duplicated = await db
-      .insert(schedules)
-      .values(
-        ordered.map((schedule) => ({
-          tripId,
-          ...buildScheduleCloneValues(schedule, { sortOrder: nextOrder++ }),
-        })),
-      )
-      .returning();
+    const duplicated = await db.transaction(async (tx) => {
+      let nextOrder = await getNextSortOrder(
+        tx,
+        schedules.sortOrder,
+        schedules,
+        and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
+        `schedule:candidates:${tripId}`,
+      );
+
+      return tx
+        .insert(schedules)
+        .values(
+          ordered.map((schedule) => ({
+            tripId,
+            ...buildScheduleCloneValues(schedule, { sortOrder: nextOrder++ }),
+          })),
+        )
+        .returning();
+    });
 
     logActivity({
       tripId,
@@ -305,28 +310,31 @@ candidateRoutes.post(
       return c.json({ error: ERROR_MSG.LIMIT_SCHEDULES }, 409);
     }
 
-    let nextOrder = await getNextSortOrder(
-      db,
-      schedules.sortOrder,
-      schedules,
-      and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
-    );
+    const created = await db.transaction(async (tx) => {
+      let nextOrder = await getNextSortOrder(
+        tx,
+        schedules.sortOrder,
+        schedules,
+        and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
+        `schedule:candidates:${tripId}`,
+      );
 
-    const created = await db
-      .insert(schedules)
-      .values(
-        owned.map((bm) => ({
-          tripId,
-          dayPatternId: null,
-          name: bm.name,
-          memo: bm.memo,
-          urls: bm.urls,
-          category: "sightseeing" as const,
-          color: "blue" as const,
-          sortOrder: nextOrder++,
-        })),
-      )
-      .returning();
+      return tx
+        .insert(schedules)
+        .values(
+          owned.map((bm) => ({
+            tripId,
+            dayPatternId: null,
+            name: bm.name,
+            memo: bm.memo,
+            urls: bm.urls,
+            category: "sightseeing" as const,
+            color: "blue" as const,
+            sortOrder: nextOrder++,
+          })),
+        )
+        .returning();
+    });
 
     logActivity({
       tripId,
@@ -513,22 +521,27 @@ candidateRoutes.post(
       return c.json({ error: ERROR_MSG.PATTERN_NOT_FOUND }, 404);
     }
 
-    const nextOrder = await getNextSortOrder(
-      db,
-      schedules.sortOrder,
-      schedules,
-      eq(schedules.dayPatternId, parsed.data.dayPatternId),
-    );
+    const updated = await db.transaction(async (tx) => {
+      const nextOrder = await getNextSortOrder(
+        tx,
+        schedules.sortOrder,
+        schedules,
+        eq(schedules.dayPatternId, parsed.data.dayPatternId),
+        `schedule:pattern:${parsed.data.dayPatternId}`,
+      );
 
-    const [updated] = await db
-      .update(schedules)
-      .set({
-        dayPatternId: parsed.data.dayPatternId,
-        sortOrder: nextOrder,
-        updatedAt: new Date(),
-      })
-      .where(eq(schedules.id, scheduleId))
-      .returning();
+      const [row] = await tx
+        .update(schedules)
+        .set({
+          dayPatternId: parsed.data.dayPatternId,
+          sortOrder: nextOrder,
+          updatedAt: new Date(),
+        })
+        .where(eq(schedules.id, scheduleId))
+        .returning();
+
+      return row;
+    });
 
     logActivity({
       tripId,

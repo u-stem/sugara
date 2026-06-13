@@ -10,6 +10,13 @@
 //   - PATCH /articles/:id: 404 when article owned by different user
 //   - POST /bookmark-lists/:listId/bookmarks: 404 when list owned by different user
 
+import {
+  MAX_ARTICLES_PER_USER,
+  MAX_BOOKMARK_LISTS_PER_USER,
+  MAX_BOOKMARKS_PER_LIST,
+  MAX_EXPENSES_PER_TRIP,
+  MAX_SCHEDULES_PER_TRIP,
+} from "@sugara/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
@@ -415,6 +422,31 @@ describe("POST /trips/:tripId/days/:dayNumber/schedules", () => {
     // Assert
     expect(res.status).toBe(409);
     expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("trip_has_no_days");
+  });
+
+  it("includes schedule_limit_reached reason and details.max when the schedule limit is hit", async () => {
+    // Arrange — trip has a day with a default pattern, but the schedule count is
+    // already at the per-trip ceiling so the transaction returns null.
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripDays.findMany.mockResolvedValue([
+      { id: "day-1", dayNumber: 1, patterns: [{ id: "pattern-1" }] },
+    ]);
+    mockGetScheduleCount.mockResolvedValue(MAX_SCHEDULES_PER_TRIP);
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/1/schedules`, {
+      name: "Tokyo Tower",
+      category: "sightseeing",
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("schedule_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_SCHEDULES_PER_TRIP });
   });
 });
 
@@ -472,6 +504,62 @@ describe("POST /trips/:tripId/expenses", () => {
     expect(json).not.toContain('"userId"');
     expect(json).not.toContain('"paidByUserId"');
     expect(json).not.toContain('"ownerId"');
+  });
+
+  it("includes trip_has_no_days reason when the trip is in scheduling mode", async () => {
+    // Arrange — day count is zero (scheduling/poll mode)
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ dayCount: 0 }]),
+      }),
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/expenses`, {
+      title: "Dinner",
+      amount: 1000,
+      paidByMemberNo: 1,
+      splitType: "equal",
+      splits: [{ memberNo: 1 }],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("trip_has_no_days");
+  });
+
+  it("includes expense_limit_reached reason and details.max when the expense limit is hit", async () => {
+    // Arrange — service reports the per-trip expense ceiling
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ dayCount: 1 }]),
+      }),
+    });
+    mockDbQuery.tripMembers.findMany.mockResolvedValue(MEMBER_ROWS);
+    mockDbQuery.users.findFirst.mockResolvedValue({ name: "Alice" });
+    mockCreateExpenseCore.mockResolvedValue({ ok: false, error: "limit_reached" });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/expenses`, {
+      title: "Dinner",
+      amount: 1000,
+      paidByMemberNo: 1,
+      splitType: "equal",
+      splits: [{ memberNo: 1 }, { memberNo: 2 }],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("expense_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_EXPENSES_PER_TRIP });
   });
 
   it("returns 400 when paidByMemberNo does not match any trip member", async () => {
@@ -573,6 +661,82 @@ describe("POST /bookmark-lists/:listId/bookmarks", () => {
     // Assert
     expect(res.status).toBe(404);
     expect(body.error.code).toBe("not_found");
+  });
+
+  it("includes bookmark_limit_reached reason and details.max when the per-list limit is hit", async () => {
+    // Arrange — list is owned, but bookmark count is already at the ceiling
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["bookmarks:write"] });
+    mockVerifyListOwnership.mockResolvedValue({ id: LIST_ID, userId: USER_ID_1 });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ bCount: MAX_BOOKMARKS_PER_LIST }]),
+      }),
+    });
+
+    // Act
+    const res = await jsonPost(`/bookmark-lists/${LIST_ID}/bookmarks`, {
+      name: "My Place",
+      urls: [],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("bookmark_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_BOOKMARKS_PER_LIST });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /bookmark-lists — limit
+// ---------------------------------------------------------------------------
+
+describe("POST /bookmark-lists", () => {
+  it("includes bookmark_list_limit_reached reason and details.max when the account limit is hit", async () => {
+    // Arrange — list count is already at the per-account ceiling
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["bookmarks:write"] });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ listCount: MAX_BOOKMARK_LISTS_PER_USER }]),
+      }),
+    });
+
+    // Act
+    const res = await jsonPost("/bookmark-lists", { name: "Trips", visibility: "private" });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("bookmark_list_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_BOOKMARK_LISTS_PER_USER });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /articles — limit
+// ---------------------------------------------------------------------------
+
+describe("POST /articles", () => {
+  it("includes article_limit_reached reason and details.max when the account limit is hit", async () => {
+    // Arrange — article count is already at the per-account ceiling
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["articles:write"] });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ articleCount: MAX_ARTICLES_PER_USER }]),
+      }),
+    });
+
+    // Act
+    const res = await jsonPost("/articles", { title: "My Article" });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("article_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_ARTICLES_PER_USER });
   });
 });
 

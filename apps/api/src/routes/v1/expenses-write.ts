@@ -9,6 +9,7 @@
 //   request body  memberNo → userId  (before calling the service)
 //   response body userId  → memberNo (when serializing the result)
 
+import { MAX_EXPENSES_PER_TRIP } from "@sugara/shared";
 import { count, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
@@ -80,7 +81,8 @@ expensesWriteApp.post(
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
       409: {
-        description: "Trip in scheduling mode or expense limit reached",
+        description:
+          'Trip has no days (error.reason: "trip_has_no_days") or expense limit reached (error.reason: "expense_limit_reached", error.details.max)',
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
     },
@@ -101,6 +103,7 @@ expensesWriteApp.post(
           409,
           "conflict",
           "Trip has no days; finalize the trip dates before adding expenses",
+          { reason: "trip_has_no_days" },
         );
       }
 
@@ -183,7 +186,10 @@ expensesWriteApp.post(
               "exchangeRate is required when expense currency differs from trip currency",
             );
           case "limit_reached":
-            throw new ApiV1Error(409, "conflict", "Per-trip expense limit reached");
+            throw new ApiV1Error(409, "conflict", "Per-trip expense limit reached", {
+              reason: "expense_limit_reached",
+              details: { max: MAX_EXPENSES_PER_TRIP },
+            });
           case "payer_not_member":
             throw new ApiV1Error(400, "invalid_request", "paidByMemberNo is not a trip member");
           case "split_user_not_member":
