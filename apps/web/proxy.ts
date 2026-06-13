@@ -106,11 +106,15 @@ export async function proxy(request: NextRequest) {
     !isPublicArticlePath && protectedPaths.some((path) => pathname.startsWith(path));
   const isGuestOnly = guestOnlyPaths.includes(pathname);
 
-  if (!isProtected && !isGuestOnly) {
+  const passThrough = () => {
     const requestHeaders = new Headers(request.headers);
     requestHeaders.set("x-nonce", nonce);
     const response = NextResponse.next({ request: { headers: requestHeaders } });
     return applyCspHeaders(response, nonce);
+  };
+
+  if (!isProtected && !isGuestOnly) {
+    return passThrough();
   }
 
   const cookieHeader = request.headers.get("cookie") ?? "";
@@ -135,7 +139,22 @@ export async function proxy(request: NextRequest) {
       headers: sessionHeaders,
     });
 
-    const body = res.ok ? await res.json() : null;
+    // Only a 200 response is evidence about the session: get-session returns
+    // 200 with a null body for unauthenticated visitors. A non-OK response
+    // (429 rate limit, 5xx) proves nothing about the visitor, so fail open —
+    // treating it as "logged out" bounced legitimately authenticated users to
+    // /auth/login whenever the per-IP rate limit tripped (issue #162). Auth is
+    // actually enforced by requireAuth on every API route; the worst case of
+    // failing open is an anonymous visitor seeing an empty page shell whose
+    // API calls all return 401.
+    if (!res.ok) {
+      console.error(
+        `[Proxy] Session check unavailable (${pathname}, status ${res.status}); failing open`,
+      );
+      return passThrough();
+    }
+
+    const body = await res.json();
     const isAuthenticated = !!body?.session;
 
     if (isProtected && !isAuthenticated) {
@@ -146,21 +165,12 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL("/home", request.url));
     }
 
-    const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-nonce", nonce);
-    const response = NextResponse.next({ request: { headers: requestHeaders } });
-    return applyCspHeaders(response, nonce);
+    return passThrough();
   } catch (err) {
-    console.error("[Proxy] Session check failed:", err);
-    // Treat session check failure as unauthenticated for all routes that require auth.
-    // This includes both explicitly protected paths and any other path in the matcher.
-    if (isGuestOnly) {
-      const requestHeaders = new Headers(request.headers);
-      requestHeaders.set("x-nonce", nonce);
-      const response = NextResponse.next({ request: { headers: requestHeaders } });
-      return applyCspHeaders(response, nonce);
-    }
-    return NextResponse.redirect(new URL("/auth/login", request.url));
+    // Same reasoning as the non-OK branch: a network failure on the internal
+    // get-session fetch says nothing about the visitor's session.
+    console.error(`[Proxy] Session check failed (${pathname}); failing open:`, err);
+    return passThrough();
   }
 }
 
