@@ -13,6 +13,8 @@ import {
   moveScheduleToCandidate,
   removeCandidate,
   removeScheduleFromPattern,
+  reorderCandidates,
+  reorderSchedulesInPattern,
   toCandidateResponse,
   toScheduleResponse,
   updateCandidate,
@@ -364,5 +366,144 @@ describe("moveCandidateToSchedule", () => {
 
     expect(result.days[0].patterns[0].schedules[0].sortOrder).toBe(42);
     expect(result.days[0].patterns[0].schedules[0].updatedAt).toBe("new");
+  });
+});
+
+describe("reorderSchedulesInPattern", () => {
+  function tripWithSchedules(schedules: ScheduleResponse[]): TripResponse {
+    return makeTrip({ days: [makeDay({ patterns: [makePattern({ schedules })] })] });
+  }
+
+  it("reorders schedules to the given id order with sortOrder rewritten", () => {
+    const trip = tripWithSchedules([
+      makeSchedule({ id: "s1", sortOrder: 0 }),
+      makeSchedule({ id: "s2", sortOrder: 1 }),
+      makeSchedule({ id: "s3", sortOrder: 2 }),
+    ]);
+
+    const result = reorderSchedulesInPattern(trip, "d1", "p1", ["s1", "s3", "s2"]);
+
+    expect(result.days[0].patterns[0].schedules.map((s) => [s.id, s.sortOrder])).toEqual([
+      ["s1", 0],
+      ["s3", 1],
+      ["s2", 2],
+    ]);
+  });
+
+  it("applies an anchor update to the targeted schedule", () => {
+    const trip = tripWithSchedules([makeSchedule({ id: "s1" })]);
+
+    const result = reorderSchedulesInPattern(
+      trip,
+      "d1",
+      "p1",
+      ["s1"],
+      [{ scheduleId: "s1", anchor: "after", anchorSourceId: "hotel-1" }],
+    );
+
+    expect(result.days[0].patterns[0].schedules[0]).toMatchObject({
+      crossDayAnchor: "after",
+      crossDayAnchorSourceId: "hotel-1",
+    });
+  });
+
+  it("clears the anchor when the update carries nulls", () => {
+    const trip = tripWithSchedules([
+      makeSchedule({ id: "s1", crossDayAnchor: "after", crossDayAnchorSourceId: "hotel-1" }),
+    ]);
+
+    const result = reorderSchedulesInPattern(
+      trip,
+      "d1",
+      "p1",
+      ["s1"],
+      [{ scheduleId: "s1", anchor: null, anchorSourceId: null }],
+    );
+
+    expect(result.days[0].patterns[0].schedules[0]).toMatchObject({
+      crossDayAnchor: null,
+      crossDayAnchorSourceId: null,
+    });
+  });
+
+  it("keeps schedules missing from scheduleIds, ordered by their existing sortOrder", () => {
+    // A concurrent add from another client may have put a schedule in the
+    // cache that the reordering client didn't know about; it must survive.
+    const trip = tripWithSchedules([
+      makeSchedule({ id: "s1", sortOrder: 0 }),
+      makeSchedule({ id: "unknown", sortOrder: 1 }),
+      makeSchedule({ id: "s2", sortOrder: 2 }),
+    ]);
+
+    const result = reorderSchedulesInPattern(trip, "d1", "p1", ["s2", "s1"]);
+
+    expect(result.days[0].patterns[0].schedules.map((s) => s.id)).toEqual(["s2", "s1", "unknown"]);
+  });
+
+  it("returns the trip unchanged when the pattern is not found", () => {
+    const trip = tripWithSchedules([makeSchedule({ id: "s1" })]);
+
+    const result = reorderSchedulesInPattern(trip, "d1", "missing", ["s1"]);
+
+    expect(result).toBe(trip);
+  });
+
+  it("does not touch schedules in other patterns", () => {
+    const otherPattern = makePattern({
+      id: "p2",
+      schedules: [makeSchedule({ id: "x1", sortOrder: 9 })],
+    });
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          patterns: [makePattern({ schedules: [makeSchedule({ id: "s1" })] }), otherPattern],
+        }),
+      ],
+    });
+
+    const result = reorderSchedulesInPattern(trip, "d1", "p1", ["s1"]);
+
+    expect(result.days[0].patterns[1].schedules[0].sortOrder).toBe(9);
+  });
+});
+
+describe("reorderCandidates", () => {
+  it("reorders candidates to the given id order with sortOrder rewritten", () => {
+    const trip = makeTrip({
+      candidates: [
+        makeCandidate({ id: "c1", sortOrder: 0 }),
+        makeCandidate({ id: "c2", sortOrder: 1 }),
+      ],
+    });
+
+    const result = reorderCandidates(trip, ["c2", "c1"]);
+
+    expect(result.candidates.map((c) => [c.id, c.sortOrder])).toEqual([
+      ["c2", 0],
+      ["c1", 1],
+    ]);
+  });
+
+  it("preserves reaction fields on reordered candidates", () => {
+    const trip = makeTrip({
+      candidates: [makeCandidate({ id: "c1", likeCount: 3, myReaction: "like" })],
+    });
+
+    const result = reorderCandidates(trip, ["c1"]);
+
+    expect(result.candidates[0]).toMatchObject({ likeCount: 3, myReaction: "like" });
+  });
+
+  it("keeps candidates missing from scheduleIds", () => {
+    const trip = makeTrip({
+      candidates: [
+        makeCandidate({ id: "c1", sortOrder: 0 }),
+        makeCandidate({ id: "unknown", sortOrder: 1 }),
+      ],
+    });
+
+    const result = reorderCandidates(trip, ["c1"]);
+
+    expect(result.candidates.map((c) => c.id)).toEqual(["c1", "unknown"]);
   });
 });

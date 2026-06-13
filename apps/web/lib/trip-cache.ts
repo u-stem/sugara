@@ -138,6 +138,81 @@ export function removeScheduleFromPattern(
   };
 }
 
+export type ScheduleAnchorUpdate = {
+  scheduleId: string;
+  anchor: "before" | "after" | null;
+  anchorSourceId: string | null;
+};
+
+/**
+ * Apply a confirmed reorder (PATCH .../schedules/reorder) to the cached trip.
+ *
+ * Mirrors the server: schedules listed in `scheduleIds` get sortOrder = list
+ * index and `anchors` entries overwrite the targeted schedules' anchor
+ * fields; the pattern is then sorted by sortOrder like the trip GET. Cached
+ * schedules missing from `scheduleIds` (e.g. added concurrently by another
+ * member) keep their sortOrder and survive in that ordering.
+ *
+ * Written into the cache directly (instead of refetching) because a GET
+ * right after the mutation can return a stale read (#123); the reorder
+ * endpoint touches only sortOrder/anchor — not updatedAt — so the cached
+ * rows stay consistent for optimistic-concurrency checks.
+ */
+export function reorderSchedulesInPattern(
+  trip: TripResponse,
+  dayId: string,
+  patternId: string,
+  scheduleIds: string[],
+  anchors?: ScheduleAnchorUpdate[],
+): TripResponse {
+  const day = trip.days.find((d) => d.id === dayId);
+  if (!day) return trip;
+  const pattern = day.patterns.find((p) => p.id === patternId);
+  if (!pattern) return trip;
+
+  const indexById = new Map(scheduleIds.map((id, i) => [id, i]));
+  const anchorById = new Map((anchors ?? []).map((a) => [a.scheduleId, a]));
+
+  const reordered = pattern.schedules.map((s) => {
+    const index = indexById.get(s.id);
+    const anchor = anchorById.get(s.id);
+    if (index === undefined && anchor === undefined) return s;
+    return {
+      ...s,
+      sortOrder: index ?? s.sortOrder,
+      ...(anchor
+        ? { crossDayAnchor: anchor.anchor, crossDayAnchorSourceId: anchor.anchorSourceId }
+        : {}),
+    };
+  });
+  reordered.sort((a, b) => a.sortOrder - b.sortOrder);
+
+  return {
+    ...trip,
+    days: trip.days.map((d) =>
+      d.id !== dayId
+        ? d
+        : {
+            ...d,
+            patterns: d.patterns.map((p) =>
+              p.id !== patternId ? p : { ...p, schedules: reordered },
+            ),
+          },
+    ),
+  };
+}
+
+/** Apply a confirmed candidates reorder to the cached trip (see reorderSchedulesInPattern). */
+export function reorderCandidates(trip: TripResponse, scheduleIds: string[]): TripResponse {
+  const indexById = new Map(scheduleIds.map((id, i) => [id, i]));
+  const reordered = trip.candidates.map((c) => {
+    const index = indexById.get(c.id);
+    return index === undefined ? c : { ...c, sortOrder: index };
+  });
+  reordered.sort((a, b) => a.sortOrder - b.sortOrder);
+  return { ...trip, candidates: reordered };
+}
+
 // --- Candidate operations (trip.candidates) ---
 
 export function addCandidate(trip: TripResponse, candidate: CandidateResponse): TripResponse {

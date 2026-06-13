@@ -1,8 +1,14 @@
 "use client";
 
+import type { TripResponse } from "@sugara/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { queryKeys } from "@/lib/query-keys";
+import {
+  reorderCandidates,
+  reorderSchedulesInPattern,
+  type ScheduleAnchorUpdate,
+} from "@/lib/trip-cache";
 
 /**
  * Shared post-mutation callbacks for the trip detail pages (desktop / SP).
@@ -16,6 +22,13 @@ import { queryKeys } from "@/lib/query-keys";
  * IndexedDB snapshots) that clobbers the just-added schedule (#123), so this
  * variant skips the trip-detail invalidation and only broadcasts + refreshes
  * the activity logs.
+ *
+ * `onSchedulesReordered` / `onCandidatesReordered` apply the same principle
+ * to the reorder endpoints (#166): the client already knows the confirmed
+ * order, so it is written into the cache directly instead of refetched —
+ * an immediate GET after the PATCH can return a stale read that visually
+ * reverts the reorder. Reordering writes no activity log, so unlike
+ * `onScheduleAdded` there is nothing else to refresh.
  */
 export function useTripMutationCallbacks({
   tripId,
@@ -41,5 +54,51 @@ export function useTripMutationCallbacks({
     await queryClient.invalidateQueries({ queryKey: queryKeys.trips.activityLogs(tripId) });
   }, [broadcastChange, queryClient, tripId]);
 
-  return { onMutate, onScheduleAdded };
+  const onSchedulesReordered = useCallback(
+    async (args: {
+      dayId: string;
+      patternId: string;
+      scheduleIds: string[];
+      anchors: ScheduleAnchorUpdate[];
+    }) => {
+      const cacheKey = queryKeys.trips.detail(tripId);
+      // Stop any in-flight trip GET: it could resolve after setQueryData with
+      // a stale snapshot and overwrite the just-confirmed order (#123 / #166).
+      await queryClient.cancelQueries({ queryKey: cacheKey });
+      const prev = queryClient.getQueryData<TripResponse>(cacheKey);
+      if (prev) {
+        queryClient.setQueryData(
+          cacheKey,
+          reorderSchedulesInPattern(
+            prev,
+            args.dayId,
+            args.patternId,
+            args.scheduleIds,
+            args.anchors,
+          ),
+        );
+      } else {
+        await invalidateTrip();
+      }
+      broadcastChange();
+    },
+    [queryClient, tripId, invalidateTrip, broadcastChange],
+  );
+
+  const onCandidatesReordered = useCallback(
+    async (scheduleIds: string[]) => {
+      const cacheKey = queryKeys.trips.detail(tripId);
+      await queryClient.cancelQueries({ queryKey: cacheKey });
+      const prev = queryClient.getQueryData<TripResponse>(cacheKey);
+      if (prev) {
+        queryClient.setQueryData(cacheKey, reorderCandidates(prev, scheduleIds));
+      } else {
+        await invalidateTrip();
+      }
+      broadcastChange();
+    },
+    [queryClient, tripId, invalidateTrip, broadcastChange],
+  );
+
+  return { onMutate, onScheduleAdded, onSchedulesReordered, onCandidatesReordered };
 }

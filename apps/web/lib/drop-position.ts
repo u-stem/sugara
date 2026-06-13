@@ -266,6 +266,35 @@ function extractAnchor(
   return { anchor: null, anchorSourceId: null };
 }
 
+/**
+ * Normalize an optimistically reordered schedules array so the merged
+ * timeline renders it in the new order.
+ *
+ * `buildMergedTimeline` sorts schedules anchored to a crossDay entry by their
+ * `sortOrder` FIELD, not by array position. A bare `arrayMove` changes only
+ * the array order, so a reorder inside an anchored cluster was a visual no-op
+ * (the dragged card snapped straight back — issue #166). Rewriting sortOrder
+ * to the array index mirrors what the server's reorder endpoint persists, and
+ * writing the new anchor onto the active schedule makes anchor changes (e.g.
+ * dragging across the crossDay boundary) visible immediately as well.
+ */
+export function applyOptimisticReorder(
+  reordered: ScheduleResponse[],
+  activeId: string,
+  anchor: AnchorUpdate,
+): ScheduleResponse[] {
+  return reordered.map((s, i) =>
+    s.id === activeId
+      ? {
+          ...s,
+          sortOrder: i,
+          crossDayAnchor: anchor.anchor,
+          crossDayAnchorSourceId: anchor.anchorSourceId,
+        }
+      : { ...s, sortOrder: i },
+  );
+}
+
 function anchoredScheduleAnchor(item: TimelineItem | null): AnchorUpdate | null {
   if (item?.type !== "schedule") return null;
   const { crossDayAnchor, crossDayAnchorSourceId } = item.schedule;
