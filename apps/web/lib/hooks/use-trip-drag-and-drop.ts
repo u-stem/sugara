@@ -608,14 +608,22 @@ export function useTripDragAndDrop({
         anchorSourceId: targetItem.entry.schedule.id,
       };
     } else {
-      // Swap with a regular schedule: swap sortOrder and clear anchor so the
-      // explicit reorder wins over any prior pin.
-      const targetId = targetItem.schedule.id;
+      // Swap with a regular schedule. When the target is anchored, the step
+      // lands inside its anchored cluster — join it, mirroring the drag
+      // path's extractAnchor rule (a drop on an anchored schedule joins its
+      // cluster). Clearing the anchor here would eject the schedule from the
+      // cluster and let the time-based merge re-place it far from the
+      // intended one-step move. For an unanchored target, clear the anchor
+      // so the explicit reorder wins over any prior pin.
+      const target = targetItem.schedule;
       const scheduleIdx = current.findIndex((s) => s.id === id);
-      const targetIdx = current.findIndex((s) => s.id === targetId);
+      const targetIdx = current.findIndex((s) => s.id === target.id);
       if (scheduleIdx === -1 || targetIdx === -1) return;
       reordered = arrayMove(current, scheduleIdx, targetIdx);
-      anchor = { anchor: null, anchorSourceId: null };
+      anchor =
+        target.crossDayAnchor && target.crossDayAnchorSourceId
+          ? { anchor: target.crossDayAnchor, anchorSourceId: target.crossDayAnchorSourceId }
+          : { anchor: null, anchorSourceId: null };
     }
     // Rewrite sortOrder + the moved schedule's anchor so the merged timeline
     // reflects the step immediately (issue #166). The crossDay branch

@@ -724,6 +724,9 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
 describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
   afterEach(() => vi.clearAllMocks());
 
+  // Drops s1 onto s2's lower half: the over rect has height 0 and the
+  // activator PointerEvent has clientY 0, so isOverUpperHalf resolves false
+  // (0 < 0 fails) → insert below s2 → expected order ["s2", "s1"].
   function dragS1OverS2(result: { current: ReturnType<typeof useTripDragAndDrop> }): Promise<void> {
     act(() => {
       result.current.handleDragStart({
@@ -806,6 +809,65 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
 
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(onSchedulesReordered).not.toHaveBeenCalled();
+  });
+
+  it("routes a successful keyboard reorder to onSchedulesReordered, not onDone", async () => {
+    const onDone = vi.fn();
+    const onSchedulesReordered = vi.fn();
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone,
+        onSchedulesReordered,
+        onCandidatesReordered: vi.fn(),
+      }),
+    );
+
+    await act(() => result.current.reorderSchedule("s2", "up"));
+
+    expect(onSchedulesReordered).toHaveBeenCalledWith({
+      dayId: "day1",
+      patternId: "pattern1",
+      scheduleIds: ["s2", "s1"],
+      anchors: [{ scheduleId: "s2", anchor: null, anchorSourceId: null }],
+    });
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("keeps the cluster anchor when a keyboard step swaps with an anchored schedule", async () => {
+    // Stepping within an anchored cluster must join/stay in the cluster like
+    // the drag path does (extractAnchor: a drop on an anchored schedule joins
+    // its cluster). Clearing the anchor here ejected the schedule from the
+    // cluster and re-placed it by the time-based merge.
+    const anchorFields = { crossDayAnchor: "after" as const, crossDayAnchorSourceId: "h1" };
+    const t1 = { ...makeSchedule("t1"), ...anchorFields };
+    const t2 = { ...makeSchedule("t2"), ...anchorFields };
+    const onSchedulesReordered = vi.fn();
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [t1, t2],
+        candidates: [],
+        onDone: vi.fn(),
+        onSchedulesReordered,
+        onCandidatesReordered: vi.fn(),
+      }),
+    );
+
+    await act(() => result.current.reorderSchedule("t2", "up"));
+
+    expect(onSchedulesReordered).toHaveBeenCalledWith({
+      dayId: "day1",
+      patternId: "pattern1",
+      scheduleIds: ["t2", "t1"],
+      anchors: [{ scheduleId: "t2", anchor: "after", anchorSourceId: "h1" }],
+    });
   });
 
   it("routes a successful candidate reorder to onCandidatesReordered, not onDone", async () => {
