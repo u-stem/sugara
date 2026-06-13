@@ -97,6 +97,7 @@ articlesWriteApp.post(
         articles.sortOrder,
         articles,
         eq(articles.ownerId, userId),
+        `article:user:${userId}`,
       );
 
       const [created] = await tx

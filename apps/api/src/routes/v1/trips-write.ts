@@ -383,6 +383,7 @@ tripsWriteApp.post(
           schedules.sortOrder,
           schedules,
           eq(schedules.dayPatternId, patternId),
+          `schedule:pattern:${patternId}`,
         );
 
         const [result] = await tx
