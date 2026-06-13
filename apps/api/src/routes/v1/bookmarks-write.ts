@@ -70,7 +70,8 @@ bookmarksWriteApp.post(
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
       409: {
-        description: "Bookmark list limit reached",
+        description:
+          'Bookmark list limit reached (error.reason: "bookmark_list_limit_reached", error.details.max)',
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
     },
@@ -118,7 +119,10 @@ bookmarksWriteApp.post(
     });
 
     if (!list) {
-      throw new ApiV1Error(409, "conflict", "Bookmark list limit reached for this account");
+      throw new ApiV1Error(409, "conflict", "Bookmark list limit reached for this account", {
+        reason: "bookmark_list_limit_reached",
+        details: { max: MAX_BOOKMARK_LISTS_PER_USER },
+      });
     }
 
     return c.json(serializeListDto(list, 0), 201);
@@ -270,7 +274,8 @@ bookmarksWriteApp.post(
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
       409: {
-        description: "Bookmark limit reached for this list",
+        description:
+          'Bookmark limit reached for this list (error.reason: "bookmark_limit_reached", error.details.max)',
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
     },
@@ -330,7 +335,10 @@ bookmarksWriteApp.post(
     });
 
     if (!bookmark) {
-      throw new ApiV1Error(409, "conflict", "Bookmark limit reached for this list");
+      throw new ApiV1Error(409, "conflict", "Bookmark limit reached for this list", {
+        reason: "bookmark_limit_reached",
+        details: { max: MAX_BOOKMARKS_PER_LIST },
+      });
     }
 
     return c.json(serializeBookmarkDto(bookmark), 201);

@@ -36,8 +36,16 @@ export type ApiV1ErrorCode =
 // Fine-grained machine-readable reason carried alongside the coarse `code`.
 // The top-level `code` set is frozen for backward compatibility (consumers
 // branch on it), so new distinctions are expressed as an additive `reason`
-// instead of new top-level codes.
-export type ApiV1ErrorReason = "trip_limit_reached";
+// instead of new top-level codes. Every `*_limit_reached` reason ships a
+// `details: { max }` payload; `trip_has_no_days` carries no details.
+export type ApiV1ErrorReason =
+  | "trip_limit_reached"
+  | "schedule_limit_reached"
+  | "expense_limit_reached"
+  | "bookmark_list_limit_reached"
+  | "bookmark_limit_reached"
+  | "article_limit_reached"
+  | "trip_has_no_days";
 
 export type ApiV1ErrorOptions = {
   reason?: ApiV1ErrorReason;

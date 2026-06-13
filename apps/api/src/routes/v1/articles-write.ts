@@ -64,7 +64,8 @@ articlesWriteApp.post(
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
       409: {
-        description: "Article limit reached",
+        description:
+          'Article limit reached (error.reason: "article_limit_reached", error.details.max)',
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
     },
@@ -116,7 +117,10 @@ articlesWriteApp.post(
     });
 
     if (!article) {
-      throw new ApiV1Error(409, "conflict", "Article limit reached for this account");
+      throw new ApiV1Error(409, "conflict", "Article limit reached for this account", {
+        reason: "article_limit_reached",
+        details: { max: MAX_ARTICLES_PER_USER },
+      });
     }
 
     return c.json(serializeArticleDto(article, []), 201);
