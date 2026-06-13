@@ -307,6 +307,7 @@ pollRoutes.post("/:pollId/options", async (c) => {
       schedulePollOptions.sortOrder,
       schedulePollOptions,
       eq(schedulePollOptions.pollId, pollId),
+      `poll_option:poll:${pollId}`,
     );
 
     const [option] = await tx

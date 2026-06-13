@@ -102,6 +102,7 @@ bookmarksWriteApp.post(
         bookmarkLists.sortOrder,
         bookmarkLists,
         eq(bookmarkLists.userId, userId),
+        `bookmark_list:user:${userId}`,
       );
 
       const [created] = await tx
@@ -316,6 +317,7 @@ bookmarksWriteApp.post(
         bookmarks.sortOrder,
         bookmarks,
         eq(bookmarks.listId, listId),
+        `bookmark:list:${listId}`,
       );
 
       const [created] = await tx

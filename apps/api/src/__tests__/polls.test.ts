@@ -41,6 +41,9 @@ vi.mock("../db/index", () => ({
     select: (...args: unknown[]) => mockDbSelect(...args),
     insert: (...args: unknown[]) => mockDbInsert(...args),
     update: (...args: unknown[]) => mockDbUpdate(...args),
+    // No-op advisory-lock executor. polls.ts derives sort order via tx, so the
+    // tx proxy below is what actually runs it; kept here defensively.
+    execute: async () => undefined,
     // transaction delegates to the callback with a tx proxy so tests can
     // control every query/mutation inside the transaction boundary.
     transaction: (fn: (t: unknown) => unknown) =>
@@ -49,6 +52,7 @@ vi.mock("../db/index", () => ({
         insert: (...args: unknown[]) => mockDbInsert(...args),
         update: (...args: unknown[]) => mockDbUpdate(...args),
         select: (...args: unknown[]) => mockDbSelect(...args),
+        execute: async () => undefined,
       }),
   },
 }));
