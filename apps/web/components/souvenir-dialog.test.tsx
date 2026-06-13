@@ -18,7 +18,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   return { ...actual, api: mockApi };
 });
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("sonner");
 
 // Suppress the Radix responsive-dialog; only the form matters here.
 vi.mock("@/components/ui/responsive-dialog", () => ({

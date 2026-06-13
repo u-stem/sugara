@@ -1,11 +1,10 @@
 import type { CrossDayEntry, ScheduleResponse } from "@sugara/shared";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { SelectionProvider } from "@/lib/hooks/selection-context";
 import { MobileContext } from "@/lib/hooks/use-is-mobile";
-import { renderWithIntl } from "@/lib/test-utils";
+import { renderWithIntlAndQuery } from "@/lib/test-utils";
 import { DayTimeline } from "./day-timeline";
 
 // useSortable/useDroppable need no real DndContext here; dnd-kit returns no-op refs.
@@ -86,26 +85,23 @@ function renderTimeline({
   crossDayEntries?: CrossDayEntry[];
   selection?: ComponentProps<typeof SelectionProvider>["value"];
 }) {
-  const queryClient = new QueryClient();
-  return renderWithIntl(
-    <QueryClientProvider client={queryClient}>
-      <MobileContext.Provider value={true}>
-        <SelectionProvider value={selection}>
-          <DayTimeline
-            tripId="t1"
-            dayId="d1"
-            patternId="p1"
-            date="2026-06-11"
-            schedules={schedules}
-            crossDayEntries={crossDayEntries}
-            onRefresh={noop}
-            onScheduleAdded={noop}
-            onReorderSchedule={noop}
-            scheduleLimitReached
-          />
-        </SelectionProvider>
-      </MobileContext.Provider>
-    </QueryClientProvider>,
+  return renderWithIntlAndQuery(
+    <MobileContext.Provider value={true}>
+      <SelectionProvider value={selection}>
+        <DayTimeline
+          tripId="t1"
+          dayId="d1"
+          patternId="p1"
+          date="2026-06-11"
+          schedules={schedules}
+          crossDayEntries={crossDayEntries}
+          onRefresh={noop}
+          onScheduleAdded={noop}
+          onReorderSchedule={noop}
+          scheduleLimitReached
+        />
+      </SelectionProvider>
+    </MobileContext.Provider>,
   );
 }
 

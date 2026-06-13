@@ -1,9 +1,8 @@
 import type { TripResponse } from "@sugara/shared";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
+import { cleanup, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { renderWithIntlAndQuery } from "@/lib/test-utils";
 import messages from "@/messages/ja.json";
 
 const mockPush = vi.fn();
@@ -33,14 +32,7 @@ vi.mock("@/lib/api", () => ({
 import TripPrintPage from "../page";
 
 function renderWithQuery(ui: ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  return render(
-    <NextIntlClientProvider locale="ja" messages={messages}>
-      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
-    </NextIntlClientProvider>,
-  );
+  return renderWithIntlAndQuery(ui);
 }
 
 const tripFixture: TripResponse = {

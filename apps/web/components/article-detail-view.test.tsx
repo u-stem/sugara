@@ -41,7 +41,7 @@ vi.mock("@/lib/markdown", () => ({
   MarkdownRenderer: ({ content }: { content: string }) => <p>{content}</p>,
 }));
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("sonner");
 
 vi.mock("@/lib/hooks/use-article-like", () => ({
   useArticleLike: () => ({ toggleLike: mockToggleLike }),
@@ -64,30 +64,8 @@ vi.mock("@/components/article-editor-dialog", () => ({
 }));
 
 // Suppress Radix responsive-alert-dialog (not needed in this test).
-vi.mock("@/components/ui/responsive-alert-dialog", () => ({
-  ResponsiveAlertDialog: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogHeader: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogTitle: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogDescription: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-  ResponsiveAlertDialogFooter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogCancel: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogDestructiveAction: ({
-    children,
-    onClick,
-    disabled,
-  }: {
-    children: React.ReactNode;
-    onClick: () => void;
-    disabled: boolean;
-  }) => (
-    <button type="button" onClick={onClick} disabled={disabled}>
-      {children}
-    </button>
-  ),
-}));
+// The passthrough mock lives in components/ui/__mocks__/responsive-alert-dialog.tsx.
+vi.mock("@/components/ui/responsive-alert-dialog");
 
 import { ArticleDetailView } from "./article-detail-view";
 
