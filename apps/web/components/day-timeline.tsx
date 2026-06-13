@@ -252,6 +252,7 @@ export function DayTimeline({
             isFirst={isFirst}
             isLast={isLast}
             onDelete={() => handleDelete(s.id, sourceDayId, sourcePatternId)}
+            onSaved={onScheduleAdded}
             onUpdate={onRefresh}
             onUnassign={!disabled && !opts?.selectable ? () => handleUnassign(s.id) : undefined}
             disabled={disabled}
@@ -284,6 +285,7 @@ export function DayTimeline({
           isFirst={isFirst}
           isLast={isLast}
           onDelete={() => handleDelete(schedule.id)}
+          onSaved={onScheduleAdded}
           onUpdate={onRefresh}
           onUnassign={
             !disabled && !opts?.selectable ? () => handleUnassign(schedule.id) : undefined
