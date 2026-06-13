@@ -54,9 +54,12 @@ test.describe("Delete Account", () => {
     await assignUniqueClientIp(page, userCredentials.username);
     await deleteAccount(page);
 
-    // Re-login with same credentials should fail
+    // Re-login with same credentials should fail. Scope to the form so the
+    // assertion targets the login error alert specifically — an async
+    // announcement banner (also role="alert", rendered outside the form) can
+    // otherwise race in and make a bare getByRole("alert") match 2 elements.
     await loginUser(page, userCredentials.username);
-    await expect(page.getByRole("alert")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("form").getByRole("alert")).toBeVisible({ timeout: 5000 });
     await expect(page).toHaveURL(/\/auth\/login/);
   });
 
