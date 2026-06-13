@@ -69,6 +69,9 @@ export type ScheduleItemProps = {
   dayId: string;
   patternId: string;
   onDelete: () => void;
+  // Skip-refetch success path after an edit (cache reconciled in-place, #155).
+  onSaved: () => void;
+  // Refetch path: conflict/cache-evict recovery and post-batch-shift sync.
   onUpdate: () => void;
   onUnassign?: () => void;
   disabled?: boolean;
@@ -332,6 +335,7 @@ export function ScheduleItemDialogs({
   schedule,
   editOpen,
   onEditOpenChange,
+  onSaved,
   onUpdate,
   maxEndDayOffset,
   shift,
@@ -359,6 +363,9 @@ export function ScheduleItemDialogs({
   };
   editOpen: boolean;
   onEditOpenChange: (open: boolean) => void;
+  // Skip-refetch success path (cache already reconciled); see EditScheduleDialog.
+  onSaved: () => void;
+  // Refetch path: conflict/cache-evict recovery and post-batch-shift sync.
   onUpdate: () => void;
   maxEndDayOffset?: number;
   shift: ReturnType<typeof useShiftProposal>;
@@ -378,7 +385,8 @@ export function ScheduleItemDialogs({
         }}
         open={editOpen}
         onOpenChange={onEditOpenChange}
-        onUpdate={onUpdate}
+        onSaved={onSaved}
+        onConflict={onUpdate}
         maxEndDayOffset={maxEndDayOffset}
         onShiftProposal={shift.onShiftProposal}
         mapsEnabled={mapsEnabled}

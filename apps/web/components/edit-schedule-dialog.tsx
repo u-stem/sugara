@@ -37,7 +37,12 @@ type EditScheduleDialogProps = {
   schedule: ScheduleResponse;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdate: () => void;
+  // Called after the server-confirmed row is written back into the cache; the
+  // parent must then skip its refetch so a stale GET cannot clobber it (#155).
+  onSaved: () => void;
+  // Called when the cache is unavailable (evicted) or the write conflicts, so
+  // the parent should refetch to recover a consistent state.
+  onConflict: () => void;
   maxEndDayOffset?: number;
   onShiftProposal?: (timeDelta: TimeDelta) => void;
   mapsEnabled?: boolean;
@@ -50,7 +55,8 @@ export function EditScheduleDialog({
   schedule,
   open,
   onOpenChange,
-  onUpdate,
+  onSaved,
+  onConflict,
   maxEndDayOffset = 0,
   onShiftProposal,
   mapsEnabled = false,
@@ -168,14 +174,35 @@ export function EditScheduleDialog({
     toast.success(tm("scheduleUpdated"));
 
     try {
-      await api(
+      // Reconcile the cache with the server-confirmed row (fresh updatedAt for
+      // the next optimistic-lock check) and skip the refetch (#155). The
+      // optimistic write above gives instant feedback; this corrects it.
+      const updated = await api<Record<string, unknown>>(
         `/api/trips/${tripId}/days/${dayId}/patterns/${patternId}/schedules/${schedule.id}`,
         {
           method: "PATCH",
           body: JSON.stringify(data),
         },
       );
-      onUpdate();
+      const fresh = queryClient.getQueryData<TripResponse>(cacheKey);
+      if (fresh) {
+        queryClient.setQueryData(
+          cacheKey,
+          updateScheduleInPattern(
+            fresh,
+            dayId,
+            patternId,
+            schedule.id,
+            toScheduleResponse(updated),
+          ),
+        );
+        onSaved();
+      } else {
+        // The cache was evicted during the round-trip, so the server's fresh
+        // updatedAt isn't stored. Refetch to recover it; otherwise the next
+        // edit would send a stale expectedUpdatedAt and hit a spurious 409.
+        onConflict();
+      }
 
       const timeDelta = computeTimeDelta(schedule, {
         startTime: startTime || undefined,
@@ -189,7 +216,7 @@ export function EditScheduleDialog({
       if (prev) queryClient.setQueryData(cacheKey, prev);
       if (err instanceof ApiError && (err.status === 409 || err.status === 404)) {
         toast.error(err.status === 409 ? tm("conflict") : tm("conflictDeleted"));
-        onUpdate();
+        onConflict();
       } else {
         toast.error(tm("scheduleUpdateFailed"));
       }

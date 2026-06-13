@@ -47,6 +47,7 @@ export const TransportItem = memo(function TransportItem({
   dayId,
   patternId,
   onDelete,
+  onSaved,
   onUpdate,
   onUnassign,
   disabled,
@@ -271,6 +272,7 @@ export const TransportItem = memo(function TransportItem({
         }}
         editOpen={editOpen}
         onEditOpenChange={setEditOpen}
+        onSaved={onSaved}
         onUpdate={onUpdate}
         maxEndDayOffset={maxEndDayOffset}
         shift={shift}
