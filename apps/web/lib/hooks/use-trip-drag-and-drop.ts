@@ -24,6 +24,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ApiError, api } from "@/lib/api";
 import {
+  applyOptimisticReorder,
   computeCandidateDropResult,
   computeScheduleReorderResult,
   type DropTarget,
@@ -31,6 +32,7 @@ import {
   timelineEdge,
 } from "@/lib/drop-position";
 import { buildMergedTimeline, timelineSortableIds } from "@/lib/merge-timeline";
+import type { ScheduleAnchorUpdate } from "@/lib/trip-cache";
 
 type ActiveDragItem = {
   id: string;
@@ -51,8 +53,20 @@ type UseTripDragAndDropArgs = {
   // (typically `invalidateQueries`) so the schedules prop already reflects
   // the new server order by the time the local snapshot is released —
   // otherwise the list briefly snaps back to the pre-mutation order while
-  // the refetch is still in flight.
+  // the refetch is still in flight. Used by the move (assign/unassign)
+  // branches and by every error path as the resync mechanism.
   onDone: () => void | Promise<void>;
+  // Successful pure reorders skip the refetch entirely: the client already
+  // knows the confirmed order, and an immediate GET after the PATCH can
+  // return a stale read that visually reverts it (#166). These callbacks
+  // write the order into the trip cache directly (useTripMutationCallbacks).
+  onSchedulesReordered: (args: {
+    dayId: string;
+    patternId: string;
+    scheduleIds: string[];
+    anchors: ScheduleAnchorUpdate[];
+  }) => void | Promise<void>;
+  onCandidatesReordered: (scheduleIds: string[]) => void | Promise<void>;
 };
 
 // MouseSensor (not PointerSensor) so that touch input is handled exclusively
@@ -118,6 +132,8 @@ export function useTripDragAndDrop({
   candidates,
   crossDayEntries,
   onDone,
+  onSchedulesReordered,
+  onCandidatesReordered,
 }: UseTripDragAndDropArgs) {
   const tm = useTranslations("messages");
   const [activeDragItem, setActiveDragItem] = useState<ActiveDragItem | null>(null);
@@ -186,9 +202,12 @@ export function useTripDragAndDrop({
     setOverScheduleId(null);
     setOverCandidateId(null);
     setLastOverZone(null);
-    // Capture snapshot so optimistic updates have a stable baseline during drag
-    setLocalSchedules([...schedules]);
-    setLocalCandidates([...candidates]);
+    // Capture snapshot so optimistic updates have a stable baseline during
+    // drag. Base it on the current optimistic state, not the raw props: while
+    // a previous op is still awaiting its refetch, props hold the pre-mutation
+    // order, and snapshotting them would compute this drag against stale data.
+    setLocalSchedules([...currentSchedules]);
+    setLocalCandidates([...currentCandidates]);
   }
 
   // First sortable id of the merged timeline (crossDay entries included) —
@@ -315,28 +334,39 @@ export function useTripDragAndDrop({
           (activeSchedule.crossDayAnchorSourceId ?? null) !== anchor.anchorSourceId;
         if (destIndex === activeIdx && !anchorChanged) return;
 
-        const reordered = arrayMove(currentSchedules, activeIdx, destIndex);
+        // applyOptimisticReorder rewrites sortOrder (and the active schedule's
+        // anchor) so the merged timeline — which sorts anchored clusters by
+        // the sortOrder field, not array position — renders the new order
+        // immediately instead of snapping back (issue #166).
+        const reordered = applyOptimisticReorder(
+          arrayMove(currentSchedules, activeIdx, destIndex),
+          activeId,
+          anchor,
+        );
         setLocalSchedules(reordered);
 
         const scheduleIds = reordered.map((s) => s.id);
+        const anchors = [
+          {
+            scheduleId: activeId,
+            anchor: anchor.anchor,
+            anchorSourceId: anchor.anchorSourceId,
+          },
+        ];
         try {
           await api(
             `/api/trips/${tripId}/days/${currentDayId}/patterns/${currentPatternId}/schedules/reorder`,
             {
               method: "PATCH",
-              body: JSON.stringify({
-                scheduleIds,
-                anchors: [
-                  {
-                    scheduleId: activeId,
-                    anchor: anchor.anchor,
-                    anchorSourceId: anchor.anchorSourceId,
-                  },
-                ],
-              }),
+              body: JSON.stringify({ scheduleIds, anchors }),
             },
           );
-          await onDone();
+          await onSchedulesReordered({
+            dayId: currentDayId,
+            patternId: currentPatternId,
+            scheduleIds,
+            anchors,
+          });
         } catch (err) {
           if (err instanceof ApiError && (err.status === 400 || err.status === 404)) {
             toast.error(tm("conflictStale"));
@@ -448,7 +478,7 @@ export function useTripDragAndDrop({
 
         const insertedSchedules = [...currentSchedules];
         insertedSchedules.splice(insertIdx, 0, newSchedule);
-        setLocalSchedules(insertedSchedules);
+        setLocalSchedules(applyOptimisticReorder(insertedSchedules, String(active.id), anchor));
         toast.success(tm("candidateAssigned"));
 
         try {
@@ -526,7 +556,7 @@ export function useTripDragAndDrop({
             method: "PATCH",
             body: JSON.stringify({ scheduleIds }),
           });
-          await onDone();
+          await onCandidatesReordered(scheduleIds);
         } catch (err) {
           if (err instanceof ApiError && (err.status === 400 || err.status === 404)) {
             toast.error(tm("conflictStale"));
@@ -571,8 +601,8 @@ export function useTripDragAndDrop({
     if (targetItem.type === "crossDay") {
       // Swap target is a crossDay — can't swap sortOrder (crossDay isn't in
       // this day's schedules). Express "one step past crossDay" as an
-      // anchor: before when moving up, after when moving down. sortOrder is
-      // unchanged — the rendered position shifts via the anchor.
+      // anchor: before when moving up, after when moving down. The array
+      // order is unchanged — the rendered position shifts via the anchor.
       anchor = {
         anchor: direction === "up" ? "before" : "after",
         anchorSourceId: targetItem.entry.schedule.id,
@@ -585,22 +615,31 @@ export function useTripDragAndDrop({
       const targetIdx = current.findIndex((s) => s.id === targetId);
       if (scheduleIdx === -1 || targetIdx === -1) return;
       reordered = arrayMove(current, scheduleIdx, targetIdx);
-      setLocalSchedules(reordered);
       anchor = { anchor: null, anchorSourceId: null };
     }
+    // Rewrite sortOrder + the moved schedule's anchor so the merged timeline
+    // reflects the step immediately (issue #166). The crossDay branch
+    // previously had no optimistic update at all — the anchor flip only
+    // became visible after the refetch.
+    reordered = applyOptimisticReorder(reordered, id, anchor);
+    setLocalSchedules(reordered);
 
+    const scheduleIds = reordered.map((s) => s.id);
+    const anchors = [{ scheduleId: id, ...anchor }];
     try {
       await api(
         `/api/trips/${tripId}/days/${currentDayId}/patterns/${currentPatternId}/schedules/reorder`,
         {
           method: "PATCH",
-          body: JSON.stringify({
-            scheduleIds: reordered.map((s) => s.id),
-            anchors: [{ scheduleId: id, ...anchor }],
-          }),
+          body: JSON.stringify({ scheduleIds, anchors }),
         },
       );
-      await onDone();
+      await onSchedulesReordered({
+        dayId: currentDayId,
+        patternId: currentPatternId,
+        scheduleIds,
+        anchors,
+      });
     } catch (err) {
       if (err instanceof ApiError && (err.status === 400 || err.status === 404)) {
         toast.error(tm("conflictStale"));
@@ -626,12 +665,13 @@ export function useTripDragAndDrop({
     const reordered = arrayMove(current, idx, newIdx);
     setLocalCandidates(reordered);
 
+    const scheduleIds = reordered.map((c) => c.id);
     try {
       await api(`/api/trips/${tripId}/candidates/reorder`, {
         method: "PATCH",
-        body: JSON.stringify({ scheduleIds: reordered.map((c) => c.id) }),
+        body: JSON.stringify({ scheduleIds }),
       });
-      await onDone();
+      await onCandidatesReordered(scheduleIds);
     } catch (err) {
       if (err instanceof ApiError && (err.status === 400 || err.status === 404)) {
         toast.error(tm("conflictStale"));

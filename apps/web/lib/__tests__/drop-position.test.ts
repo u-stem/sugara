@@ -1,6 +1,8 @@
+import { arrayMove } from "@dnd-kit/sortable";
 import type { CrossDayEntry, ScheduleResponse } from "@sugara/shared";
 import { describe, expect, it } from "vitest";
 import {
+  applyOptimisticReorder,
   computeCandidateDropResult,
   computeCandidateInsertIndex,
   computeScheduleReorderIndex,
@@ -10,6 +12,7 @@ import {
   isOverUpperHalf,
   timelineEdge,
 } from "../drop-position";
+import { buildMergedTimeline } from "../merge-timeline";
 
 function makeSchedule(overrides: Partial<ScheduleResponse> = {}): ScheduleResponse {
   return {
@@ -620,5 +623,103 @@ describe("indicatorGapIndex", () => {
 
   it("returns null when overId is not in the list", () => {
     expect(indicatorGapIndex(ids, "missing", true)).toBeNull();
+  });
+});
+
+describe("applyOptimisticReorder", () => {
+  function anchoredAfterHotel(overrides: Partial<ScheduleResponse>): ScheduleResponse {
+    return makeSchedule({
+      crossDayAnchor: "after",
+      crossDayAnchorSourceId: "hotel-1",
+      ...overrides,
+    });
+  }
+
+  const keepAnchor = { anchor: "after" as const, anchorSourceId: "hotel-1" };
+
+  it("rewrites sortOrder to the array index for every schedule", () => {
+    const reordered = [
+      makeSchedule({ id: "s1", sortOrder: 2 }),
+      makeSchedule({ id: "s2", sortOrder: 0 }),
+      makeSchedule({ id: "s3", sortOrder: 1 }),
+    ];
+
+    const result = applyOptimisticReorder(reordered, "s1", {
+      anchor: null,
+      anchorSourceId: null,
+    });
+
+    expect(result.map((s) => s.sortOrder)).toEqual([0, 1, 2]);
+  });
+
+  it("writes the new anchor onto the active schedule", () => {
+    const reordered = [makeSchedule({ id: "s1" }), makeSchedule({ id: "s2" })];
+
+    const result = applyOptimisticReorder(reordered, "s2", keepAnchor);
+
+    expect(result[1]).toMatchObject({
+      crossDayAnchor: "after",
+      crossDayAnchorSourceId: "hotel-1",
+    });
+  });
+
+  it("clears the active schedule's anchor when the update is null", () => {
+    const reordered = [anchoredAfterHotel({ id: "s1" })];
+
+    const result = applyOptimisticReorder(reordered, "s1", {
+      anchor: null,
+      anchorSourceId: null,
+    });
+
+    expect(result[0]).toMatchObject({ crossDayAnchor: null, crossDayAnchorSourceId: null });
+  });
+
+  it("leaves other schedules' anchors untouched", () => {
+    const reordered = [
+      anchoredAfterHotel({ id: "s1", sortOrder: 1 }),
+      makeSchedule({ id: "s2", sortOrder: 0 }),
+    ];
+
+    const result = applyOptimisticReorder(reordered, "s2", {
+      anchor: null,
+      anchorSourceId: null,
+    });
+
+    expect(result[0]).toMatchObject({
+      crossDayAnchor: "after",
+      crossDayAnchorSourceId: "hotel-1",
+    });
+  });
+
+  it("does not mutate the input array or its schedules", () => {
+    const original = makeSchedule({ id: "s1", sortOrder: 5 });
+    const reordered = [original];
+
+    applyOptimisticReorder(reordered, "s1", keepAnchor);
+
+    expect(original.sortOrder).toBe(5);
+  });
+
+  it("makes a swap inside an anchored-after cluster visible in the merged timeline (issue #166)", () => {
+    // Day-2 layout from the report: breakfast, [staying hotel], two transit
+    // schedules anchored "after" the hotel. The cluster renders by sortOrder,
+    // so a bare arrayMove (array order changes, sortOrder values don't) is a
+    // visual no-op — the dragged card snaps straight back.
+    const schedules = [
+      makeSchedule({ id: "b", name: "朝食", sortOrder: 0, startTime: "07:00" }),
+      anchoredAfterHotel({ id: "t1", sortOrder: 1, startTime: "08:25" }),
+      anchoredAfterHotel({ id: "t2", sortOrder: 2, startTime: "08:36" }),
+    ];
+    const crossDayEntries = [
+      makeCrossDayEntry({ id: "hotel-1", startTime: "15:00", endTime: "10:00" }),
+    ];
+
+    // Drag t2 above t1 (destIndex 1, activeIdx 2), keeping the same anchor.
+    const optimistic = applyOptimisticReorder(arrayMove(schedules, 2, 1), "t2", keepAnchor);
+
+    const displayedIds = buildMergedTimeline(optimistic, crossDayEntries).map((item) =>
+      item.type === "crossDay" ? `cross-${item.entry.schedule.id}` : item.schedule.id,
+    );
+    expect(displayedIds).toEqual(["b", "cross-hotel-1", "t2", "t1"]);
   });
 });

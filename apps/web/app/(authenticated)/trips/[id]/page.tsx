@@ -531,12 +531,13 @@ export default function TripDetailPage() {
   const { reactions, sendReaction, removeReaction, cooldown } = useReaction(channel, reactionUser);
 
   // Mutation callbacks: refetch + broadcast to other clients (see hook for
-  // why schedule adds skip the refetch, #123)
-  const { onMutate, onScheduleAdded } = useTripMutationCallbacks({
-    tripId,
-    invalidateTrip,
-    broadcastChange,
-  });
+  // why schedule adds and reorders skip the refetch, #123 / #166)
+  const { onMutate, onScheduleAdded, onSchedulesReordered, onCandidatesReordered } =
+    useTripMutationCallbacks({
+      tripId,
+      invalidateTrip,
+      broadcastChange,
+    });
 
   const handleSaveToBookmark = useCallback((scheduleIds: string[]) => {
     setSaveToBookmarkIds(scheduleIds);
@@ -618,6 +619,8 @@ export default function TripDetailPage() {
     candidates: dndCandidates,
     crossDayEntries: dndCrossDayEntries,
     onDone: onMutate,
+    onSchedulesReordered,
+    onCandidatesReordered,
   });
 
   const patternOps = usePatternOperations({

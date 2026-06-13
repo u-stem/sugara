@@ -4,10 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // --- Mocks ---
 
 const mockInvalidateQueries = vi.fn();
+const mockCancelQueries = vi.fn();
+const mockGetQueryData = vi.fn();
+const mockSetQueryData = vi.fn();
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
     invalidateQueries: mockInvalidateQueries,
+    cancelQueries: mockCancelQueries,
+    getQueryData: mockGetQueryData,
+    setQueryData: mockSetQueryData,
   }),
 }));
 
@@ -93,6 +99,130 @@ describe("useTripMutationCallbacks", () => {
 
     expect(mockInvalidateQueries).toHaveBeenCalledWith({
       queryKey: ["trips", "t1", "activity-logs"],
+    });
+  });
+
+  // The reorder endpoints return no body, but the client already knows the
+  // confirmed order — write it into the cache instead of refetching, because
+  // an immediate GET can return a stale read that reverts the reorder (#166,
+  // same mechanism as #123).
+  describe("onSchedulesReordered", () => {
+    const cachedTrip = {
+      id: "t1",
+      candidates: [],
+      days: [
+        {
+          id: "d1",
+          patterns: [
+            {
+              id: "p1",
+              schedules: [
+                { id: "s1", sortOrder: 0 },
+                { id: "s2", sortOrder: 1 },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const args = {
+      dayId: "d1",
+      patternId: "p1",
+      scheduleIds: ["s2", "s1"],
+      anchors: [],
+    };
+
+    it("writes the confirmed order into the trip detail cache", async () => {
+      mockGetQueryData.mockReturnValue(cachedTrip);
+      const { result } = setup();
+
+      await act(() => result.current.onSchedulesReordered(args));
+
+      const written = mockSetQueryData.mock.calls[0];
+      expect(written[0]).toEqual(["trips", "t1"]);
+      expect(written[1].days[0].patterns[0].schedules.map((s: { id: string }) => s.id)).toEqual([
+        "s2",
+        "s1",
+      ]);
+    });
+
+    it("cancels in-flight trip queries before writing", async () => {
+      mockGetQueryData.mockReturnValue(cachedTrip);
+      const { result } = setup();
+
+      await act(() => result.current.onSchedulesReordered(args));
+
+      expect(mockCancelQueries).toHaveBeenCalledWith({ queryKey: ["trips", "t1"] });
+    });
+
+    it("does not refetch the trip detail when the cache holds the trip", async () => {
+      mockGetQueryData.mockReturnValue(cachedTrip);
+      const { result } = setup();
+
+      await act(() => result.current.onSchedulesReordered(args));
+
+      expect(invalidateTrip).not.toHaveBeenCalled();
+    });
+
+    it("broadcasts the change to other clients", async () => {
+      mockGetQueryData.mockReturnValue(cachedTrip);
+      const { result } = setup();
+
+      await act(() => result.current.onSchedulesReordered(args));
+
+      expect(broadcastChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to a refetch when the cache has no trip", async () => {
+      mockGetQueryData.mockReturnValue(undefined);
+      const { result } = setup();
+
+      await act(() => result.current.onSchedulesReordered(args));
+
+      expect(invalidateTrip).toHaveBeenCalledTimes(1);
+      expect(mockSetQueryData).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("onCandidatesReordered", () => {
+    const cachedTrip = {
+      id: "t1",
+      days: [],
+      candidates: [
+        { id: "c1", sortOrder: 0 },
+        { id: "c2", sortOrder: 1 },
+      ],
+    };
+
+    it("writes the confirmed candidate order into the cache", async () => {
+      mockGetQueryData.mockReturnValue(cachedTrip);
+      const { result } = setup();
+
+      await act(() => result.current.onCandidatesReordered(["c2", "c1"]));
+
+      const written = mockSetQueryData.mock.calls[0];
+      expect(written[0]).toEqual(["trips", "t1"]);
+      expect(written[1].candidates.map((c: { id: string }) => c.id)).toEqual(["c2", "c1"]);
+    });
+
+    it("broadcasts the change to other clients", async () => {
+      mockGetQueryData.mockReturnValue(cachedTrip);
+      const { result } = setup();
+
+      await act(() => result.current.onCandidatesReordered(["c2", "c1"]));
+
+      expect(broadcastChange).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to a refetch when the cache has no trip", async () => {
+      mockGetQueryData.mockReturnValue(undefined);
+      const { result } = setup();
+
+      await act(() => result.current.onCandidatesReordered(["c2", "c1"]));
+
+      expect(invalidateTrip).toHaveBeenCalledTimes(1);
+      expect(mockSetQueryData).not.toHaveBeenCalled();
     });
   });
 });

@@ -92,6 +92,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
           schedules,
           candidates: [],
           onDone: vi.fn(),
+          onSchedulesReordered: vi.fn(),
+          onCandidatesReordered: vi.fn(),
         }),
       { initialProps: { schedules: [s1, s2] } },
     );
@@ -113,6 +115,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
           schedules,
           candidates: [],
           onDone: vi.fn(),
+          onSchedulesReordered: vi.fn(),
+          onCandidatesReordered: vi.fn(),
         }),
       { initialProps: { schedules: [s1, s2] } },
     );
@@ -167,6 +171,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         schedules: [s1, s2],
         candidates: [],
         onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -215,6 +221,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         schedules: [s1, s2],
         candidates: [],
         onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -284,6 +292,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         schedules: [s1, s2],
         candidates: [],
         onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -334,6 +344,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         schedules: [s1, s2],
         candidates: [],
         onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -399,6 +411,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         schedules: [s1, s2],
         candidates: [],
         onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -466,6 +480,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         schedules: [s1, s2],
         candidates: [],
         onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -521,13 +537,14 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
     expect(result.current.overScheduleId).toBe("s2");
   });
 
-  it("does not snap back to old order while onDone (refetch) is pending after reorderSchedule", async () => {
-    // onDone returns a pending promise — simulates an in-flight refetch.
-    let resolveOnDone: (() => void) | undefined;
-    const onDone = vi.fn(
+  it("does not snap back to old order while the cache write is pending after reorderSchedule", async () => {
+    // onSchedulesReordered returns a pending promise — simulates the cache
+    // write (or its invalidate fallback) still being in flight.
+    let resolveReordered: (() => void) | undefined;
+    const onSchedulesReordered = vi.fn(
       () =>
         new Promise<void>((res) => {
-          resolveOnDone = res;
+          resolveReordered = res;
         }),
     );
 
@@ -538,7 +555,9 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         currentPatternId: "pattern1",
         schedules: [s1, s2],
         candidates: [],
-        onDone,
+        onDone: vi.fn(),
+        onSchedulesReordered,
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -548,23 +567,23 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
     });
 
     // Flush microtasks so the optimistic setLocalSchedules and the awaited
-    // api() both settle. `onDone` is still pending.
+    // api() both settle. `onSchedulesReordered` is still pending.
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    // Bug repro: while the refetch driven by onDone is pending, the schedules
-    // prop has not been updated yet. If finally runs before onDone resolves,
+    // Bug repro: while the post-mutation callback is pending, the schedules
+    // prop has not been updated yet. If finally runs before it resolves,
     // localSchedules falls back to the stale prop (= old order [s1, s2]),
-    // causing a brief snap-back before the refetch completes.
-    // The onDone-was-called assertion guards against a degenerate fix where
-    // the test passes only because onDone never ran.
-    expect(onDone).toHaveBeenCalledTimes(1);
+    // causing a brief snap-back before the cache reflects the new order.
+    // The was-called assertion guards against a degenerate fix where the
+    // test passes only because the callback never ran.
+    expect(onSchedulesReordered).toHaveBeenCalledTimes(1);
     expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
 
     await act(async () => {
-      resolveOnDone?.();
+      resolveReordered?.();
       await pending;
     });
   });
@@ -587,6 +606,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         schedules: [s1, s2, s3],
         candidates: [],
         onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -627,6 +648,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         schedules: [],
         candidates: [c1, c2, c3],
         onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -658,6 +681,8 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         schedules: [s1, s2],
         candidates: [],
         onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
       }),
     );
 
@@ -693,5 +718,117 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
 
     // After API resolves, finally resets local state to null → falls back to schedules prop
     expect(result.current.localSchedules).toStrictEqual([s1, s2]);
+  });
+});
+
+describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  function dragS1OverS2(result: { current: ReturnType<typeof useTripDragAndDrop> }): Promise<void> {
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    return act(() =>
+      result.current.handleDragEnd({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]),
+    );
+  }
+
+  it("routes a successful schedule reorder to onSchedulesReordered, not onDone", async () => {
+    // The success path must write the confirmed order into the cache instead
+    // of refetching: an immediate GET can return a stale read that visually
+    // reverts the reorder (#166).
+    const onDone = vi.fn();
+    const onSchedulesReordered = vi.fn();
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone,
+        onSchedulesReordered,
+        onCandidatesReordered: vi.fn(),
+      }),
+    );
+
+    await dragS1OverS2(result);
+
+    expect(onSchedulesReordered).toHaveBeenCalledWith({
+      dayId: "day1",
+      patternId: "pattern1",
+      scheduleIds: ["s2", "s1"],
+      anchors: [{ scheduleId: "s1", anchor: null, anchorSourceId: null }],
+    });
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("falls back to onDone (refetch resync) when the reorder API fails", async () => {
+    vi.mocked(api).mockRejectedValueOnce(new Error("network"));
+    const onDone = vi.fn();
+    const onSchedulesReordered = vi.fn();
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone,
+        onSchedulesReordered,
+        onCandidatesReordered: vi.fn(),
+      }),
+    );
+
+    await dragS1OverS2(result);
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onSchedulesReordered).not.toHaveBeenCalled();
+  });
+
+  it("routes a successful candidate reorder to onCandidatesReordered, not onDone", async () => {
+    const onDone = vi.fn();
+    const onCandidatesReordered = vi.fn();
+    const c1 = makeCandidate("c1");
+    const c2 = makeCandidate("c2");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [],
+        candidates: [c1, c2],
+        onDone,
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered,
+      }),
+    );
+
+    await act(() => result.current.reorderCandidate("c2", "up"));
+
+    expect(onCandidatesReordered).toHaveBeenCalledWith(["c2", "c1"]);
+    expect(onDone).not.toHaveBeenCalled();
   });
 });
