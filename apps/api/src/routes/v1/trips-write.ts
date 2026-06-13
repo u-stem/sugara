@@ -310,7 +310,8 @@ tripsWriteApp.post(
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
       409: {
-        description: "Trip has no days (scheduling mode) or schedule limit reached",
+        description:
+          'Trip has no days (error.reason: "trip_has_no_days") or schedule limit reached (error.reason: "schedule_limit_reached", error.details.max)',
         content: { "application/json": { schema: resolver(errorResponseSchema) } },
       },
     },
@@ -350,6 +351,7 @@ tripsWriteApp.post(
           409,
           "conflict",
           "Trip has no days; create days before adding schedules",
+          { reason: "trip_has_no_days" },
         );
       }
 
@@ -399,7 +401,10 @@ tripsWriteApp.post(
       });
 
       if (!schedule) {
-        throw new ApiV1Error(409, "conflict", "Per-trip schedule limit reached");
+        throw new ApiV1Error(409, "conflict", "Per-trip schedule limit reached", {
+          reason: "schedule_limit_reached",
+          details: { max: MAX_SCHEDULES_PER_TRIP },
+        });
       }
 
       logActivity({

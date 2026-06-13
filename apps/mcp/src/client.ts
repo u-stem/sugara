@@ -14,6 +14,22 @@ const v1ErrorBodySchema = z.object({
 
 const limitDetailsSchema = z.object({ max: z.number() });
 
+// Localized messages for the v1 API's fine-grained `error.reason` codes. Limit
+// reasons carry `details: { max }` and use a builder; non-limit reasons map to a
+// static message. Keep in sync with ApiV1ErrorReason (apps/api/src/lib/external-api/errors.ts).
+const LIMIT_REASON_MESSAGES: Record<string, (max: number) => string> = {
+  trip_limit_reached: (max) => `旅行の作成上限（${max}件）に達しました`,
+  schedule_limit_reached: (max) => `予定・候補の上限（1旅行あたり${max}件）に達しました`,
+  expense_limit_reached: (max) => `費用の上限（1旅行あたり${max}件）に達しました`,
+  bookmark_list_limit_reached: (max) => `ブックマークリストの上限（${max}件）に達しました`,
+  bookmark_limit_reached: (max) => `ブックマークの上限（1リストあたり${max}件）に達しました`,
+  article_limit_reached: (max) => `記事の作成上限（${max}件）に達しました`,
+};
+
+const REASON_MESSAGES: Record<string, string> = {
+  trip_has_no_days: "この旅行にはまだ日程がありません。先に日程を作成してください",
+};
+
 type V1ErrorCode =
   | "unauthorized"
   | "insufficient_scope"
@@ -55,10 +71,17 @@ async function buildApiError(response: Response): Promise<Error> {
   const parsed = v1ErrorBodySchema.safeParse(body);
   if (parsed.success) {
     const { code, reason, details } = parsed.data.error;
-    if (reason === "trip_limit_reached") {
-      const limit = limitDetailsSchema.safeParse(details);
-      if (limit.success) {
-        return new Error(`旅行の作成上限（${limit.data.max}件）に達しました`);
+    if (reason !== undefined) {
+      const limitMessage = LIMIT_REASON_MESSAGES[reason];
+      if (limitMessage) {
+        const limit = limitDetailsSchema.safeParse(details);
+        if (limit.success) {
+          return new Error(limitMessage(limit.data.max));
+        }
+      }
+      const reasonMessage = REASON_MESSAGES[reason];
+      if (reasonMessage) {
+        return new Error(reasonMessage);
       }
     }
     const message = isV1ErrorCode(code)

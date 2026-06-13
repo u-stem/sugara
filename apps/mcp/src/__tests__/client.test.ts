@@ -212,6 +212,199 @@ describe("ApiClient", () => {
       expect(errorMessage).toContain("10");
     });
 
+    it("includes the schedule limit value when reason is schedule_limit_reached", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          {
+            error: {
+              code: "conflict",
+              reason: "schedule_limit_reached",
+              message: "Per-trip schedule limit reached",
+              details: { max: 300 },
+            },
+          },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createSchedule("trip-1", 1, { name: "Tokyo Tower" });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("300");
+      expect(errorMessage).toContain("予定");
+    });
+
+    it("includes the expense limit value when reason is expense_limit_reached", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          {
+            error: {
+              code: "conflict",
+              reason: "expense_limit_reached",
+              message: "Per-trip expense limit reached",
+              details: { max: 200 },
+            },
+          },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createExpense("trip-1", { title: "Dinner", amount: 1000 });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("200");
+      expect(errorMessage).toContain("費用");
+    });
+
+    it("includes the bookmark-list limit value when reason is bookmark_list_limit_reached", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          {
+            error: {
+              code: "conflict",
+              reason: "bookmark_list_limit_reached",
+              message: "Bookmark list limit reached",
+              details: { max: 5 },
+            },
+          },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createBookmarkList({ name: "Trips" });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("5");
+      expect(errorMessage).toContain("リスト");
+    });
+
+    it("includes the bookmark limit value when reason is bookmark_limit_reached", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          {
+            error: {
+              code: "conflict",
+              reason: "bookmark_limit_reached",
+              message: "Bookmark limit reached",
+              details: { max: 20 },
+            },
+          },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createBookmark("list-1", { name: "Place", urls: [] });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("20");
+      expect(errorMessage).toContain("ブックマーク");
+    });
+
+    it("includes the article limit value when reason is article_limit_reached", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          {
+            error: {
+              code: "conflict",
+              reason: "article_limit_reached",
+              message: "Article limit reached",
+              details: { max: 50 },
+            },
+          },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createArticle({ title: "My Article" });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("50");
+      expect(errorMessage).toContain("記事");
+    });
+
+    it("maps the trip_has_no_days reason to a Japanese message", async () => {
+      // Arrange — non-limit reason, no details
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          {
+            error: {
+              code: "conflict",
+              reason: "trip_has_no_days",
+              message: "Trip has no days",
+            },
+          },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createSchedule("trip-1", 1, { name: "Tokyo Tower" });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("日程");
+    });
+
+    it("falls back to the generic conflict message when an unknown reason is returned", async () => {
+      // Arrange — a reason the client does not recognize maps to the code-level message
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          { error: { code: "conflict", reason: "some_future_reason", message: "x" } },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createTrip({ title: "Test", startDate: "2025-01-01", endDate: "2025-01-03" });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("競合");
+    });
+
     it("falls back to the generic conflict message when details.max is absent", async () => {
       // Arrange
       mockFetch.mockResolvedValue(
