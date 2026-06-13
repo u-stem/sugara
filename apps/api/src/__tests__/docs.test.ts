@@ -51,9 +51,11 @@ const GUEST_SESSION = {
   session: { id: "session-2" },
 };
 
-// The 7 v1 endpoint paths that must appear in the generated spec.
+// Representative v1 endpoint paths that must appear in the generated spec.
 // Paths are relative to the v1App mount (server url /api/v1).
 // hono-openapi converts Hono's :param notation to OpenAPI {param} notation.
+// The candidate/souvenir paths confirm the newer routes are picked up by
+// generateSpecs (i.e. their describeRoute metadata is present).
 const EXPECTED_PATHS = [
   "/trips",
   "/trips/{id}",
@@ -62,6 +64,10 @@ const EXPECTED_PATHS = [
   "/bookmark-lists/{listId}/bookmarks",
   "/articles",
   "/articles/{id}",
+  "/trips/{tripId}/candidates",
+  "/trips/{tripId}/candidates/{scheduleId}",
+  "/trips/{tripId}/souvenirs",
+  "/trips/{tripId}/souvenirs/{itemId}",
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -149,7 +155,7 @@ describe("GET /api/_docs/openapi.json (OpenAPI spec)", () => {
     expect(res.status).toBe(200);
   });
 
-  it("includes all 7 v1 endpoints in the spec paths", async () => {
+  it("includes the expected v1 endpoints in the spec paths", async () => {
     mockGetSession.mockResolvedValue(AUTHED_SESSION);
 
     const res = await app.request("/api/_docs/openapi.json");
