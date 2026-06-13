@@ -51,7 +51,7 @@ const FAKE_CREATED_TRIP = {
   updatedAt: "2025-01-01T00:00:00.000Z",
 };
 
-// The 19 tool names that registerTools must expose.
+// The 25 tool names that registerTools must expose.
 const EXPECTED_TOOL_NAMES = [
   "list_trips",
   "get_trip",
@@ -60,6 +60,8 @@ const EXPECTED_TOOL_NAMES = [
   "list_bookmarks",
   "list_articles",
   "get_article",
+  "list_candidates",
+  "list_souvenirs",
   "create_trip",
   "update_trip",
   "create_schedule",
@@ -72,6 +74,10 @@ const EXPECTED_TOOL_NAMES = [
   "update_bookmark",
   "create_article",
   "update_article",
+  "create_candidate",
+  "update_candidate",
+  "create_souvenir",
+  "update_souvenir",
 ] as const;
 
 /**
@@ -237,12 +243,12 @@ describe("MCP server — tools/list", () => {
     await mcpServer.close();
   });
 
-  it("returns exactly 19 tools", async () => {
+  it("returns exactly 25 tools", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
 
     // Assert
-    expect(result.tools).toHaveLength(19);
+    expect(result.tools).toHaveLength(25);
   });
 
   it("includes all 19 expected tool names", async () => {

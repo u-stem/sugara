@@ -1,9 +1,18 @@
-import { and, count, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { z } from "zod";
 import { db } from "../../db";
-import { articles, bookmarkLists, bookmarks, expenses, tripMembers, trips } from "../../db/schema";
+import {
+  articles,
+  bookmarkLists,
+  bookmarks,
+  expenses,
+  schedules,
+  souvenirItems,
+  tripMembers,
+  trips,
+} from "../../db/schema";
 import { verifyListOwnership } from "../../lib/bookmark-ownership";
 import { v1AuditLog } from "../../lib/external-api/audit-log";
 import { ApiV1Error, getApiKey, type V1Env, v1ErrorHandler } from "../../lib/external-api/errors";
@@ -12,14 +21,17 @@ import { v1RateLimit } from "../../lib/external-api/rate-limit";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { articlesWriteApp } from "./articles-write";
 import { bookmarksWriteApp } from "./bookmarks-write";
+import { candidatesWriteApp } from "./candidates-write";
 import { expensesWriteApp } from "./expenses-write";
 import {
   articleDetailResponseSchema,
   articleListResponseSchema,
   bookmarkListsResponseSchema,
   bookmarksResponseSchema,
+  candidateListResponseSchema,
   errorResponseSchema,
   expenseListResponseSchema,
+  souvenirListResponseSchema,
   tripDetailResponseSchema,
   tripListResponseSchema,
 } from "./openapi-schemas";
@@ -28,8 +40,11 @@ import {
   serializeBookmarkDto,
   serializeExpenseDto,
   serializeListDto,
+  serializeScheduleDto,
+  serializeSouvenirDto,
 } from "./serializers";
 import { uuidSchema, withTripAccess } from "./shared";
+import { souvenirsWriteApp } from "./souvenirs-write";
 import { tripsWriteApp } from "./trips-write";
 
 // Rate limit for v1: generous cap for self-use (CLI / local LLM), IP-scoped.
@@ -451,6 +466,200 @@ v1App.get(
   }),
 );
 
+// ---------- GET /api/v1/trips/:tripId/candidates ----------
+//
+// Returns the trip's candidates (schedules with dayPatternId = NULL — unassigned
+// spots in the planning pool), ordered by sortOrder. Reaction data is internal-only
+// and not exposed here.
+
+v1App.get(
+  "/trips/:tripId/candidates",
+  describeRoute({
+    tags: ["Candidates"],
+    summary: "List trip candidates",
+    description:
+      "Returns paginated candidates (unassigned spots) for a trip, ordered by sortOrder. Requires `trips:read` scope.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "limit",
+        in: "query",
+        description: "Maximum number of items to return (1–100, default 50).",
+        schema: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+      },
+      {
+        name: "offset",
+        in: "query",
+        description: "Number of items to skip.",
+        schema: { type: "integer", minimum: 0, default: 0 },
+      },
+    ],
+    responses: {
+      200: {
+        description: "Paginated candidate list",
+        content: { "application/json": { schema: resolver(candidateListResponseSchema) } },
+      },
+      400: {
+        description: "Invalid query parameters or invalid trip UUID",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("trips:read"),
+  withTripAccess("tripId", async (c, tripId) => {
+    const parsed = paginationSchema.safeParse({
+      limit: c.req.query("limit"),
+      offset: c.req.query("offset"),
+    });
+    if (!parsed.success) {
+      throw new ApiV1Error(400, "invalid_request", "Invalid query parameters");
+    }
+    const { limit: queryLimit, offset: queryOffset } = parsed.data;
+
+    const candidateFilter = and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId));
+
+    const countResult = await db.select({ total: count() }).from(schedules).where(candidateFilter);
+    const total = countResult[0]?.total ?? 0;
+
+    const rows = await db.query.schedules.findMany({
+      where: candidateFilter,
+      orderBy: (s, { asc }) => [asc(s.sortOrder)],
+      limit: queryLimit,
+      offset: queryOffset,
+    });
+
+    return c.json({
+      data: rows.map((row) => serializeScheduleDto(row)),
+      pagination: { limit: queryLimit, offset: queryOffset, total },
+    });
+  }),
+);
+
+// ---------- GET /api/v1/trips/:tripId/souvenirs ----------
+//
+// Returns the caller's own souvenirs plus other members' shared items. The owner
+// is expressed as a memberNo-based ref (no internal userId). count and page
+// queries share the same OR filter so the total stays consistent.
+
+v1App.get(
+  "/trips/:tripId/souvenirs",
+  describeRoute({
+    tags: ["Souvenirs"],
+    summary: "List trip souvenirs",
+    description:
+      "Returns paginated souvenirs for a trip: the API key user's own items plus other members' shared items, ordered by creation time. The owner is identified by memberNo. Requires `souvenirs:read` scope.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "limit",
+        in: "query",
+        description: "Maximum number of items to return (1–100, default 50).",
+        schema: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+      },
+      {
+        name: "offset",
+        in: "query",
+        description: "Number of items to skip.",
+        schema: { type: "integer", minimum: 0, default: 0 },
+      },
+    ],
+    responses: {
+      200: {
+        description: "Paginated souvenir list",
+        content: { "application/json": { schema: resolver(souvenirListResponseSchema) } },
+      },
+      400: {
+        description: "Invalid query parameters or invalid trip UUID",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("souvenirs:read"),
+  withTripAccess("tripId", async (c, tripId) => {
+    const key = getApiKey(c);
+    const parsed = paginationSchema.safeParse({
+      limit: c.req.query("limit"),
+      offset: c.req.query("offset"),
+    });
+    if (!parsed.success) {
+      throw new ApiV1Error(400, "invalid_request", "Invalid query parameters");
+    }
+    const { limit: queryLimit, offset: queryOffset } = parsed.data;
+
+    const memberRows = await db.query.tripMembers.findMany({
+      where: eq(tripMembers.tripId, tripId),
+      columns: { userId: true },
+    });
+    const memberNoMap = buildMemberNoMap(memberRows);
+
+    // Own items + other members' shared items. Both count and page queries use
+    // this same filter so the pagination total matches the page contents.
+    const souvenirFilter = and(
+      eq(souvenirItems.tripId, tripId),
+      or(eq(souvenirItems.userId, key.userId), eq(souvenirItems.isShared, true)),
+    );
+
+    const countResult = await db
+      .select({ total: count() })
+      .from(souvenirItems)
+      .where(souvenirFilter);
+    const total = countResult[0]?.total ?? 0;
+
+    const rows = await db.query.souvenirItems.findMany({
+      where: souvenirFilter,
+      with: { user: { columns: { name: true } } },
+      orderBy: (s, { asc }) => [asc(s.createdAt)],
+      limit: queryLimit,
+      offset: queryOffset,
+    });
+
+    return c.json({
+      data: rows.map((row) =>
+        serializeSouvenirDto({ ...row, userName: row.user.name }, memberNoMap),
+      ),
+      pagination: { limit: queryLimit, offset: queryOffset, total },
+    });
+  }),
+);
+
 // ---------- GET /api/v1/bookmark-lists ----------
 //
 // Returns the authenticated user's own bookmark lists with a bookmarkCount per list.
@@ -867,6 +1076,8 @@ v1App.route("/", tripsWriteApp);
 v1App.route("/", expensesWriteApp);
 v1App.route("/", bookmarksWriteApp);
 v1App.route("/", articlesWriteApp);
+v1App.route("/", candidatesWriteApp);
+v1App.route("/", souvenirsWriteApp);
 
 // ---------- Catch-all ----------
 //

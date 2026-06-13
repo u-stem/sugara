@@ -16,6 +16,8 @@ Claude Desktop や Claude Code から自分の旅行データの読み取りと�
 | `list_bookmarks` | 指定したブックマークリストの内容を取得 |
 | `list_articles` | 自分の記事一覧を取得 (本文なし)。本文は `get_article` で取得 |
 | `get_article` | 記事の全内容を UUID で取得 |
+| `list_candidates` | 旅行の候補 (未割り当てのスポット) 一覧を取得 |
+| `list_souvenirs` | 旅行のお土産一覧を取得 (自分のもの + 他メンバーの共有アイテム)。所有者は memberNo で参照 |
 
 ### 作成・更新
 
@@ -35,6 +37,10 @@ Claude Desktop や Claude Code から自分の旅行データの読み取りと�
 | `update_bookmark` | ブックマークを更新 |
 | `create_article` | 記事を作成 |
 | `update_article` | 記事を更新 (自分の記事のみ) |
+| `create_candidate` | 候補 (未割り当てのスポット) を追加 (`trips:write` が必要) |
+| `update_candidate` | 候補を更新 (割り当て済みのスポットは 404) |
+| `create_souvenir` | お土産を追加 (`souvenirs:write` が必要。viewer を含む任意のメンバーが自分のお土産を作成可) |
+| `update_souvenir` | お土産を更新 (自分のお土産のみ) |
 
 **memberNo について**: `get_trip` や `list_trip_expenses` に登場する `memberNo` は旅行内の連番です。データベースの内部 ID ではありません。メンバーの増減で振り直されるため、`create_expense` 等で指定する前に `get_trip` で最新の対応を確認してください。
 

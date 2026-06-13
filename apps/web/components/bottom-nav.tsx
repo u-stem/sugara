@@ -58,10 +58,14 @@ export function BottomNavBase({ className, links, friendHref }: BottomNavBasePro
       <ul className="flex h-12 items-stretch">
         {visibleLinks.map((link) => {
           const active = pathname === link.href;
+          const showBadge = link.href === friendHref && friendRequestCount > 0;
           return (
             <li key={link.href} className="flex flex-1">
               <Link
                 href={link.href}
+                // Fold the unread count into the link's accessible name so screen
+                // readers announce it; the visual badge alone is silent to AT.
+                aria-label={showBadge ? `${t(link.labelKey)} (${friendRequestCount})` : undefined}
                 className={cn(
                   "relative flex flex-1 flex-col items-center justify-center gap-0.5 text-xs transition-[colors,transform] active:bg-accent",
                   active ? "font-medium text-primary" : "text-muted-foreground",
@@ -71,8 +75,11 @@ export function BottomNavBase({ className, links, friendHref }: BottomNavBasePro
                   className={cn("h-5 w-5 transition-transform duration-200", active && "scale-110")}
                 />
                 <span className="sr-only">{t(link.labelKey)}</span>
-                {link.href === friendHref && friendRequestCount > 0 && (
-                  <span className="absolute top-1.5 left-1/2 ml-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium tabular-nums text-destructive-foreground">
+                {showBadge && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1.5 left-1/2 ml-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive text-[10px] font-medium tabular-nums text-destructive-foreground"
+                  >
                     {friendRequestCount}
                   </span>
                 )}

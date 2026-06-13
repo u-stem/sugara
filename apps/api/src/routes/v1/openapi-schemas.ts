@@ -180,6 +180,74 @@ export const articleListResponseSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Candidates — GET /trips/{tripId}/candidates
+//
+// A candidate is a schedule row with dayPatternId = NULL (an unassigned spot in
+// the trip's planning pool). The shape mirrors serializeScheduleDto.
+// ---------------------------------------------------------------------------
+
+const candidateItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  category: z.enum(["sightseeing", "restaurant", "hotel", "transport", "activity", "other"]),
+  startTime: z.string().nullable(),
+  endTime: z.string().nullable(),
+  address: z.string().nullable(),
+  memo: z.string().nullable(),
+  urls: z.array(z.string()),
+  departurePlace: z.string().nullable(),
+  arrivalPlace: z.string().nullable(),
+  transportMethod: z.string().nullable(),
+  cost: z.number().int().nullable(),
+  color: z.string(),
+  endDayOffset: z.number().int().nullable(),
+  sortOrder: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const candidateListResponseSchema = z.object({
+  data: z.array(candidateItemSchema),
+  pagination: paginationSchema,
+});
+
+// ---------------------------------------------------------------------------
+// Souvenirs — GET /trips/{tripId}/souvenirs
+//
+// Returns the caller's own items plus other members' shared items. The owner is
+// expressed as a memberNo-based ref (no internal userId). memberNo is absent when
+// the owner is no longer a trip member; displayName is always present.
+// ---------------------------------------------------------------------------
+
+const souvenirOwnerSchema = z.object({
+  memberNo: z.number().int().optional(),
+  displayName: z.string(),
+});
+
+const souvenirItemSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  recipient: z.string().nullable(),
+  urls: z.array(z.string()),
+  addresses: z.array(z.string()),
+  memo: z.string().nullable(),
+  // DB: souvenirPriorityEnum — "high" | "medium" | null
+  priority: z.enum(["high", "medium"]).nullable(),
+  isPurchased: z.boolean(),
+  isShared: z.boolean(),
+  // DB: souvenirShareStyleEnum — "recommend" | "errand" | null
+  shareStyle: z.enum(["recommend", "errand"]).nullable(),
+  owner: souvenirOwnerSchema,
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const souvenirListResponseSchema = z.object({
+  data: z.array(souvenirItemSchema),
+  pagination: paginationSchema,
+});
+
+// ---------------------------------------------------------------------------
 // Article detail — GET /articles/{id}
 // ---------------------------------------------------------------------------
 

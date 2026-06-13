@@ -45,6 +45,7 @@ export type ApiV1ErrorReason =
   | "bookmark_list_limit_reached"
   | "bookmark_limit_reached"
   | "article_limit_reached"
+  | "souvenir_limit_reached"
   | "trip_has_no_days";
 
 export type ApiV1ErrorOptions = {

@@ -14,6 +14,7 @@ import { db } from "../db/index";
 import { bookmarks, dayPatterns, schedules } from "../db/schema";
 import { logActivity } from "../lib/activity-logger";
 import { queryCandidatesWithReactions } from "../lib/candidate-query";
+import { createCandidateCore } from "../lib/candidate-service";
 import { ERROR_MSG } from "../lib/constants";
 import { hasChanges } from "../lib/has-changes";
 import { notifyTripMembersExcluding } from "../lib/notifications";
@@ -48,39 +49,11 @@ candidateRoutes.post("/:tripId/candidates", requireTripAccess("editor"), async (
     return c.json({ error: parsed.error.flatten() }, 400);
   }
 
-  const schedule = await db.transaction(async (tx) => {
-    const scheduleCount = await getScheduleCount(tx, tripId);
-    if (scheduleCount >= MAX_SCHEDULES_PER_TRIP) {
-      return null;
-    }
-
-    const nextOrder = await getNextSortOrder(
-      tx,
-      schedules.sortOrder,
-      schedules,
-      and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
-      `schedule:candidates:${tripId}`,
-    );
-
-    // Anchors cannot be set on candidates (they have no dayPatternId and
-    // therefore no cross-day context). Strip if a client tries to smuggle them.
-    const { crossDayAnchor: _a, crossDayAnchorSourceId: _s, ...createData } = parsed.data;
-
-    const [result] = await tx
-      .insert(schedules)
-      .values({
-        tripId,
-        ...createData,
-        sortOrder: nextOrder,
-      })
-      .returning();
-
-    return result;
-  });
-
-  if (!schedule) {
+  const result = await createCandidateCore(tripId, parsed.data);
+  if (!result.ok) {
     return c.json({ error: ERROR_MSG.LIMIT_SCHEDULES }, 409);
   }
+  const schedule = result.schedule;
 
   logActivity({
     tripId,
