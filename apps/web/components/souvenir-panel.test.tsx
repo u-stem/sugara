@@ -6,12 +6,11 @@
  * production on 2026-06-12).
  */
 import type { SouvenirItem } from "@sugara/shared";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MobileContext } from "@/lib/hooks/use-is-mobile";
-import { renderWithIntl } from "@/lib/test-utils";
+import { renderWithIntlAndQuery } from "@/lib/test-utils";
 
 // --- module mocks ------------------------------------------------------------
 
@@ -19,7 +18,7 @@ vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({ data: { user: { id: "u1" } } }),
 }));
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("sonner");
 
 // SouvenirDialog is loaded via next/dynamic; not needed in these tests.
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
@@ -43,30 +42,8 @@ vi.mock("@/components/ui/dropdown-menu", () => ({
 }));
 
 // Suppress the Radix responsive-alert-dialog; only the confirm action matters.
-vi.mock("@/components/ui/responsive-alert-dialog", () => ({
-  ResponsiveAlertDialog: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogContent: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogHeader: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogTitle: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogDescription: ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  ),
-  ResponsiveAlertDialogFooter: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogCancel: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  ResponsiveAlertDialogDestructiveAction: ({
-    children,
-    onClick,
-    disabled,
-  }: {
-    children: React.ReactNode;
-    onClick: () => void;
-    disabled: boolean;
-  }) => (
-    <button type="button" onClick={onClick} disabled={disabled}>
-      {children}
-    </button>
-  ),
-}));
+// The passthrough mock lives in components/ui/__mocks__/responsive-alert-dialog.tsx.
+vi.mock("@/components/ui/responsive-alert-dialog");
 
 import { SouvenirPanel } from "./souvenir-panel";
 
@@ -142,15 +119,10 @@ afterEach(() => {
 // --- helpers -------------------------------------------------------------------
 
 function renderPanel() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-  });
-  return renderWithIntl(
-    <QueryClientProvider client={queryClient}>
-      <MobileContext.Provider value={false}>
-        <SouvenirPanel tripId="t1" />
-      </MobileContext.Provider>
-    </QueryClientProvider>,
+  return renderWithIntlAndQuery(
+    <MobileContext.Provider value={false}>
+      <SouvenirPanel tripId="t1" />
+    </MobileContext.Provider>,
   );
 }
 
