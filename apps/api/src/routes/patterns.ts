@@ -71,22 +71,27 @@ patternRoutes.post("/:tripId/days/:dayId/patterns", async (c) => {
     return c.json({ error: ERROR_MSG.LIMIT_PATTERNS }, 409);
   }
 
-  const nextOrder = await getNextSortOrder(
-    db,
-    dayPatterns.sortOrder,
-    dayPatterns,
-    eq(dayPatterns.tripDayId, dayId),
-  );
+  const pattern = await db.transaction(async (tx) => {
+    const nextOrder = await getNextSortOrder(
+      tx,
+      dayPatterns.sortOrder,
+      dayPatterns,
+      eq(dayPatterns.tripDayId, dayId),
+      `pattern:day:${dayId}`,
+    );
 
-  const [pattern] = await db
-    .insert(dayPatterns)
-    .values({
-      tripDayId: dayId,
-      label: parsed.data.label,
-      isDefault: false,
-      sortOrder: nextOrder,
-    })
-    .returning();
+    const [result] = await tx
+      .insert(dayPatterns)
+      .values({
+        tripDayId: dayId,
+        label: parsed.data.label,
+        isDefault: false,
+        sortOrder: nextOrder,
+      })
+      .returning();
+
+    return result;
+  });
 
   logActivity({
     tripId,
@@ -192,13 +197,12 @@ patternRoutes.post("/:tripId/days/:dayId/patterns/:patternId/duplicate", async (
     return c.json({ error: ERROR_MSG.TRIP_NOT_FOUND }, 404);
   }
 
-  const [source, [patternCount], nextOrder] = await Promise.all([
+  const [source, [patternCount]] = await Promise.all([
     db.query.dayPatterns.findFirst({
       where: and(eq(dayPatterns.id, patternId), eq(dayPatterns.tripDayId, dayId)),
       with: { schedules: true },
     }),
     db.select({ count: count() }).from(dayPatterns).where(eq(dayPatterns.tripDayId, dayId)),
-    getNextSortOrder(db, dayPatterns.sortOrder, dayPatterns, eq(dayPatterns.tripDayId, dayId)),
   ]);
   if (!source) {
     return c.json({ error: ERROR_MSG.PATTERN_NOT_FOUND }, 404);
@@ -208,6 +212,16 @@ patternRoutes.post("/:tripId/days/:dayId/patterns/:patternId/duplicate", async (
   }
 
   const result = await db.transaction(async (tx) => {
+    // Moved out of Promise.all so the advisory lock spans the same transaction
+    // as the insert, making the read-then-insert atomic per scope (#146).
+    const nextOrder = await getNextSortOrder(
+      tx,
+      dayPatterns.sortOrder,
+      dayPatterns,
+      eq(dayPatterns.tripDayId, dayId),
+      `pattern:day:${dayId}`,
+    );
+
     const [newPattern] = await tx
       .insert(dayPatterns)
       .values({

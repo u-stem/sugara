@@ -50,6 +50,7 @@ vi.mock("../lib/auth", () => ({
 vi.mock("../db/index", () => {
   const tx = {
     query: mockDbQuery,
+    execute: async () => undefined,
     insert: (...args: unknown[]) => mockDbInsert(...args),
     delete: (...args: unknown[]) => mockDbDelete(...args),
     update: (...args: unknown[]) => mockDbUpdate(...args),
