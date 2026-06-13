@@ -72,6 +72,7 @@ bookmarkRoutes.post("/:listId/bookmarks", async (c) => {
       bookmarks.sortOrder,
       bookmarks,
       eq(bookmarks.listId, listId),
+      `bookmark:list:${listId}`,
     );
 
     const [result] = await tx

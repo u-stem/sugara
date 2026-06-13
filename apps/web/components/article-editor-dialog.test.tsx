@@ -21,7 +21,7 @@ vi.mock("@/lib/api", () => ({
   getApiErrorMessage: vi.fn((_e: unknown, fallback: string) => fallback),
 }));
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock("sonner");
 
 vi.mock("@/lib/markdown", () => ({
   MarkdownRenderer: ({ content }: { content: string }) => <p>{content}</p>,

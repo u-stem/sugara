@@ -15,9 +15,7 @@ vi.mock("@/lib/auth-client", () => ({
   },
 }));
 
-vi.mock("sonner", () => ({
-  toast: { success: vi.fn(), error: vi.fn() },
-}));
+vi.mock("sonner");
 
 describe("ResetPasswordPage", () => {
   afterEach(() => {

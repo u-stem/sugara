@@ -43,6 +43,7 @@ export const PlaceItem = memo(function PlaceItem({
   dayId,
   patternId,
   onDelete,
+  onSaved,
   onUpdate,
   onUnassign,
   disabled,
@@ -213,6 +214,7 @@ export const PlaceItem = memo(function PlaceItem({
         }}
         editOpen={editOpen}
         onEditOpenChange={setEditOpen}
+        onSaved={onSaved}
         onUpdate={onUpdate}
         maxEndDayOffset={maxEndDayOffset}
         shift={shift}

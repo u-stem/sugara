@@ -180,6 +180,7 @@ articleRoutes.post("/", requireNonGuest, async (c) => {
       articles.sortOrder,
       articles,
       eq(articles.ownerId, user.id),
+      `article:user:${user.id}`,
     );
 
     const [result] = await tx
