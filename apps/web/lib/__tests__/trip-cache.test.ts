@@ -15,6 +15,7 @@ import {
   removeScheduleFromPattern,
   reorderCandidates,
   reorderSchedulesInPattern,
+  setCandidateReaction,
   toCandidateResponse,
   toScheduleResponse,
   updateCandidate,
@@ -295,6 +296,49 @@ describe("removeCandidate", () => {
     const result = removeCandidate(trip, "nonexistent");
 
     expect(result).toBe(trip);
+  });
+});
+
+describe("setCandidateReaction", () => {
+  it("writes the server counts and the user's reaction onto the candidate", () => {
+    const trip = makeTrip({
+      candidates: [makeCandidate({ id: "c1", likeCount: 0, hmmCount: 0, myReaction: null })],
+    });
+
+    const result = setCandidateReaction(trip, "c1", "like", { likeCount: 5, hmmCount: 2 });
+
+    expect(result.candidates[0]).toMatchObject({
+      myReaction: "like",
+      likeCount: 5,
+      hmmCount: 2,
+    });
+  });
+
+  it("clears the reaction while still applying the server counts", () => {
+    const trip = makeTrip({
+      candidates: [makeCandidate({ id: "c1", likeCount: 3, hmmCount: 1, myReaction: "like" })],
+    });
+
+    const result = setCandidateReaction(trip, "c1", null, { likeCount: 2, hmmCount: 1 });
+
+    expect(result.candidates[0]).toMatchObject({
+      myReaction: null,
+      likeCount: 2,
+      hmmCount: 1,
+    });
+  });
+
+  it("leaves other candidates untouched", () => {
+    const trip = makeTrip({
+      candidates: [
+        makeCandidate({ id: "c1", likeCount: 0 }),
+        makeCandidate({ id: "c2", likeCount: 9, myReaction: "hmm" }),
+      ],
+    });
+
+    const result = setCandidateReaction(trip, "c1", "like", { likeCount: 1, hmmCount: 0 });
+
+    expect(result.candidates[1]).toMatchObject({ likeCount: 9, myReaction: "hmm" });
   });
 });
 

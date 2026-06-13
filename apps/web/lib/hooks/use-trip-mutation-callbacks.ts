@@ -16,19 +16,20 @@ import {
  * `onMutate` is the default: refetch the trip, broadcast to other clients,
  * and refresh the activity logs.
  *
- * `onScheduleAdded` exists because the add-schedule dialog writes the
- * server-confirmed POST response into the cache itself. Refetching the trip
+ * `onCacheWritten` is for mutations that have already written the
+ * server-confirmed result into the trip cache themselves (add / edit /
+ * delete dialogs, candidate panel, status change). Refetching the trip
  * right after can return a stale GET (Supavisor read-after-write lag, SW or
- * IndexedDB snapshots) that clobbers the just-added schedule (#123), so this
- * variant skips the trip-detail invalidation and only broadcasts + refreshes
- * the activity logs.
+ * IndexedDB snapshots) that clobbers the just-written entry (#123 / #155),
+ * so this variant skips the trip-detail invalidation and only broadcasts +
+ * refreshes the activity logs.
  *
  * `onSchedulesReordered` / `onCandidatesReordered` apply the same principle
  * to the reorder endpoints (#166): the client already knows the confirmed
  * order, so it is written into the cache directly instead of refetched —
  * an immediate GET after the PATCH can return a stale read that visually
  * reverts the reorder. Reordering writes no activity log, so unlike
- * `onScheduleAdded` there is nothing else to refresh.
+ * `onCacheWritten` there is nothing else to refresh.
  */
 export function useTripMutationCallbacks({
   tripId,
@@ -49,7 +50,7 @@ export function useTripMutationCallbacks({
     broadcastChange();
   }, [invalidateTrip, broadcastChange]);
 
-  const onScheduleAdded = useCallback(async () => {
+  const onCacheWritten = useCallback(async () => {
     broadcastChange();
     await queryClient.invalidateQueries({ queryKey: queryKeys.trips.activityLogs(tripId) });
   }, [broadcastChange, queryClient, tripId]);
@@ -100,5 +101,5 @@ export function useTripMutationCallbacks({
     [queryClient, tripId, invalidateTrip, broadcastChange],
   );
 
-  return { onMutate, onScheduleAdded, onSchedulesReordered, onCandidatesReordered };
+  return { onMutate, onCacheWritten, onSchedulesReordered, onCandidatesReordered };
 }

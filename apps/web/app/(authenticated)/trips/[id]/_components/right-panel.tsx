@@ -21,6 +21,7 @@ export function RightPanel({
   currentDayId,
   currentPatternId,
   onRefresh,
+  onCacheWritten,
   disabled,
   canEdit,
   online,
@@ -46,6 +47,7 @@ export function RightPanel({
   currentDayId: string | null;
   currentPatternId: string | null;
   onRefresh: () => Promise<void>;
+  onCacheWritten: () => void;
   disabled: boolean;
   canEdit: boolean;
   online: boolean;
@@ -95,6 +97,7 @@ export function RightPanel({
             currentDayId={currentDayId ?? undefined}
             currentPatternId={currentPatternId ?? undefined}
             onRefresh={onRefresh}
+            onCacheWritten={onCacheWritten}
             disabled={disabled}
             draggable={canEdit && online && !!currentDayId}
             addDialogOpen={addCandidateOpen}

@@ -36,7 +36,7 @@ import { api } from "@/lib/api";
 import { useSelection } from "@/lib/hooks/selection-context";
 import { useMobile } from "@/lib/hooks/use-is-mobile";
 import { queryKeys } from "@/lib/query-keys";
-import { moveCandidateToSchedule, removeCandidate } from "@/lib/trip-cache";
+import { moveCandidateToSchedule, removeCandidate, setCandidateReaction } from "@/lib/trip-cache";
 import { CandidateList } from "./candidate-list";
 
 const AddCandidateDialog = dynamic(() =>
@@ -56,7 +56,13 @@ type CandidatePanelProps = {
   candidates: CandidateResponse[];
   currentDayId?: string;
   currentPatternId?: string;
+  // Refetches the trip. Used by assign, which needs the server-assigned
+  // sortOrder that the optimistic update can't know.
   onRefresh: () => void;
+  // For mutations that write the server-confirmed result into the cache
+  // themselves (delete, react): skips the refetch so a stale read can't
+  // clobber the just-written entry (#155). Broadcasts + refreshes logs only.
+  onCacheWritten: () => void;
   disabled?: boolean;
   draggable?: boolean;
   scheduleLimitReached?: boolean;
@@ -78,6 +84,7 @@ export function CandidatePanel({
   currentDayId,
   currentPatternId,
   onRefresh,
+  onCacheWritten,
   disabled,
   draggable,
   scheduleLimitReached,
@@ -165,7 +172,9 @@ export function CandidatePanel({
       await api(`/api/trips/${tripId}/candidates/${spotId}`, {
         method: "DELETE",
       });
-      onRefresh();
+      // removeCandidate produced the complete post-delete state, so skip the
+      // refetch (#155): a stale GET could otherwise resurrect the candidate.
+      onCacheWritten();
     } catch {
       if (prev) queryClient.setQueryData(cacheKey, prev);
       toast.error(tm("candidateDeleteFailed"));
@@ -192,11 +201,17 @@ export function CandidatePanel({
       };
     });
     try {
-      await api(`/api/trips/${tripId}/candidates/${scheduleId}/reaction`, {
-        method: "PUT",
-        body: JSON.stringify({ type }),
-      });
-      onRefresh();
+      // The server returns authoritative counts (other users may have reacted
+      // concurrently). Write them in so the optimistic delta is reconciled
+      // without a refetch that could clobber it with a stale read (#155).
+      const counts = await api<{ likeCount: number; hmmCount: number }>(
+        `/api/trips/${tripId}/candidates/${scheduleId}/reaction`,
+        { method: "PUT", body: JSON.stringify({ type }) },
+      );
+      queryClient.setQueryData(cacheKey, (old: TripResponse | undefined) =>
+        old ? setCandidateReaction(old, scheduleId, type, counts) : old,
+      );
+      onCacheWritten();
     } catch {
       if (prev) queryClient.setQueryData(cacheKey, prev);
       toast.error(tm("reactionFailed"));
@@ -222,10 +237,14 @@ export function CandidatePanel({
       };
     });
     try {
-      await api(`/api/trips/${tripId}/candidates/${scheduleId}/reaction`, {
-        method: "DELETE",
-      });
-      onRefresh();
+      const counts = await api<{ likeCount: number; hmmCount: number }>(
+        `/api/trips/${tripId}/candidates/${scheduleId}/reaction`,
+        { method: "DELETE" },
+      );
+      queryClient.setQueryData(cacheKey, (old: TripResponse | undefined) =>
+        old ? setCandidateReaction(old, scheduleId, null, counts) : old,
+      );
+      onCacheWritten();
     } catch {
       if (prev) queryClient.setQueryData(cacheKey, prev);
       toast.error(tm("reactionRemoveFailed"));
@@ -429,7 +448,8 @@ export function CandidatePanel({
           onOpenChange={(open) => {
             if (!open) setEditSchedule(null);
           }}
-          onUpdate={onRefresh}
+          onSaved={onCacheWritten}
+          onConflict={onRefresh}
           maxEndDayOffset={maxEndDayOffset}
         />
       )}

@@ -532,7 +532,7 @@ export default function TripDetailPage() {
 
   // Mutation callbacks: refetch + broadcast to other clients (see hook for
   // why schedule adds and reorders skip the refetch, #123 / #166)
-  const { onMutate, onScheduleAdded, onSchedulesReordered, onCandidatesReordered } =
+  const { onMutate, onCacheWritten, onSchedulesReordered, onCandidatesReordered } =
     useTripMutationCallbacks({
       tripId,
       invalidateTrip,
@@ -742,7 +742,7 @@ export default function TripDetailPage() {
                   date={currentDay.date}
                   schedules={dnd.localSchedules}
                   onRefresh={onMutate}
-                  onScheduleAdded={onScheduleAdded}
+                  onScheduleAdded={onCacheWritten}
                   disabled={!online || !canEdit}
                   addScheduleOpen={!isLg ? addScheduleOpen : false}
                   onAddScheduleOpenChange={!isLg ? setAddScheduleOpen : undefined}
@@ -791,6 +791,7 @@ export default function TripDetailPage() {
               currentDayId={currentDay.id}
               currentPatternId={currentPattern.id}
               onRefresh={onMutate}
+              onCacheWritten={onCacheWritten}
               disabled={!online || !canEdit}
               draggable={false}
               addDialogOpen={!isLg ? addCandidateOpen : false}
@@ -870,7 +871,7 @@ export default function TripDetailPage() {
                 isConnected={isConnected}
                 online={online}
                 canEdit={canEdit}
-                onMutate={onMutate}
+                onCacheWritten={onCacheWritten}
                 onEditOpen={() => setEditOpen(true)}
                 onOpenBookmarks={
                   isGuest
@@ -978,7 +979,7 @@ export default function TripDetailPage() {
                           date={currentDay.date}
                           schedules={dnd.localSchedules}
                           onRefresh={onMutate}
-                          onScheduleAdded={onScheduleAdded}
+                          onScheduleAdded={onCacheWritten}
                           disabled={!online || !canEdit}
                           addScheduleOpen={isLg ? addScheduleOpen : false}
                           onAddScheduleOpenChange={isLg ? setAddScheduleOpen : undefined}
@@ -1028,6 +1029,7 @@ export default function TripDetailPage() {
                     currentDayId={currentDay?.id ?? null}
                     currentPatternId={currentPattern?.id ?? null}
                     onRefresh={onMutate}
+                    onCacheWritten={onCacheWritten}
                     disabled={!online || !canEdit}
                     canEdit={canEdit}
                     online={online}

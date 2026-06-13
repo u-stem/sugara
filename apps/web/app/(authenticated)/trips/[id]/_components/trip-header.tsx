@@ -18,7 +18,7 @@ export function TripHeader({
   isConnected,
   online,
   canEdit,
-  onMutate,
+  onCacheWritten,
   onEditOpen,
   onOpenBookmarks,
   onOpenActivity,
@@ -33,7 +33,7 @@ export function TripHeader({
   isConnected: boolean;
   online: boolean;
   canEdit: boolean;
-  onMutate: () => Promise<void>;
+  onCacheWritten: () => void;
   onEditOpen: () => void;
   onOpenBookmarks?: () => void;
   onOpenActivity?: () => void;
@@ -48,7 +48,9 @@ export function TripHeader({
     status: trip.status,
     role: trip.role,
     pollId: trip.poll?.id,
-    onStatusChange: onMutate,
+    // Status change writes the complete new status into the cache itself, so
+    // skip the refetch (#155).
+    onStatusChange: onCacheWritten,
     onEdit: canEdit ? onEditOpen : undefined,
     disabled: !online,
     memberLimitReached: trip.memberCount >= MAX_MEMBERS_PER_TRIP,
