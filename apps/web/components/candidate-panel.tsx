@@ -56,8 +56,10 @@ type CandidatePanelProps = {
   candidates: CandidateResponse[];
   currentDayId?: string;
   currentPatternId?: string;
-  // Refetches the trip. Used by assign, which needs the server-assigned
-  // sortOrder that the optimistic update can't know.
+  // Refetches the trip. Used where the optimistic write can't know the final
+  // server state: assign (server-assigned sortOrder), add-candidate, and
+  // edit-candidate conflict recovery. delete / react write complete state
+  // and use onCacheWritten instead.
   onRefresh: () => void;
   // For mutations that write the server-confirmed result into the cache
   // themselves (delete, react): skips the refetch so a stale read can't

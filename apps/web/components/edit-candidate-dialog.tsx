@@ -118,7 +118,7 @@ export function EditCandidateDialog({
 
     const { expectedUpdatedAt: _, ...updateFields } = data;
 
-    queryClient.cancelQueries({ queryKey: cacheKey });
+    await queryClient.cancelQueries({ queryKey: cacheKey });
     const prev = queryClient.getQueryData<TripResponse>(cacheKey);
     if (prev) {
       queryClient.setQueryData(
@@ -143,8 +143,13 @@ export function EditCandidateDialog({
           cacheKey,
           updateCandidate(fresh, schedule.id, toCandidateResponse(updated)),
         );
+        onSaved();
+      } else {
+        // The cache was evicted during the round-trip, so the server's fresh
+        // updatedAt isn't stored. Refetch to recover it; otherwise the next
+        // edit would send a stale expectedUpdatedAt and hit a spurious 409.
+        onConflict();
       }
-      onSaved();
     } catch (err) {
       if (prev) queryClient.setQueryData(cacheKey, prev);
       if (err instanceof ApiError && (err.status === 409 || err.status === 404)) {
