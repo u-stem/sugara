@@ -3,12 +3,79 @@ import { z } from "zod";
 import { INPUT_SHAPES } from "../tools.js";
 
 describe("INPUT_SHAPES", () => {
-  it("defines 19 tools", () => {
+  it("defines 25 tools", () => {
     // Arrange + Act
     const toolNames = Object.keys(INPUT_SHAPES);
 
     // Assert
-    expect(toolNames).toHaveLength(19);
+    expect(toolNames).toHaveLength(25);
+  });
+
+  it("includes the candidate and souvenir tools", () => {
+    const toolNames = Object.keys(INPUT_SHAPES);
+
+    expect(toolNames).toEqual(
+      expect.arrayContaining([
+        "list_candidates",
+        "create_candidate",
+        "update_candidate",
+        "list_souvenirs",
+        "create_souvenir",
+        "update_souvenir",
+      ]),
+    );
+  });
+});
+
+describe("create_candidate input schema", () => {
+  const schema = z.object(INPUT_SHAPES.create_candidate);
+
+  it("requires tripId, name, and category", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), name: "Tower" }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), name: "Tower", category: "sightseeing" })
+        .success,
+    ).toBe(true);
+  });
+
+  it("rejects an invalid category", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      name: "Tower",
+      category: "nope",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("create_souvenir input schema", () => {
+  const schema = z.object(INPUT_SHAPES.create_souvenir);
+
+  it("requires tripId and name", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), name: "KitKat" }).success).toBe(true);
+  });
+
+  it("rejects an invalid shareStyle", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      name: "KitKat",
+      shareStyle: "gift",
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("update_souvenir input schema", () => {
+  const schema = z.object(INPUT_SHAPES.update_souvenir);
+
+  it("accepts isPurchased toggle", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      itemId: crypto.randomUUID(),
+      isPurchased: true,
+    });
+    expect(result.success).toBe(true);
   });
 });
 

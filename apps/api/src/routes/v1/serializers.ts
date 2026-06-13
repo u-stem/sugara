@@ -145,6 +145,54 @@ export function serializeArticleDto(article: ArticleInput, tripIds: string[]) {
 }
 
 // ---------------------------------------------------------------------------
+// Souvenir
+//
+// The owner is expressed as a memberNo-based ref so no internal userId leaks.
+// displayName comes from the row's joined user name (always present, even when
+// the owner has left the trip); memberNo is attached only when the owner is a
+// current trip member (absent otherwise — mirrors the expense MemberRef policy).
+// ---------------------------------------------------------------------------
+
+type SouvenirInput = {
+  id: string;
+  name: string;
+  recipient: string | null;
+  urls: string[];
+  addresses: string[];
+  memo: string | null;
+  priority: "high" | "medium" | null;
+  isPurchased: boolean;
+  isShared: boolean;
+  shareStyle: "recommend" | "errand" | null;
+  userId: string;
+  userName: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export function serializeSouvenirDto(item: SouvenirInput, memberNoMap: Map<string, number>) {
+  const memberNo = memberNoMap.get(item.userId);
+  return {
+    id: item.id,
+    name: item.name,
+    recipient: item.recipient ?? null,
+    urls: item.urls,
+    addresses: item.addresses,
+    memo: item.memo ?? null,
+    priority: item.priority ?? null,
+    isPurchased: item.isPurchased,
+    isShared: item.isShared,
+    shareStyle: item.shareStyle ?? null,
+    owner: {
+      ...(memberNo !== undefined ? { memberNo } : {}),
+      displayName: item.userName,
+    },
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Expense
 //
 // Converts internal userId references to memberNo-based MemberRef objects

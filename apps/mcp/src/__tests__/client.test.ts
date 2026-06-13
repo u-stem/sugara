@@ -661,4 +661,75 @@ describe("ApiClient", () => {
       expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("/api/v1/articles");
     });
   });
+
+  describe("candidate methods — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const scheduleId = "660e8400-e29b-41d4-a716-446655440000";
+
+    it("listCandidates sends GET to /trips/:tripId/candidates with pagination", async () => {
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      await client.listCandidates(tripId, { limit: 10, offset: 5 });
+
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("GET");
+      const url = getFirstCallUrl(mockFetch.mock.calls);
+      expect(url).toContain(`/api/v1/trips/${tripId}/candidates`);
+      expect(url).toContain("limit=10");
+      expect(url).toContain("offset=5");
+    });
+
+    it("createCandidate POSTs to /trips/:tripId/candidates", async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: "c1" }, 201));
+
+      await client.createCandidate(tripId, { name: "Tokyo Tower", category: "sightseeing" });
+
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(`/api/v1/trips/${tripId}/candidates`);
+    });
+
+    it("updateCandidate PATCHes /trips/:tripId/candidates/:scheduleId", async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: "c1" }, 200));
+
+      await client.updateCandidate(tripId, scheduleId, { name: "Updated" });
+
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("PATCH");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/candidates/${scheduleId}`,
+      );
+    });
+  });
+
+  describe("souvenir methods — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const itemId = "770e8400-e29b-41d4-a716-446655440000";
+
+    it("listSouvenirs sends GET to /trips/:tripId/souvenirs", async () => {
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      await client.listSouvenirs(tripId);
+
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("GET");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(`/api/v1/trips/${tripId}/souvenirs`);
+    });
+
+    it("createSouvenir POSTs to /trips/:tripId/souvenirs", async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: "s1" }, 201));
+
+      await client.createSouvenir(tripId, { name: "Matcha KitKat" });
+
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(`/api/v1/trips/${tripId}/souvenirs`);
+    });
+
+    it("updateSouvenir PATCHes /trips/:tripId/souvenirs/:itemId", async () => {
+      mockFetch.mockResolvedValue(makeResponse({ id: "s1" }, 200));
+
+      await client.updateSouvenir(tripId, itemId, { isPurchased: true });
+
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("PATCH");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/souvenirs/${itemId}`,
+      );
+    });
+  });
 });

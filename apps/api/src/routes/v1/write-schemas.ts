@@ -16,6 +16,7 @@ import {
   createBookmarkListSchema,
   createBookmarkSchema,
   createScheduleSchema,
+  createSouvenirSchema,
   createTripBaseSchema,
   currencyCodeSchema,
   EXPENSE_TITLE_MAX_LENGTH,
@@ -27,6 +28,7 @@ import {
   updateArticleSchema,
   updateBookmarkListSchema,
   updateBookmarkSchema,
+  updateSouvenirSchema,
   updateTripBaseSchema,
 } from "@sugara/shared";
 import { z } from "zod";
@@ -39,9 +41,11 @@ export {
   createBookmarkListSchema as v1CreateBookmarkListSchema,
   createBookmarkSchema as v1CreateBookmarkSchema,
   createArticleSchema as v1CreateArticleSchema,
+  createSouvenirSchema as v1CreateSouvenirSchema,
   updateBookmarkListSchema as v1UpdateBookmarkListSchema,
   updateBookmarkSchema as v1UpdateBookmarkSchema,
   updateArticleSchema as v1UpdateArticleSchema,
+  updateSouvenirSchema as v1UpdateSouvenirSchema,
 };
 
 // ---------------------------------------------------------------------------
@@ -313,6 +317,29 @@ export const v1ArticleWriteResponseSchema = z.object({
   tags: z.array(z.string()),
   visibility: z.enum(["private", "friends_only", "public"]),
   tripIds: z.array(z.string()),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+// Souvenir write response: owner expressed as a memberNo-based ref (no internal
+// userId). Matches serializeSouvenirDto.
+const v1SouvenirOwnerSchema = z.object({
+  memberNo: z.number().int().optional(),
+  displayName: z.string(),
+});
+
+export const v1SouvenirWriteResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  recipient: z.string().nullable(),
+  urls: z.array(z.string()),
+  addresses: z.array(z.string()),
+  memo: z.string().nullable(),
+  priority: z.enum(["high", "medium"]).nullable(),
+  isPurchased: z.boolean(),
+  isShared: z.boolean(),
+  shareStyle: z.enum(["recommend", "errand"]).nullable(),
+  owner: v1SouvenirOwnerSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
 });

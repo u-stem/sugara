@@ -10,6 +10,8 @@ const { mockVerifyApiKey, mockCheckTripAccess, mockDbQuery, mockDbSelect } = vi.
     bookmarkLists: { findFirst: vi.fn(), findMany: vi.fn() },
     bookmarks: { findMany: vi.fn() },
     articles: { findFirst: vi.fn(), findMany: vi.fn() },
+    schedules: { findMany: vi.fn() },
+    souvenirItems: { findMany: vi.fn() },
   },
   mockDbSelect: vi.fn(),
 }));
@@ -45,6 +47,7 @@ import {
   bookmarkListsResponseSchema,
   bookmarksResponseSchema,
   expenseListResponseSchema,
+  souvenirListResponseSchema,
   tripDetailResponseSchema,
   tripListResponseSchema,
 } from "../routes/v1/openapi-schemas";
@@ -865,5 +868,164 @@ describe("GET /articles/:id", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body).toEqual({ error: { code: "invalid_request", message: expect.any(String) } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /trips/:tripId/candidates
+// ---------------------------------------------------------------------------
+
+describe("GET /trips/:tripId/candidates", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 404 when key owner is not a trip member", async () => {
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue(null);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}/candidates`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns candidates serialized as schedule DTOs without internal id fields", async () => {
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockCountQuery(1);
+    mockDbQuery.schedules.findMany.mockResolvedValue([
+      {
+        id: "cand-1",
+        tripId: TRIP_ID,
+        dayPatternId: null,
+        name: "Tokyo Tower",
+        category: "sightseeing",
+        startTime: null,
+        endTime: null,
+        address: null,
+        memo: null,
+        urls: [],
+        departurePlace: null,
+        arrivalPlace: null,
+        transportMethod: null,
+        cost: null,
+        color: "blue",
+        endDayOffset: null,
+        sortOrder: 0,
+        createdAt: new Date("2026-06-01T00:00:00Z"),
+        updatedAt: new Date("2026-06-01T00:00:00Z"),
+      },
+    ]);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}/candidates`, { headers: AUTH_HEADER });
+    const body = await res.json();
+    const json = JSON.stringify(body);
+
+    expect(res.status).toBe(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].name).toBe("Tokyo Tower");
+    expect(body.pagination.total).toBe(1);
+    expect(json).not.toContain('"dayPatternId"');
+    expect(json).not.toContain('"tripId"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /trips/:tripId/souvenirs
+// ---------------------------------------------------------------------------
+
+const SOUVENIR_KEY = {
+  ...VALID_KEY,
+  scopes: ["souvenirs:read"] as string[],
+};
+
+describe("GET /trips/:tripId/souvenirs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 403 when key lacks souvenirs:read", async () => {
+    setupValidKey({ ...VALID_KEY, scopes: ["trips:read"] });
+
+    const res = await v1App.request(`/trips/${TRIP_ID}/souvenirs`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when key owner is not a trip member", async () => {
+    setupValidKey(SOUVENIR_KEY);
+    mockCheckTripAccess.mockResolvedValue(null);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}/souvenirs`, { headers: AUTH_HEADER });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns own and shared items with memberNo-based owner refs, no userId leak", async () => {
+    setupValidKey(SOUVENIR_KEY);
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockDbQuery.tripMembers.findMany.mockResolvedValue([
+      { userId: USER_ID_1 },
+      { userId: USER_ID_2 },
+    ]);
+    mockCountQuery(2);
+    mockDbQuery.souvenirItems.findMany.mockResolvedValue([
+      {
+        id: "souv-1",
+        userId: USER_ID_1,
+        name: "Matcha KitKat",
+        recipient: null,
+        urls: [],
+        addresses: [],
+        memo: null,
+        priority: null,
+        isPurchased: false,
+        isShared: false,
+        shareStyle: null,
+        createdAt: new Date("2026-06-01T00:00:00Z"),
+        updatedAt: new Date("2026-06-01T00:00:00Z"),
+        user: { name: "Alice" },
+      },
+      {
+        id: "souv-2",
+        userId: USER_ID_2,
+        name: "Sake",
+        recipient: "Dad",
+        urls: [],
+        addresses: [],
+        memo: null,
+        priority: "high",
+        isPurchased: false,
+        isShared: true,
+        shareStyle: "recommend",
+        createdAt: new Date("2026-06-02T00:00:00Z"),
+        updatedAt: new Date("2026-06-02T00:00:00Z"),
+        user: { name: "Bob" },
+      },
+    ]);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}/souvenirs`, { headers: AUTH_HEADER });
+    const body = await res.json();
+    const json = JSON.stringify(body);
+
+    expect(res.status).toBe(200);
+    expect(body.data).toHaveLength(2);
+    // USER_ID_1 < USER_ID_2 → Alice is memberNo 1, Bob is memberNo 2
+    expect(body.data[0].owner).toEqual({ memberNo: 1, displayName: "Alice" });
+    expect(body.data[1].owner).toEqual({ memberNo: 2, displayName: "Bob" });
+    expect(json).not.toContain('"userId"');
+  });
+
+  it("conforms to souvenirListResponseSchema", async () => {
+    setupValidKey(SOUVENIR_KEY);
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: USER_ID_1 }]);
+    mockCountQuery(0);
+    mockDbQuery.souvenirItems.findMany.mockResolvedValue([]);
+
+    const res = await v1App.request(`/trips/${TRIP_ID}/souvenirs`, { headers: AUTH_HEADER });
+    const body = await res.json();
+
+    expect(souvenirListResponseSchema.safeParse(body).success).toBe(true);
   });
 });

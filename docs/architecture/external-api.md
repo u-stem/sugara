@@ -19,14 +19,16 @@
 
 | スコープ | 説明 |
 |---|---|
-| `trips:read` | 旅行・日程・メンバーの読み取り |
+| `trips:read` | 旅行・日程・メンバー・候補の読み取り |
 | `expenses:read` | 費用・精算の読み取り |
 | `articles:read` | 記事の読み取り（自分が作成した記事のみ） |
 | `bookmarks:read` | ブックマークの読み取り（自分が所有するリストのみ） |
-| `trips:write` | 旅行・予定の作成・更新 |
+| `souvenirs:read` | お土産の読み取り（自分のもの + 他メンバーの共有アイテム） |
+| `trips:write` | 旅行・予定・候補の作成・更新 |
 | `expenses:write` | 費用の作成・更新 |
 | `articles:write` | 記事の作成・更新（自分の記事のみ） |
 | `bookmarks:write` | ブックマークリスト・ブックマークの作成・更新（自分のリストのみ） |
+| `souvenirs:write` | お土産の作成・更新（自分のお土産のみ） |
 
 write は read を**含意しない**（最小権限。read と write は独立に付与する）。削除（DELETE）は外部 API では提供しない（誤削除リスクを避け Web UI に限定）。既存の read のみのキーは write スコープを保有しないため挙動不変（後方互換）。
 
@@ -55,12 +57,21 @@ write は read を**含意しない**（最小権限。read と write は独立�
 | PATCH | `/bookmark-lists/:listId/bookmarks/:bookmarkId` | `bookmarks:write` | ブックマーク更新 |
 | POST | `/articles` | `articles:write` | 記事作成（キー所有者が owner） |
 | PATCH | `/articles/:id` | `articles:write` | 記事更新（自分の記事のみ） |
+| GET | `/trips/:tripId/candidates` | `trips:read` | 旅行の候補（未割り当てスポット）一覧 |
+| POST | `/trips/:tripId/candidates` | `trips:write` | 候補作成（上限超過は 409） |
+| PATCH | `/trips/:tripId/candidates/:scheduleId` | `trips:write` | 候補更新（割り当て済みは 404） |
+| GET | `/trips/:tripId/souvenirs` | `souvenirs:read` | 旅行のお土産一覧（自分のもの + 共有アイテム） |
+| POST | `/trips/:tripId/souvenirs` | `souvenirs:write` | お土産作成（上限超過は 409） |
+| PATCH | `/trips/:tripId/souvenirs/:itemId` | `souvenirs:write` | お土産更新（自分のお土産のみ） |
+
+候補は schedules テーブルの行（`dayPatternId = NULL`）であり、専用スコープではなく既存の `trips:*` を用いる（予定 write が `trips:write` を使う前例に揃える）。お土産は旅行構造に属さない独立リソースのため専用の `souvenirs:*` スコープを持つ。
 
 **ページネーション**: offset/limit 方式。`limit` 既定 50・上限 100、`offset` 0 以上。
 
 **アクセス制御**:
 - `:id` / `:tripId` を取る旅行系エンドポイントは `withTripAccess` ラッパが `checkTripAccess(tripId, userId)` を呼び、非メンバーには `404 not_found`（存在秘匿）
-- 旅行系の write は `withTripAccess` の `minRole: "editor"` で editor 以上を要求。ロール不足も `404 not_found`（内部 API と同じ存在秘匿ポリシー）
+- 旅行系の write は `withTripAccess` の `minRole: "editor"` で editor 以上を要求。ロール不足も `404 not_found`（内部 API と同じ存在秘匿ポリシー）。候補 write も同様に editor 以上
+- お土産は例外的に editor を要求しない（`withTripAccess` の `minRole` 省略 = viewer を含む任意メンバー）。各メンバーが自分のお土産を管理する内部セマンティクスに準拠し、更新は所有者本人のみ（`userId === キー所有者`）。お土産の所有者は memberNo + displayName で表現し、旅行を離脱した所有者の共有アイテムは displayName のみ（memberNo なし）にフォールバックする
 - 記事・ブックマークは `ownerId === userId` / `list.userId === userId` のみで境界完結
 - 日程調整中（trip_days 未生成）の旅行への予定・費用作成は `409 conflict`
 
@@ -152,7 +163,7 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 
 **認証**: `requireAuth` + `requireNonGuest`（Cookie セッション + 本登録ユーザー限定）。ゲストアカウントや未認証ユーザーには公開しない。
 
-**spec の内容**: v1 の 19 エンドポイント（read 7 + write 12）のみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
+**spec の内容**: v1 の 25 エンドポイント（read 9 + write 16）のみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
 
 **Scalar UI のアセット**: `@scalar/api-reference` を `apps/web` の devDependency として固定バージョン管理する。`apps/web/scripts/copy-scalar-assets.ts` が dev サーバ起動時（`predev`）とビルド時（`prebuild`）に standalone バンドルを `apps/web/public/scalar/standalone.js` へコピーし、Next.js が同一オリジン（`/scalar/standalone.js`）から配信する。第三者オリジン依存ゼロ。生成物は `.gitignore` で除外済み（3.5 MB をリポジトリにコミットしない）。
 
@@ -165,7 +176,7 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 v1 REST を LLM（Claude Desktop / Claude Code 等）から扱うための MCP サーバ。`apps/mcp`（`private`、未公開）に置き、**stdio トランスポート**で動作する（LLM クライアントが子プロセスとして起動）。
 
 - 認証: API キーを環境変数 `SUGARA_API_KEY` で受け取り `Authorization: Bearer` で v1 を叩く。接続先は `SUGARA_API_URL`。生キーはログ・エラーに出さない
-- ツール: v1 の 19 エンドポイントに 1:1 対応する 19 ツール。read 7 つ（`list_trips` / `get_trip` / `list_trip_expenses` / `list_bookmark_lists` / `list_bookmarks` / `list_articles` / `get_article`）+ write 12（`create_trip` / `update_trip` / `create_schedule` / `update_schedule` / `create_expense` / `update_expense` / `create_bookmark_list` / `update_bookmark_list` / `create_bookmark` / `update_bookmark` / `create_article` / `update_article`）。入力は zod で境界検証（limit 1–100 / offset 0+ / uuid / scope enum）
+- ツール: v1 の 25 エンドポイントに 1:1 対応する 25 ツール。read 9 つ（`list_trips` / `get_trip` / `list_trip_expenses` / `list_bookmark_lists` / `list_bookmarks` / `list_articles` / `get_article` / `list_candidates` / `list_souvenirs`）+ write 16（`create_trip` / `update_trip` / `create_schedule` / `update_schedule` / `create_expense` / `update_expense` / `create_bookmark_list` / `update_bookmark_list` / `create_bookmark` / `update_bookmark` / `create_article` / `update_article` / `create_candidate` / `update_candidate` / `create_souvenir` / `update_souvenir`）。入力は zod で境界検証（limit 1–100 / offset 0+ / uuid / scope enum）
 - annotations: read ツールは `readOnlyHint: true`、create 系は `destructiveHint: false`、update 系は既存データを上書きするため `destructiveHint: true` を明示し、MCP クライアント側の確認 UI 判断に供する
 - エラー: v1 の `{ error: { code, message } }` を人間可読メッセージに写像（`isError: true`）
 - stdio のため公開ネットワーク面はなく、攻撃面は「キーを持つローカルプロセス」に限定。削除ツールは提供しない

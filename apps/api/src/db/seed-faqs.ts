@@ -425,7 +425,7 @@ const JA_FAQS = [
   {
     question: "外部APIとは何ができますか？",
     answer:
-      "設定画面で発行した API キーを使うと、スクリプトやツールから自分の旅行データを読み書きできます。旅行・予定・費用・ブックマーク・記事の取得に加え、キーに「作成・更新」の権限を付けると作成と更新もできます。削除には対応していないため、削除はアプリの画面から行ってください。共有されている旅行への書き込みには、その旅行での編集者以上の権限が必要です。",
+      "設定画面で発行した API キーを使うと、スクリプトやツールから自分の旅行データを読み書きできます。旅行・予定・費用・ブックマーク・記事・候補・お土産の取得に加え、キーに「作成・更新」の権限を付けると作成と更新もできます。削除には対応していないため、削除はアプリの画面から行ってください。共有されている旅行への書き込みには、その旅行での編集者以上の権限が必要です（お土産は例外で、メンバーなら誰でも自分のお土産を追加・更新できます）。",
     sortOrder: 110,
   },
   {
@@ -859,7 +859,7 @@ const EN_FAQS = [
   {
     question: "What can I do with the external API?",
     answer:
-      "By using an API key issued from your Settings, you can read and write your own travel data from scripts or tools. In addition to reading trips, schedules, expenses, bookmarks, and articles, keys with 'create & update' access can also create and update them. Deletion is not supported — please delete data from the app instead. Writing to a shared trip requires the editor role or higher in that trip.",
+      "By using an API key issued from your Settings, you can read and write your own travel data from scripts or tools. In addition to reading trips, schedules, expenses, bookmarks, articles, candidates, and souvenirs, keys with 'create & update' access can also create and update them. Deletion is not supported — please delete data from the app instead. Writing to a shared trip requires the editor role or higher in that trip (souvenirs are an exception: any member can add and update their own souvenirs).",
     sortOrder: 110,
   },
   {

@@ -74,19 +74,23 @@ const SCOPE_LABEL_KEYS = {
   "expenses:read": "scopeExpenses",
   "articles:read": "scopeArticles",
   "bookmarks:read": "scopeBookmarks",
+  "souvenirs:read": "scopeSouvenirs",
   "trips:write": "scopeTripsWrite",
   "expenses:write": "scopeExpensesWrite",
   "articles:write": "scopeArticlesWrite",
   "bookmarks:write": "scopeBookmarksWrite",
+  "souvenirs:write": "scopeSouvenirsWrite",
 } as const satisfies Record<ApiKeyScope, string>;
 
 // Issue-form layout: one row per resource with read/write checkbox columns,
-// so the list stays scannable as resources grow.
+// so the list stays scannable as resources grow. Every API_KEY_SCOPES entry must
+// appear here (enforced by AssertMatrixCoversAllScopes below).
 const SCOPE_MATRIX = [
   { resourceKey: "scopeResourceTrips", read: "trips:read", write: "trips:write" },
   { resourceKey: "scopeResourceExpenses", read: "expenses:read", write: "expenses:write" },
   { resourceKey: "scopeResourceArticles", read: "articles:read", write: "articles:write" },
   { resourceKey: "scopeResourceBookmarks", read: "bookmarks:read", write: "bookmarks:write" },
+  { resourceKey: "scopeResourceSouvenirs", read: "souvenirs:read", write: "souvenirs:write" },
 ] as const;
 
 // Compile-time exhaustiveness: adding a scope to API_KEY_SCOPES without a

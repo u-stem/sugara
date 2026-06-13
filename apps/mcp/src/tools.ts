@@ -62,8 +62,18 @@ export const INPUT_SHAPES = {
   get_article: {
     id: z.string().uuid(),
   },
+  list_candidates: {
+    tripId: z.string().uuid(),
+    limit: z.number().int().min(1).max(100).optional(),
+    offset: z.number().int().min(0).optional(),
+  },
+  list_souvenirs: {
+    tripId: z.string().uuid(),
+    limit: z.number().int().min(1).max(100).optional(),
+    offset: z.number().int().min(0).optional(),
+  },
 
-  // --- Write tools (12) ---
+  // --- Write tools (16) ---
 
   // POST /trips — caller becomes the owner member.
   create_trip: {
@@ -211,6 +221,75 @@ export const INPUT_SHAPES = {
     tags: z.array(z.string().min(1).max(20)).max(5).optional(),
     visibility: z.enum(["private", "friends_only", "public"]).optional(),
   },
+
+  // POST /trips/:tripId/candidates — adds an unassigned spot to the planning pool.
+  create_candidate: {
+    tripId: z.string().uuid(),
+    name: z.string().min(1).max(200),
+    category: scheduleCategorySchema,
+    address: z.string().max(500).optional(),
+    // HH:MM or HH:MM:SS format
+    startTime: z.string().optional(),
+    endTime: z.string().optional(),
+    memo: z.string().max(2000).optional(),
+    // http/https URLs only; max 5 entries
+    urls: z.array(z.string()).max(5).optional(),
+    departurePlace: z.string().max(200).optional(),
+    arrivalPlace: z.string().max(200).optional(),
+    transportMethod: transportMethodSchema.optional(),
+    cost: z.number().int().nonnegative().max(99999999).optional(),
+    color: scheduleColorSchema.optional(),
+    endDayOffset: z.number().int().min(1).max(30).optional(),
+  },
+
+  // PATCH /trips/:tripId/candidates/:scheduleId — partial update; assigned schedules 404.
+  update_candidate: {
+    tripId: z.string().uuid(),
+    scheduleId: z.string().uuid(),
+    name: z.string().min(1).max(200).optional(),
+    category: scheduleCategorySchema.optional(),
+    address: z.string().max(500).optional(),
+    startTime: z.string().optional(),
+    endTime: z.string().optional(),
+    memo: z.string().max(2000).optional(),
+    urls: z.array(z.string()).max(5).optional(),
+    departurePlace: z.string().max(200).optional(),
+    arrivalPlace: z.string().max(200).optional(),
+    transportMethod: transportMethodSchema.optional(),
+    cost: z.number().int().nonnegative().max(99999999).optional(),
+    color: scheduleColorSchema.optional(),
+    endDayOffset: z.number().int().min(1).max(30).optional(),
+  },
+
+  // POST /trips/:tripId/souvenirs — owned by the API key user; any member (incl. viewer) may create.
+  create_souvenir: {
+    tripId: z.string().uuid(),
+    name: z.string().min(1).max(200),
+    recipient: z.string().max(100).nullable().optional(),
+    // http/https URLs; max 5 entries (further format checks enforced by the API)
+    urls: z.array(z.string()).max(5).optional(),
+    addresses: z.array(z.string().max(500)).max(5).optional(),
+    memo: z.string().nullable().optional(),
+    priority: z.enum(["high", "medium"]).nullable().optional(),
+    isShared: z.boolean().optional(),
+    // only meaningful when isShared is true; cleared otherwise by the API
+    shareStyle: z.enum(["recommend", "errand"]).nullable().optional(),
+  },
+
+  // PATCH /trips/:tripId/souvenirs/:itemId — caller must own the item.
+  update_souvenir: {
+    tripId: z.string().uuid(),
+    itemId: z.string().uuid(),
+    name: z.string().min(1).max(200).optional(),
+    recipient: z.string().max(100).nullable().optional(),
+    urls: z.array(z.string()).max(5).optional(),
+    addresses: z.array(z.string().max(500)).max(5).optional(),
+    memo: z.string().nullable().optional(),
+    isPurchased: z.boolean().optional(),
+    priority: z.enum(["high", "medium"]).nullable().optional(),
+    isShared: z.boolean().optional(),
+    shareStyle: z.enum(["recommend", "errand"]).nullable().optional(),
+  },
 } as const;
 
 function toolError(message: string) {
@@ -244,14 +323,17 @@ const UPDATE_ANNOTATIONS = {
 } as const;
 
 /**
- * Registers all 19 sugara v1 tools with the MCP server.
+ * Registers all 25 sugara v1 tools with the MCP server.
  * Each tool maps 1:1 to a v1 endpoint and returns the raw JSON response.
  * On client errors, returns an isError result with a human-readable message.
  *
  * Write tools require the API key to carry the corresponding write scope
- * (trips:write, expenses:write, bookmarks:write, articles:write).
+ * (trips:write, expenses:write, bookmarks:write, articles:write, souvenirs:write).
+ * Candidates are trip schedules, so candidate tools use the trips:* scopes.
  * Writing to a shared trip additionally requires the caller to hold the
- * editor or owner role on that trip — verify with get_trip beforehand.
+ * editor or owner role on that trip — verify with get_trip beforehand
+ * (souvenir tools are the exception: any trip member, including viewers, may
+ * manage their own souvenirs).
  * Delete operations are not exposed; there are no delete tools.
  */
 export function registerTools(server: McpServer, client: ApiClient): void {
@@ -407,8 +489,54 @@ export function registerTools(server: McpServer, client: ApiClient): void {
     },
   );
 
+  server.registerTool(
+    "list_candidates",
+    {
+      description:
+        "List a trip's candidates — unassigned spots in the planning pool " +
+        "(schedules not yet placed on a specific day). Ordered by sortOrder. " +
+        "Supports limit/offset pagination. Requires trips:read scope.",
+      inputSchema: INPUT_SHAPES.list_candidates,
+      annotations: READ_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.listCandidates(args.tripId, {
+          limit: args.limit,
+          offset: args.offset,
+        });
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "list_souvenirs",
+    {
+      description:
+        "List a trip's souvenirs: the API key user's own items plus other members' shared items. " +
+        "The owner is identified by memberNo (consistent with get_trip's member list). " +
+        "Supports limit/offset pagination. Requires souvenirs:read scope.",
+      inputSchema: INPUT_SHAPES.list_souvenirs,
+      annotations: READ_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.listSouvenirs(args.tripId, {
+          limit: args.limit,
+          offset: args.offset,
+        });
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
   // ---------------------------------------------------------------------------
-  // Write tools (12)
+  // Write tools (16)
   // ---------------------------------------------------------------------------
 
   server.registerTool(
@@ -670,6 +798,96 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       const { id, ...body } = args;
       try {
         const result = await client.updateArticle(id, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "create_candidate",
+    {
+      description:
+        "Add a candidate (an unassigned spot) to a trip's planning pool. " +
+        "Anchor and geolocation fields are not accepted in v1. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Returns 409 when the per-trip schedule limit is reached. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.create_candidate,
+      annotations: CREATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, ...body } = args;
+      try {
+        const result = await client.createCandidate(tripId, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "update_candidate",
+    {
+      description:
+        "Partially update a candidate within a trip. " +
+        "Returns 404 when the schedule has already been assigned to a day (no longer a candidate). " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.update_candidate,
+      annotations: UPDATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, scheduleId, ...body } = args;
+      try {
+        const result = await client.updateCandidate(tripId, scheduleId, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "create_souvenir",
+    {
+      description:
+        "Add a souvenir owned by the API key user to a trip. " +
+        "Any trip member (including viewers) may create their own souvenirs. " +
+        "shareStyle is cleared unless isShared is true. " +
+        "Returns 409 when the per-user per-trip souvenir limit is reached. " +
+        "Requires souvenirs:write scope.",
+      inputSchema: INPUT_SHAPES.create_souvenir,
+      annotations: CREATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, ...body } = args;
+      try {
+        const result = await client.createSouvenir(tripId, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "update_souvenir",
+    {
+      description:
+        "Partially update a souvenir within a trip. " +
+        "Only the owner can update their own item; others' items return 404 (existence concealment). " +
+        "shareStyle is cleared when the item is not shared. " +
+        "Requires souvenirs:write scope.",
+      inputSchema: INPUT_SHAPES.update_souvenir,
+      annotations: UPDATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, itemId, ...body } = args;
+      try {
+        const result = await client.updateSouvenir(tripId, itemId, body);
         return toolResult(result);
       } catch (err) {
         return toolError(err instanceof Error ? err.message : "Unexpected error");

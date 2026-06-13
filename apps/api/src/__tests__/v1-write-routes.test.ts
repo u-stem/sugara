@@ -16,6 +16,7 @@ import {
   MAX_BOOKMARKS_PER_LIST,
   MAX_EXPENSES_PER_TRIP,
   MAX_SCHEDULES_PER_TRIP,
+  MAX_SOUVENIRS_PER_USER_PER_TRIP,
 } from "@sugara/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,6 +35,7 @@ const {
   mockCreateInitialTripDays,
   mockGetScheduleCount,
   mockGetNextSortOrder,
+  mockCreateCandidateCore,
 } = vi.hoisted(() => ({
   mockVerifyApiKey: vi.fn(),
   mockCheckTripAccess: vi.fn(),
@@ -49,6 +51,7 @@ const {
     tripDays: { findMany: vi.fn() },
     users: { findFirst: vi.fn() },
     schedules: { findFirst: vi.fn() },
+    souvenirItems: { findFirst: vi.fn() },
   },
   mockDbSelect: vi.fn(),
   mockDbInsert: vi.fn(),
@@ -61,6 +64,7 @@ const {
   mockCreateInitialTripDays: vi.fn(),
   mockGetScheduleCount: vi.fn(),
   mockGetNextSortOrder: vi.fn(),
+  mockCreateCandidateCore: vi.fn(),
 }));
 
 vi.mock("../lib/external-api/api-key", () => ({
@@ -127,6 +131,10 @@ vi.mock("../lib/schedule-count", () => ({
 
 vi.mock("../lib/sort-order", () => ({
   getNextSortOrder: (...args: unknown[]) => mockGetNextSortOrder(...args),
+}));
+
+vi.mock("../lib/candidate-service", () => ({
+  createCandidateCore: (...args: unknown[]) => mockCreateCandidateCore(...args),
 }));
 
 import { v1App } from "../routes/v1/index";
@@ -876,5 +884,317 @@ describe("v1 schedule schemas strip geolocation fields", () => {
 
     // Assert
     expect(parsed).not.toHaveProperty("latitude");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Candidates
+// ---------------------------------------------------------------------------
+
+const CANDIDATE_ROW = {
+  id: "33333333-0000-0000-0000-000000000001",
+  tripId: TRIP_ID,
+  dayPatternId: null,
+  name: "Tokyo Tower",
+  category: "sightseeing" as const,
+  startTime: null,
+  endTime: null,
+  address: null,
+  memo: null,
+  urls: [],
+  departurePlace: null,
+  arrivalPlace: null,
+  transportMethod: null,
+  cost: null,
+  color: "blue",
+  endDayOffset: null,
+  latitude: null,
+  longitude: null,
+  placeId: null,
+  crossDayAnchor: null,
+  crossDayAnchorSourceId: null,
+  sortOrder: 0,
+  createdAt: new Date("2026-06-01T00:00:00Z"),
+  updatedAt: new Date("2026-06-01T00:00:00Z"),
+};
+
+describe("POST /trips/:tripId/candidates", () => {
+  it("returns 403 when key has only trips:read", async () => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["trips:read"] });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates`, {
+      name: "Tokyo Tower",
+      category: "sightseeing",
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when caller has viewer role (editor-gated)", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("viewer");
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates`, {
+      name: "Tokyo Tower",
+      category: "sightseeing",
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 201 with no internal id field names in the response", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockCreateCandidateCore.mockResolvedValue({ ok: true, schedule: CANDIDATE_ROW });
+    // getActorName select (for the notification payload)
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ name: "Alice" }]) }),
+    });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates`, {
+      name: "Tokyo Tower",
+      category: "sightseeing",
+    });
+    const body = await res.json();
+    const json = JSON.stringify(body);
+
+    expect(res.status).toBe(201);
+    expect(body.id).toBe(CANDIDATE_ROW.id);
+    expect(body.name).toBe("Tokyo Tower");
+    expect(json).not.toContain('"dayPatternId"');
+    expect(json).not.toContain('"tripId"');
+  });
+
+  it("includes schedule_limit_reached reason and details.max at the per-trip ceiling", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockCreateCandidateCore.mockResolvedValue({ ok: false, error: "limit_reached" });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates`, {
+      name: "Tokyo Tower",
+      category: "sightseeing",
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("schedule_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  it("returns 400 when the body is missing required fields", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates`, { category: "sightseeing" });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH /trips/:tripId/candidates/:scheduleId", () => {
+  it("returns 404 when the schedule is not a candidate (assigned or missing)", async () => {
+    // The handler filters on dayPatternId IS NULL, so an assigned schedule yields
+    // no row → 404. This keeps the candidate path distinct from /schedules/:id.
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonPatch(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ROW.id}`, {
+      name: "Updated",
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.error.code).toBe("not_found");
+  });
+
+  it("returns 400 for a non-UUID scheduleId", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+
+    const res = await jsonPatch(`/trips/${TRIP_ID}/candidates/not-a-uuid`, { name: "Updated" });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("invalid_request");
+  });
+
+  it("returns 200 and the serialized candidate on success", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue(CANDIDATE_ROW);
+    mockDbUpdate.mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ ...CANDIDATE_ROW, name: "Updated" }]),
+        }),
+      }),
+    });
+
+    const res = await jsonPatch(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ROW.id}`, {
+      name: "Updated",
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.name).toBe("Updated");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Souvenirs
+// ---------------------------------------------------------------------------
+
+const SOUVENIR_ID = "44444444-0000-0000-0000-000000000001";
+const SOUVENIR_MEMBER_ROWS = [{ userId: USER_ID_1 }, { userId: USER_ID_2 }];
+
+function souvenirRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: SOUVENIR_ID,
+    tripId: TRIP_ID,
+    userId: USER_ID_1,
+    name: "Matcha KitKat",
+    recipient: null,
+    urls: [],
+    addresses: [],
+    memo: null,
+    priority: null,
+    isPurchased: false,
+    isShared: false,
+    shareStyle: null,
+    createdAt: new Date("2026-06-01T00:00:00Z"),
+    updatedAt: new Date("2026-06-01T00:00:00Z"),
+    ...overrides,
+  };
+}
+
+// Mocks the create flow's db calls: count select, insert (capturing values), the
+// member lookup, and getActorName's user-name select. Returns the values spy so
+// tests can assert what was written.
+function arrangeSouvenirCreate(insertedRow: Record<string, unknown>) {
+  // 1) per-user count
+  mockDbSelect.mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ itemCount: 0 }]) }),
+  });
+  const valuesSpy = vi.fn().mockReturnValue({
+    returning: vi.fn().mockResolvedValue([insertedRow]),
+  });
+  mockDbInsert.mockReturnValue({ values: valuesSpy });
+  mockDbQuery.tripMembers.findMany.mockResolvedValue(SOUVENIR_MEMBER_ROWS);
+  // 2) getActorName user-name select
+  mockDbSelect.mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ name: "Alice" }]) }),
+  });
+  return valuesSpy;
+}
+
+describe("POST /trips/:tripId/souvenirs", () => {
+  it("returns 403 when key has only souvenirs:read", async () => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:read"] });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs`, { name: "Matcha KitKat" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("allows a viewer to create their own souvenir (no editor role required)", async () => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("viewer");
+    arrangeSouvenirCreate(souvenirRow());
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs`, { name: "Matcha KitKat" });
+    const body = await res.json();
+    const json = JSON.stringify(body);
+
+    expect(res.status).toBe(201);
+    // owner is a memberNo ref (USER_ID_1 → memberNo 1), no raw userId leaks
+    expect(body.owner).toEqual({ memberNo: 1, displayName: "Alice" });
+    expect(json).not.toContain('"userId"');
+  });
+
+  it("clears shareStyle when the item is not shared", async () => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    const valuesSpy = arrangeSouvenirCreate(souvenirRow());
+
+    await jsonPost(`/trips/${TRIP_ID}/souvenirs`, {
+      name: "Matcha KitKat",
+      isShared: false,
+      shareStyle: "errand",
+    });
+
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ shareStyle: null }));
+  });
+
+  it("includes souvenir_limit_reached reason and details.max at the per-user ceiling", async () => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    // Reset drops any leftover mockReturnValueOnce from prior tests (vi.clearAllMocks
+    // does not drain the once-queue), then a persistent return makes the count select
+    // deterministic; the 409 throws right after it.
+    mockDbSelect.mockReset();
+    mockDbSelect.mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ itemCount: MAX_SOUVENIRS_PER_USER_PER_TRIP }]),
+      }),
+    });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs`, { name: "Matcha KitKat" });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("souvenir_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+});
+
+describe("PATCH /trips/:tripId/souvenirs/:itemId", () => {
+  it("returns 404 when the souvenir is owned by another member", async () => {
+    // The ownership-scoped query (userId === caller) yields no row for others' items.
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.souvenirItems.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonPatch(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`, { name: "Updated" });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.error.code).toBe("not_found");
+  });
+
+  it("returns 400 for a non-UUID itemId", async () => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+
+    const res = await jsonPatch(`/trips/${TRIP_ID}/souvenirs/not-a-uuid`, { name: "Updated" });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("invalid_request");
+  });
+
+  it("clears shareStyle when an update turns sharing off", async () => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.souvenirItems.findFirst.mockResolvedValue(
+      souvenirRow({ isShared: true, shareStyle: "errand" }),
+    );
+    const setSpy = vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([souvenirRow({ isShared: false, shareStyle: null })]),
+      }),
+    });
+    mockDbUpdate.mockReturnValue({ set: setSpy });
+    mockDbQuery.tripMembers.findMany.mockResolvedValue(SOUVENIR_MEMBER_ROWS);
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ name: "Alice" }]) }),
+    });
+
+    const res = await jsonPatch(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`, { isShared: false });
+
+    expect(res.status).toBe(200);
+    expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ shareStyle: null }));
   });
 });

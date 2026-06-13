@@ -24,6 +24,7 @@ const LIMIT_REASON_MESSAGES: Record<string, (max: number) => string> = {
   bookmark_list_limit_reached: (max) => `ブックマークリストの上限（${max}件）に達しました`,
   bookmark_limit_reached: (max) => `ブックマークの上限（1リストあたり${max}件）に達しました`,
   article_limit_reached: (max) => `記事の作成上限（${max}件）に達しました`,
+  souvenir_limit_reached: (max) => `お土産の上限（1旅行あたり${max}件）に達しました`,
 };
 
 const REASON_MESSAGES: Record<string, string> = {
@@ -227,6 +228,18 @@ export class ApiClient {
     return this.request(`/articles/${encodeURIComponent(id)}`);
   }
 
+  async listCandidates(tripId: string, opts?: PaginationOptions): Promise<unknown> {
+    const params = new URLSearchParams();
+    addPagination(params, opts?.limit, opts?.offset);
+    return this.request(`/trips/${encodeURIComponent(tripId)}/candidates`, params);
+  }
+
+  async listSouvenirs(tripId: string, opts?: PaginationOptions): Promise<unknown> {
+    const params = new URLSearchParams();
+    addPagination(params, opts?.limit, opts?.offset);
+    return this.request(`/trips/${encodeURIComponent(tripId)}/souvenirs`, params);
+  }
+
   // --- Write methods (12 endpoints, 1:1 with v1 write routes) ---
 
   async createTrip(body: unknown): Promise<unknown> {
@@ -292,5 +305,29 @@ export class ApiClient {
 
   async updateArticle(id: string, body: unknown): Promise<unknown> {
     return this.mutate("PATCH", `/articles/${encodeURIComponent(id)}`, body);
+  }
+
+  async createCandidate(tripId: string, body: unknown): Promise<unknown> {
+    return this.mutate("POST", `/trips/${encodeURIComponent(tripId)}/candidates`, body);
+  }
+
+  async updateCandidate(tripId: string, scheduleId: string, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "PATCH",
+      `/trips/${encodeURIComponent(tripId)}/candidates/${encodeURIComponent(scheduleId)}`,
+      body,
+    );
+  }
+
+  async createSouvenir(tripId: string, body: unknown): Promise<unknown> {
+    return this.mutate("POST", `/trips/${encodeURIComponent(tripId)}/souvenirs`, body);
+  }
+
+  async updateSouvenir(tripId: string, itemId: string, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "PATCH",
+      `/trips/${encodeURIComponent(tripId)}/souvenirs/${encodeURIComponent(itemId)}`,
+      body,
+    );
   }
 }

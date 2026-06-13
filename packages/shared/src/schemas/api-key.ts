@@ -7,10 +7,12 @@ export const API_KEY_SCOPES = [
   "expenses:read",
   "articles:read",
   "bookmarks:read",
+  "souvenirs:read",
   "trips:write",
   "expenses:write",
   "articles:write",
   "bookmarks:write",
+  "souvenirs:write",
 ] as const;
 export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
 
