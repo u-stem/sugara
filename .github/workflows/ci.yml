@@ -13,6 +13,12 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    needs: changes
+    # Docs-only PRs (Markdown only) skip this job. A skipped required check still
+    # reports success to Branch Protection, so the PR stays mergeable without
+    # [skip ci] (which would suppress the check run entirely and deadlock the
+    # merge). Pushes to main always run the full suite.
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
@@ -57,6 +63,9 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    needs: changes
+    # Required check; skipped on docs-only PRs (see `check` for rationale).
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
@@ -77,6 +86,9 @@ jobs:
 
   test-integration:
     runs-on: ubuntu-latest
+    needs: changes
+    # Not a required check, but skipped on docs-only PRs to save CI minutes.
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     services:
       postgres:
         image: postgres:17
@@ -157,6 +169,7 @@ jobs:
       pull-requests: read
     outputs:
       web: ${{ steps.filter.outputs.web }}
+      code: ${{ steps.codefilter.outputs.code }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
@@ -172,6 +185,21 @@ jobs:
               - 'package.json'
               - 'turbo.json'
               - '.github/workflows/ci.yml'
+      # `code` is true for any change that is NOT purely Markdown, so docs-only PRs
+      # skip check/test/test-integration. Kept in its own step with
+      # predicate-quantifier: 'every' because the default 'some' (OR) mode makes a
+      # lone '!**/*.md' match nearly every file, which would break the negation. A
+      # single positive '**' avoids the 'every' + multi-positive AND pitfall — so
+      # the multi-positive 'web' filter above must stay on its own default-quantifier
+      # step. Negation defaults to true (run CI) for any new non-Markdown path.
+      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+        id: codefilter
+        with:
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '**'
+              - '!**/*.md'
 
   # Playwright suite against a production build backed by the same local Supabase
   # stack developers use (Postgres 55322 / Realtime / Storage), so CI mirrors

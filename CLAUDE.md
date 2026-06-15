@@ -97,13 +97,14 @@ bun run --filter @sugara/shared check-types
 - `main` は Branch Protection で保護 → 直 push 不可、PR + CI green で squash merge
 - feature branch: `<type>/<topic>` (例: `fix/cover-upload`, `feat/expense-category`)
 - PR merge → Vercel が自動デプロイ（Vercel native skipping で web 非依存の変更はスキップ）
-- DB migration は独立した `.github/workflows/db-migrate.yml` で実行（`[skip deploy]` でも migration は走る）
+- DB migration は Vercel の本番ビルド (`apps/web/vercel.json` の `buildCommand` が `next build` の前に `bun run db:migrate` を実行) の一部として走る。独立した migration 用 workflow はない。そのため `[skip deploy]` で Vercel をスキップすると migration も走らない
 
 コミットメッセージでのスキップ:
 
-- `[skip ci]`: Vercel **と** GitHub Actions の両方をスキップ（ドキュメントのみの変更に使う）
+- `[skip ci]`: Vercel **と** GitHub Actions の両方をスキップ。**PR では使わない** — 必須チェック (`check` / `test`) のワークフロー自体が起動せず、チェックが永久に「待ち」のままマージ不能になる。`main` は直 push 不可なので実質使い道がない
 - `[skip deploy]`: Vercel のみスキップ、GitHub Actions は動く（デスクトップリリース時に使う）
-- 例: `docs: CLAUDE.mdを更新 [skip ci]`
+- ドキュメント (Markdown) のみの変更は、CI が重いジョブ (`check` / `test` / `test-integration`) を path フィルタで自動スキップする (`.github/workflows/ci.yml` の `changes` ジョブ)。スキップされた必須チェックは Branch Protection 上「成功」扱いになるためタグ不要
+- 例: `docs: CLAUDE.mdを更新`（タグ不要。CI が自動で軽量スキップ）
 - 例: `chore: デスクトップアプリ v0.2.0 にバージョンアップ [skip deploy]`
 
 ## デスクトップアプリのリリース

@@ -36,6 +36,8 @@
 | 共有 | トークンベースの旅行共有 (未登録ユーザーにも閲覧可) |
 | デスクトップアプリ | Tauri 製ネイティブアプリ (macOS / Windows)、自動更新対応 |
 | モバイル対応 | SP 専用レイアウトによるモバイルフレンドリーな UI |
+| 外部 API (v1) | API キー (Bearer トークン) + スコープ認証の REST API。旅行・費用・候補・お土産・ブックマーク・記事の取得/作成/更新 |
+| MCP サーバー | 外部 API v1 を stdio でラップする Model Context Protocol サーバー。Claude Desktop / Claude Code から旅行データを操作 |
 
 ## アーキテクチャ
 
@@ -43,8 +45,9 @@
 sugara/
 ├── apps/
 │   ├── web/          # Next.js フロントエンド + API Route Handler
-│   ├── api/          # Hono API ルート・DB スキーマ・認証
-│   └── desktop/      # Tauri デスクトップアプリ (macOS / Windows)
+│   ├── api/          # Hono API ルート・DB スキーマ・認証 (外部 API v1 を含む)
+│   ├── desktop/      # Tauri デスクトップアプリ (macOS / Windows)
+│   └── mcp/          # MCP (Model Context Protocol) サーバー (外部 API v1 を stdio でラップ)
 ├── packages/
 │   └── shared/       # 共有 Zod スキーマ・型定義
 ├── supabase/         # Supabase CLI 設定・マイグレーション
@@ -74,7 +77,7 @@ sugara/
 
 ### 前提条件
 
-- [bun](https://bun.sh/) >= 1.0
+- [bun](https://bun.sh/) >= 1.3.2 (`packageManager` で固定)
 - [Supabase CLI](https://supabase.com/docs/guides/cli)
 - [Docker](https://www.docker.com/) (Supabase CLI が内部で使用)
 
@@ -137,6 +140,9 @@ bun run db:seed
 | `bun run db:migrate` | マイグレーション実行 |
 | `bun run db:studio` | Drizzle Studio 起動 |
 | `bun run db:seed` | 開発用シードデータ投入 |
+| `bun run db:seed-faqs` | FAQ データ投入 |
+| `bun run test:coverage` | カバレッジ付きテスト実行 |
+| `bun run test:e2e` | E2E テスト実行 (Playwright) |
 
 パッケージ単位の実行:
 
@@ -165,7 +171,7 @@ bun run --filter @sugara/shared check-types
 
 | フック | 内容 | 目的 |
 |--------|------|------|
-| pre-commit | `bun run check` (Biome) + `check-i18n` (messages 変更時のみ) | 1 秒以内に終わる軽いチェック |
+| pre-commit | `branch-guard` (main/master への直接コミット禁止) + `bun run check` (Biome) + `check-i18n` (messages 変更時のみ) | 1 秒以内に終わる軽いチェック |
 | commit-msg | Conventional Commits 形式を強制 | 履歴の一貫性 |
 | pre-push | `bun run check-types` + `bun audit` | push 前に型エラーを検出 |
 
@@ -189,14 +195,17 @@ bun run --filter @sugara/shared check-types
 
 ### CI / デプロイのスキップ
 
-コミットメッセージにタグを付けることでスキップできる。
+ドキュメント (Markdown) のみの変更では、CI の重いジョブ (`check` / `test` / `test-integration`) が path フィルタで自動スキップされる。スキップされた必須チェックは Branch Protection 上「成功」扱いになるため、PR はそのままマージできる。**タグを付ける必要はない**。
+
+コミットメッセージのタグでスキップを制御することもできる。
 
 | タグ | 効果 | 用途 |
 |------|------|------|
-| `[skip ci]` | Vercel + GitHub Actions 両方スキップ | ドキュメントのみの変更 |
-| `[skip deploy]` | Vercel のみスキップ (GitHub Actions は動く) | デスクトップリリース時 |
+| `[skip deploy]` | Vercel デプロイをスキップ (GitHub Actions は動く) | デスクトップのみのリリース時 |
+| `[skip ci]` | Vercel + GitHub Actions を**両方**スキップ | PR では使わない (下記) |
 
-ただし **DB migration は `[skip deploy]` でも走る** (`.github/workflows/db-migrate.yml` が `apps/api/drizzle/**` などの変更を検知して独立実行)。
+- `[skip ci]` を PR コミットに付けると、必須チェック (`check` / `test`) のワークフロー自体が起動せず、チェックが永久に「待ち」のままマージ不能になる。`main` は Branch Protection で直 push 不可なので `[skip ci]` は実質使い道がない。ドキュメントのみの変更は上記の自動スキップに任せる。
+- DB migration は Vercel の本番ビルド (`apps/web/vercel.json` の `buildCommand` が `next build` の前に `bun run db:migrate` を実行) の一部として走る。独立した migration 用 workflow はない。そのため `[skip deploy]` で Vercel をスキップすると migration も走らない (デスクトップのみのリリースは DB に影響しないため問題ない)。
 
 ## リンク
 

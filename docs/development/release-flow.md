@@ -11,8 +11,7 @@ feature branch ── push ──▶ PR 作成
                              │
                              └── CI green ─ 手動 squash merge ─▶ main
                                                                    │
-                                                                   ├── Vercel 自動デプロイ (web)
-                                                                   ├── db-migrate.yml (migration 変更時のみ)
+                                                                   ├── Vercel 自動デプロイ (web。buildCommand 内で db:migrate も実行)
                                                                    ├── desktop-tag.yml (tauri.conf.json 変更時)
                                                                    └── smoke-test.yml (deploy 成功後)
 ```
@@ -149,7 +148,7 @@ Vercel `Settings → Environment Variables` で設定、**全て "Sensitive" フ
 
 `Settings → Environments → production` で:
 
-- `MIGRATION_URL` — db-migrate.yml が使用
+- `MIGRATION_URL` — Vercel の本番ビルド (`buildCommand` 内の `db:migrate`) が使用 (Vercel env に設定。独立した GitHub Actions の migration workflow はない)
 - 本番環境の secret rotation は Vercel 側の env と同じタイミングで更新
 
 ### ローテーション方針
