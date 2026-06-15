@@ -3,12 +3,12 @@ import { z } from "zod";
 import { INPUT_SHAPES } from "../tools.js";
 
 describe("INPUT_SHAPES", () => {
-  it("defines 27 tools", () => {
+  it("defines 29 tools", () => {
     // Arrange + Act
     const toolNames = Object.keys(INPUT_SHAPES);
 
     // Assert
-    expect(toolNames).toHaveLength(27);
+    expect(toolNames).toHaveLength(29);
   });
 
   it("includes the candidate and souvenir tools including batch variants", () => {
@@ -24,6 +24,8 @@ describe("INPUT_SHAPES", () => {
         "create_souvenir",
         "update_souvenir",
         "batch_create_souvenirs",
+        "delete_candidate",
+        "delete_souvenir",
       ]),
     );
   });
@@ -769,6 +771,38 @@ describe("batch_create_candidates input schema", () => {
       onConflict: "create",
     });
     expect(result.success).toBe(true);
+  });
+});
+
+describe("delete_candidate input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_candidate);
+
+  it("requires tripId and scheduleId", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-UUID scheduleId", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("delete_souvenir input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_souvenir);
+
+  it("requires tripId and itemId", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), itemId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-UUID itemId", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), itemId: "not-uuid" });
+    expect(result.success).toBe(false);
   });
 });
 

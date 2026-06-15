@@ -253,7 +253,32 @@ export class ApiClient {
     return this.request(`/trips/${encodeURIComponent(tripId)}/souvenirs`, params);
   }
 
-  // --- Write methods (12 endpoints, 1:1 with v1 write routes) ---
+  // Sends a DELETE request with no body. Used for idempotent resource removal.
+  // The API always returns 200 + JSON (never 204) so response.json() is always valid.
+  private async remove(path: string): Promise<unknown> {
+    const url = new URL(`${this.baseUrl}/api/v1${path}`);
+
+    let response: Response;
+    try {
+      response = await this._fetch(url.toString(), {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          Accept: "application/json",
+        },
+      });
+    } catch {
+      throw new Error("SUGARA_API_URL に接続できません");
+    }
+
+    if (!response.ok) {
+      throw await buildApiError(response);
+    }
+
+    return response.json();
+  }
+
+  // --- Write methods (14 endpoints, 1:1 with v1 write routes) ---
 
   async createTrip(body: unknown): Promise<unknown> {
     return this.mutate("POST", "/trips", body);
@@ -364,5 +389,17 @@ export class ApiClient {
       items,
       ...(onConflict !== undefined && { onConflict }),
     });
+  }
+
+  async deleteCandidate(tripId: string, scheduleId: string): Promise<unknown> {
+    return this.remove(
+      `/trips/${encodeURIComponent(tripId)}/candidates/${encodeURIComponent(scheduleId)}`,
+    );
+  }
+
+  async deleteSouvenir(tripId: string, itemId: string): Promise<unknown> {
+    return this.remove(
+      `/trips/${encodeURIComponent(tripId)}/souvenirs/${encodeURIComponent(itemId)}`,
+    );
   }
 }

@@ -4,6 +4,7 @@
 //   POST   /trips/:tripId/candidates
 //   POST   /trips/:tripId/candidates/batch
 //   PATCH  /trips/:tripId/candidates/:scheduleId
+//   DELETE /trips/:tripId/candidates/:scheduleId
 //
 // A candidate is a schedule row with dayPatternId = NULL — an unassigned spot in
 // the trip's planning pool. The create/update payloads reuse the v1 schedule
@@ -36,6 +37,7 @@ import {
   v1CandidateBatchWriteResponseSchema,
   v1CandidateWriteResponseSchema,
   v1CreateScheduleSchema,
+  v1DeleteResponseSchema,
   v1UpdateScheduleSchema,
 } from "./write-schemas";
 
@@ -340,6 +342,133 @@ candidatesWriteApp.patch(
       });
 
       return c.json({ ...serializeScheduleDto(updated), _meta: meta });
+    },
+    { minRole: "editor" },
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/candidates/:scheduleId
+// ---------------------------------------------------------------------------
+
+candidatesWriteApp.delete(
+  "/trips/:tripId/candidates/:scheduleId",
+  describeRoute({
+    tags: ["Candidates"],
+    summary: "Delete a candidate",
+    description:
+      "Physically deletes an unassigned candidate from the trip's planning pool. " +
+      "Idempotent: returns 200 in all cases. " +
+      "deleted:true when the item was found and removed; deleted:false when the id is unknown, " +
+      "belongs to another trip, or the schedule has already been assigned to a day (not a candidate). " +
+      "remaining reflects the post-operation trip-wide schedule count. " +
+      "Requires `trips:write` scope and editor/owner role on the trip.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "scheduleId",
+        in: "path",
+        required: true,
+        description: "Candidate (schedule) UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    responses: {
+      200: {
+        description:
+          "Deletion result (deleted:true when removed, deleted:false when already gone or assigned)",
+        content: { "application/json": { schema: resolver(v1DeleteResponseSchema) } },
+      },
+      400: {
+        description: "Invalid candidate id",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("trips:write"),
+  withTripAccess(
+    "tripId",
+    async (c, tripId) => {
+      const key = getApiKey(c);
+
+      const rawScheduleId = c.req.param("scheduleId");
+      const parsedId = uuidSchema.safeParse(rawScheduleId);
+      if (!parsedId.success) {
+        throw new ApiV1Error(400, "invalid_request", "Invalid candidate id");
+      }
+      const scheduleId = parsedId.data;
+
+      // Atomic delete: guard conditions (tripId + unassigned) are folded into
+      // the WHERE clause so there is no TOCTOU window between an existence
+      // check and the delete. Without this, a concurrent assign between a
+      // prior findFirst and the delete would physically remove an assigned
+      // schedule from the day — the atomic approach eliminates that window.
+      const deletedRows = await db
+        .delete(schedules)
+        .where(
+          and(
+            eq(schedules.id, scheduleId),
+            eq(schedules.tripId, tripId),
+            isNull(schedules.dayPatternId),
+          ),
+        )
+        .returning({ id: schedules.id, name: schedules.name });
+      const didDelete = deletedRows.length > 0;
+
+      if (didDelete) {
+        // Run in parallel: count needs the post-delete state, actorName is
+        // needed for the candidate_deleted notification payload.
+        const [scheduleCount, actorName] = await Promise.all([
+          getScheduleCount(db, tripId),
+          getActorName(key.userId),
+        ]);
+        logActivity({
+          tripId,
+          userId: key.userId,
+          action: "deleted",
+          entityType: "candidate",
+          entityName: deletedRows[0].name,
+        });
+        notifyTripMembersExcluding({
+          type: "candidate_deleted",
+          tripId,
+          actorId: key.userId,
+          makePayload: (tripName) => ({ actorName, tripName }),
+        });
+        return c.json({
+          id: scheduleId,
+          deleted: true,
+          remaining: { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP },
+        });
+      }
+
+      // Idempotent: id unknown, belongs to another trip, already deleted,
+      // or is an assigned schedule (no longer a candidate).
+      const scheduleCount = await getScheduleCount(db, tripId);
+      return c.json({
+        id: scheduleId,
+        deleted: false,
+        remaining: { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP },
+      });
     },
     { minRole: "editor" },
   ),

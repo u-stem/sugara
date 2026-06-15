@@ -894,4 +894,84 @@ describe("ApiClient", () => {
       expect(body).toMatchObject({ onConflict: "skip" });
     });
   });
+
+  describe("deleteCandidate — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const scheduleId = "550e8400-e29b-41d4-a716-446655440001";
+
+    it("uses DELETE method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: scheduleId, deleted: true, remaining: { count: 0, max: 300 } }, 200),
+      );
+
+      // Act
+      await client.deleteCandidate(tripId, scheduleId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+    });
+
+    it("sends to /api/v1/trips/:tripId/candidates/:scheduleId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: scheduleId, deleted: true, remaining: { count: 0, max: 300 } }, 200),
+      );
+
+      // Act
+      await client.deleteCandidate(tripId, scheduleId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/candidates/${scheduleId}`,
+      );
+    });
+
+    it("does not send a Content-Type header (no body)", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: scheduleId, deleted: false, remaining: { count: 0, max: 300 } }, 200),
+      );
+
+      // Act
+      await client.deleteCandidate(tripId, scheduleId);
+
+      // Assert
+      const headers = getFirstCallHeaders(mockFetch.mock.calls);
+      expect(headers["Content-Type"]).toBeUndefined();
+    });
+  });
+
+  describe("deleteSouvenir — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const itemId = "550e8400-e29b-41d4-a716-446655440002";
+
+    it("uses DELETE method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: itemId, deleted: true, remaining: { count: 0, max: 30 } }, 200),
+      );
+
+      // Act
+      await client.deleteSouvenir(tripId, itemId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+    });
+
+    it("sends to /api/v1/trips/:tripId/souvenirs/:itemId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: itemId, deleted: true, remaining: { count: 0, max: 30 } }, 200),
+      );
+
+      // Act
+      await client.deleteSouvenir(tripId, itemId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/souvenirs/${itemId}`,
+      );
+    });
+  });
 });

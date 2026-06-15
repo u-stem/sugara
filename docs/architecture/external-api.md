@@ -30,7 +30,7 @@
 | `bookmarks:write` | ブックマークリスト・ブックマークの作成・更新（自分のリストのみ） |
 | `souvenirs:write` | お土産の作成・更新（自分のお土産のみ） |
 
-write は read を**含意しない**（最小権限。read と write は独立に付与する）。削除（DELETE）は外部 API では提供しない（誤削除リスクを避け Web UI に限定）。既存の read のみのキーは write スコープを保有しないため挙動不変（後方互換）。
+write は read を**含意しない**（最小権限。read と write は独立に付与する）。`trips:write` は候補の削除、`souvenirs:write` はお土産の削除にも使用する。既存の read のみのキーは write スコープを保有しないため挙動不変（後方互換）。
 
 ## エンドポイント一覧
 
@@ -60,9 +60,11 @@ write は read を**含意しない**（最小権限。read と write は独立�
 | GET | `/trips/:tripId/candidates` | `trips:read` | 旅行の候補（未割り当てスポット）一覧 |
 | POST | `/trips/:tripId/candidates` | `trips:write` | 候補作成（上限超過は 409） |
 | PATCH | `/trips/:tripId/candidates/:scheduleId` | `trips:write` | 候補更新（割り当て済みは 404） |
+| DELETE | `/trips/:tripId/candidates/:scheduleId` | `trips:write` | 候補削除（冪等。未割り当て候補のみ対象。割り当て済み・不明は `deleted: false`） |
 | GET | `/trips/:tripId/souvenirs` | `souvenirs:read` | 旅行のお土産一覧（自分のもの + 共有アイテム） |
 | POST | `/trips/:tripId/souvenirs` | `souvenirs:write` | お土産作成（上限超過は 409） |
 | PATCH | `/trips/:tripId/souvenirs/:itemId` | `souvenirs:write` | お土産更新（自分のお土産のみ） |
+| DELETE | `/trips/:tripId/souvenirs/:itemId` | `souvenirs:write` | お土産削除（冪等。自分のお土産のみ対象。他ユーザーのもの・不明は `deleted: false`） |
 
 候補は schedules テーブルの行（`dayPatternId = NULL`）であり、専用スコープではなく既存の `trips:*` を用いる（予定 write が `trips:write` を使う前例に揃える）。お土産は旅行構造に属さない独立リソースのため専用の `souvenirs:*` スコープを持つ。
 
@@ -82,7 +84,7 @@ write は read を**含意しない**（最小権限。read と write は独立�
 - GET レスポンスの `amount` / `splits[].amount` は **minor units**（例: USD なら $12.50 が `1250`）。equal 分割の splits は旅行通貨建て、custom/itemized は費用通貨建て
 - memberNo はメンバー増減で振り直されるため、書き込み直前に `GET /trips/:id` で最新の対応を確認すること
 - 作成は `201`、更新は `200`。レスポンスは read 系と同じ外部 DTO（memberNo + displayName、内部 UUID 非公開）
-  - **例外**: `POST /trips/:tripId/candidates`、`PATCH /trips/:tripId/candidates/:scheduleId`、`POST /trips/:tripId/souvenirs`、`PATCH /trips/:tripId/souvenirs/:itemId` はトップレベルに `_meta: { count: number, max: number }` フィールドを追加で返す。他のエンドポイント（schedule write を含む）には付かない
+  - **例外**: `POST /trips/:tripId/candidates`、`PATCH /trips/:tripId/candidates/:scheduleId`、`POST /trips/:tripId/souvenirs`、`PATCH /trips/:tripId/souvenirs/:itemId` はトップレベルに `_meta: { count: number, max: number }` フィールドを追加で返す。`DELETE` 系（候補・お土産）は `{ id, deleted, remaining: { count, max } }` 形式で同等の残余情報を返す（冪等: 常に 200）。他のエンドポイント（schedule write を含む）には付かない
   - `_meta.count` の意味（リソースごとに異なる）
     - **candidate**: 当該 trip 内の全 schedule 件数（割り当て済みと候補の合算）。`max` = `MAX_SCHEDULES_PER_TRIP`(300)
     - **souvenir**: API キー所有者のこの trip における件数（共有アイテムは含めない自分のお土産のみ）。`max` = `MAX_SOUVENIRS_PER_USER_PER_TRIP`(100)
@@ -168,7 +170,7 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 
 **認証**: `requireAuth` + `requireNonGuest`（Cookie セッション + 本登録ユーザー限定）。ゲストアカウントや未認証ユーザーには公開しない。
 
-**spec の内容**: v1 の 25 エンドポイント（read 9 + write 16）のみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
+**spec の内容**: v1 の 27 エンドポイント（read 9 + write 18）のみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
 
 **Scalar UI のアセット**: `@scalar/api-reference` を `apps/web` の devDependency として固定バージョン管理する。`apps/web/scripts/copy-scalar-assets.ts` が dev サーバ起動時（`predev`）とビルド時（`prebuild`）に standalone バンドルを `apps/web/public/scalar/standalone.js` へコピーし、Next.js が同一オリジン（`/scalar/standalone.js`）から配信する。第三者オリジン依存ゼロ。生成物は `.gitignore` で除外済み（3.5 MB をリポジトリにコミットしない）。
 
@@ -181,10 +183,10 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 v1 REST を LLM（Claude Desktop / Claude Code 等）から扱うための MCP サーバ。`apps/mcp`（`private`、未公開）に置き、**stdio トランスポート**で動作する（LLM クライアントが子プロセスとして起動）。
 
 - 認証: API キーを環境変数 `SUGARA_API_KEY` で受け取り `Authorization: Bearer` で v1 を叩く。接続先は `SUGARA_API_URL`。生キーはログ・エラーに出さない
-- ツール: v1 の 25 エンドポイントに 1:1 対応する 25 ツール。read 9 つ（`list_trips` / `get_trip` / `list_trip_expenses` / `list_bookmark_lists` / `list_bookmarks` / `list_articles` / `get_article` / `list_candidates` / `list_souvenirs`）+ write 16（`create_trip` / `update_trip` / `create_schedule` / `update_schedule` / `create_expense` / `update_expense` / `create_bookmark_list` / `update_bookmark_list` / `create_bookmark` / `update_bookmark` / `create_article` / `update_article` / `create_candidate` / `update_candidate` / `create_souvenir` / `update_souvenir`）。入力は zod で境界検証（limit 1–100 / offset 0+ / uuid / scope enum）
-- annotations: read ツールは `readOnlyHint: true`、create 系は `destructiveHint: false`、update 系は既存データを上書きするため `destructiveHint: true` を明示し、MCP クライアント側の確認 UI 判断に供する
+- ツール: v1 の 27 エンドポイントに 1:1 対応する 29 ツール（batch 2 つを含む）。read 9 つ（`list_trips` / `get_trip` / `list_trip_expenses` / `list_bookmark_lists` / `list_bookmarks` / `list_articles` / `get_article` / `list_candidates` / `list_souvenirs`）+ write 20（`create_trip` / `update_trip` / `create_schedule` / `update_schedule` / `create_expense` / `update_expense` / `create_bookmark_list` / `update_bookmark_list` / `create_bookmark` / `update_bookmark` / `create_article` / `update_article` / `create_candidate` / `update_candidate` / `create_souvenir` / `update_souvenir` / `batch_create_candidates` / `batch_create_souvenirs` / `delete_candidate` / `delete_souvenir`）。入力は zod で境界検証（limit 1–100 / offset 0+ / uuid / scope enum）
+- annotations: read ツールは `readOnlyHint: true`、create 系は `destructiveHint: false`、update/delete 系は `destructiveHint: true, idempotentHint: true` を明示し、MCP クライアント側の確認 UI 判断に供する
 - エラー: v1 の `{ error: { code, message } }` を人間可読メッセージに写像（`isError: true`）
-- stdio のため公開ネットワーク面はなく、攻撃面は「キーを持つローカルプロセス」に限定。削除ツールは提供しない
+- stdio のため公開ネットワーク面はなく、攻撃面は「キーを持つローカルプロセス」に限定
 - SDK: `@modelcontextprotocol/sdk`。実行はビルドせず `bun run src/index.ts`（モノレポの TS 直接実行規約に準拠）
 - セットアップ手順は `apps/mcp/README.md`
 

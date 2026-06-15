@@ -4,6 +4,7 @@
 //   POST   /trips/:tripId/souvenirs
 //   POST   /trips/:tripId/souvenirs/batch
 //   PATCH  /trips/:tripId/souvenirs/:itemId
+//   DELETE /trips/:tripId/souvenirs/:itemId
 //
 // Souvenirs are per-member items within a trip: any trip member (including
 // viewers) can create their own, and only the owner can update theirs. Unlike
@@ -27,6 +28,7 @@ import { getActorName, uuidSchema, withTripAccess } from "./shared";
 import {
   v1BatchCreateSouvenirSchema,
   v1CreateSouvenirSchema,
+  v1DeleteResponseSchema,
   v1SouvenirBatchWriteResponseSchema,
   v1SouvenirWriteResponseSchema,
   v1UpdateSouvenirSchema,
@@ -354,6 +356,100 @@ souvenirsWriteApp.patch(
     return c.json({
       ...serializeSouvenirDto({ ...updated, userName }, memberNoMap),
       _meta: { count: itemCount, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/souvenirs/:itemId
+// ---------------------------------------------------------------------------
+
+souvenirsWriteApp.delete(
+  "/trips/:tripId/souvenirs/:itemId",
+  describeRoute({
+    tags: ["Souvenirs"],
+    summary: "Delete a souvenir",
+    description:
+      "Physically deletes a souvenir owned by the API key user. Idempotent: returns 200 in all cases. deleted:true when the caller's item was found and removed; deleted:false when the id is unknown, already deleted, or the item belongs to a different trip member. Other members' items are never deleted and their existence is not revealed. remaining reflects the caller's per-user per-trip souvenir count after the operation. Any trip member (including viewers) may call this endpoint for their own items. Requires `souvenirs:write` scope.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "itemId",
+        in: "path",
+        required: true,
+        description: "Souvenir item UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    responses: {
+      200: {
+        description:
+          "Deletion result (deleted:true when removed, deleted:false when already gone or owned by another member)",
+        content: { "application/json": { schema: resolver(v1DeleteResponseSchema) } },
+      },
+      400: {
+        description: "Invalid souvenir id",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("souvenirs:write"),
+  withTripAccess("tripId", async (c, tripId) => {
+    const key = getApiKey(c);
+
+    const rawItemId = c.req.param("itemId");
+    const parsedItemId = uuidSchema.safeParse(rawItemId);
+    if (!parsedItemId.success) {
+      throw new ApiV1Error(400, "invalid_request", "Invalid souvenir id");
+    }
+    const itemId = parsedItemId.data;
+
+    // Atomic delete: ownership is enforced atomically in the WHERE clause
+    // (id + tripId + userId). Another user's item matches neither the userId
+    // condition nor any of the caller's own items, so it is never deleted and
+    // its existence is not revealed — deleted:false is returned either way.
+    const deletedRows = await db
+      .delete(souvenirItems)
+      .where(
+        and(
+          eq(souvenirItems.id, itemId),
+          eq(souvenirItems.tripId, tripId),
+          eq(souvenirItems.userId, key.userId),
+        ),
+      )
+      .returning({ id: souvenirItems.id });
+    const didDelete = deletedRows.length > 0;
+
+    // Post-operation count: the same query covers both paths (delete hit and
+    // no-op) so remaining always reflects the caller's current item total.
+    const [{ itemCount }] = await db
+      .select({ itemCount: count() })
+      .from(souvenirItems)
+      .where(and(eq(souvenirItems.tripId, tripId), eq(souvenirItems.userId, key.userId)));
+
+    return c.json({
+      id: itemId,
+      deleted: didDelete,
+      remaining: { count: itemCount, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
     });
   }),
 );

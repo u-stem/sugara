@@ -419,3 +419,18 @@ export const v1SouvenirBatchWriteResponseSchema = z.object({
   skipped: z.array(v1BatchSkippedItemSchema),
   _meta: v1WriteMetaSchema,
 });
+
+// ---------------------------------------------------------------------------
+// Delete response schema — shared by candidate and souvenir delete endpoints
+// ---------------------------------------------------------------------------
+
+// Idempotent delete: always returns 200. deleted:true when the item was found
+// and removed; deleted:false when the item was already gone, belongs to another
+// trip, or (for souvenirs) is owned by a different user. remaining carries the
+// same cap context as the create response for the same resource type, computed
+// after the operation.
+export const v1DeleteResponseSchema = z.object({
+  id: z.string(),
+  deleted: z.boolean(),
+  remaining: v1WriteMetaSchema,
+});

@@ -41,7 +41,7 @@ vi.mock("../../lib/notifications", () => ({
 
 import { MAX_SCHEDULES_PER_TRIP, MAX_SOUVENIRS_PER_USER_PER_TRIP } from "@sugara/shared";
 import { eq } from "drizzle-orm";
-import { articles, expenses, tripDays, tripMembers } from "../../db/schema";
+import { articles, expenses, schedules, tripDays, tripMembers } from "../../db/schema";
 import { v1App } from "../../routes/v1/index";
 import { cleanupTables, createTestUser, getTestDb, teardownTestDb } from "./setup";
 
@@ -684,5 +684,278 @@ describe("v1 write routes integration", () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body._meta).toEqual({ count: 2, max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE /trips/:tripId/candidates/:scheduleId
+  // -------------------------------------------------------------------------
+
+  it("DELETE candidate returns deleted:true and decrements remaining on first delete", async () => {
+    // Arrange: create trip and one candidate
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Delete Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    const candRes = await v1App.request(`/trips/${trip.id}/candidates`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo Tower", category: "sightseeing" }),
+    });
+    expect(candRes.status).toBe(201);
+    const cand = await candRes.json();
+
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/candidates/${cand.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(true);
+    expect(body.id).toBe(cand.id);
+    // The trip only had the one candidate (no assigned schedules), so after deleting
+    // it the trip-wide schedule count is 0.
+    expect(body.remaining).toEqual({ count: 0, max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  it("DELETE candidate is idempotent: second call returns deleted:false with same remaining", async () => {
+    // Arrange: create trip, one candidate, delete it once
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Idempotent Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    const candRes = await v1App.request(`/trips/${trip.id}/candidates`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Akihabara", category: "sightseeing" }),
+    });
+    const cand = await candRes.json();
+
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // First delete
+    const first = await v1App.request(`/trips/${trip.id}/candidates/${cand.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+    expect((await first.json()).deleted).toBe(true);
+
+    // Act: second delete (idempotent)
+    const second = await v1App.request(`/trips/${trip.id}/candidates/${cand.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(second.status).toBe(200);
+    const body = await second.json();
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(cand.id);
+  });
+
+  it("DELETE candidate returns deleted:false when schedule is assigned to a day (not a candidate)", async () => {
+    // Arrange: create 1-day trip, add a schedule to day 1 (assigned, not a candidate)
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Assigned Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    const schedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo Tower", category: "sightseeing" }),
+    });
+    expect(schedRes.status).toBe(201);
+    const sched = await schedRes.json();
+
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Act: attempt to DELETE the assigned schedule via the candidates endpoint
+    const res = await v1App.request(`/trips/${trip.id}/candidates/${sched.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: assigned schedules are not candidates → deleted:false, NOT physically removed
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(false);
+
+    // Regression guard: confirm the row still exists in DB (atomic WHERE must
+    // have excluded it, not physically removed it).
+    const db = getTestDb();
+    const row = await db.query.schedules.findFirst({ where: eq(schedules.id, sched.id) });
+    expect(row).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE /trips/:tripId/souvenirs/:itemId
+  // -------------------------------------------------------------------------
+
+  it("DELETE souvenir returns deleted:true and decrements remaining on first delete", async () => {
+    // Arrange: create trip and one souvenir
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Delete Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const createRes = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Matcha KitKat" }),
+    });
+    expect(createRes.status).toBe(201);
+    const souvenir = await createRes.json();
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs/${souvenir.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(true);
+    expect(body.id).toBe(souvenir.id);
+    expect(body.remaining).toEqual({ count: 0, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
+  it("DELETE souvenir is idempotent: second call returns deleted:false", async () => {
+    // Arrange: create trip and souvenir, delete once
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Idempotent Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const createRes = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Pocky" }),
+    });
+    const souvenir = await createRes.json();
+
+    // First delete
+    const first = await v1App.request(`/trips/${trip.id}/souvenirs/${souvenir.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+    expect((await first.json()).deleted).toBe(true);
+
+    // Act: second delete
+    const second = await v1App.request(`/trips/${trip.id}/souvenirs/${souvenir.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(second.status).toBe(200);
+    const body = await second.json();
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(souvenir.id);
+  });
+
+  it("DELETE souvenir returns deleted:false for another user's item (no information leak)", async () => {
+    // Arrange: create trip, add Bob as member, create souvenir owned by Alice,
+    // then try to delete it as Bob — must return deleted:false, item stays.
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Ownership Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    const db = getTestDb();
+    const bob = await createTestUser({ name: "Bob", email: "bob@souvenir-delete.test" });
+    await db.insert(tripMembers).values({ tripId: trip.id, userId: bob.id, role: "viewer" });
+
+    // Alice creates a souvenir
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+    const createRes = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Alice's KitKat" }),
+    });
+    const aliceSouvenir = await createRes.json();
+
+    // Bob tries to delete Alice's souvenir
+    const bobApiKey = {
+      id: "cccccccc-0000-0000-0000-000000000001",
+      userId: bob.id,
+      scopes: ["souvenirs:write"],
+      expiresAt: new Date(Date.now() + 3_600_000),
+    };
+    mockVerifyApiKey.mockResolvedValue(bobApiKey);
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs/${aliceSouvenir.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: deleted:false — Bob cannot see or delete Alice's item
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(false);
+
+    // Assert: Alice's souvenir still exists in the DB
+    const { souvenirItems } = await import("../../db/schema");
+    const { eq: eqFn } = await import("drizzle-orm");
+    const row = await db.query.souvenirItems.findFirst({
+      where: eqFn(souvenirItems.id, aliceSouvenir.id),
+    });
+    expect(row).toBeDefined();
   });
 });

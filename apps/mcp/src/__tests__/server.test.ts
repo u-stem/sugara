@@ -51,7 +51,7 @@ const FAKE_CREATED_TRIP = {
   updatedAt: "2025-01-01T00:00:00.000Z",
 };
 
-// The 25 tool names that registerTools must expose.
+// The 29 tool names that registerTools must expose.
 const EXPECTED_TOOL_NAMES = [
   "list_trips",
   "get_trip",
@@ -78,6 +78,10 @@ const EXPECTED_TOOL_NAMES = [
   "update_candidate",
   "create_souvenir",
   "update_souvenir",
+  "batch_create_candidates",
+  "batch_create_souvenirs",
+  "delete_candidate",
+  "delete_souvenir",
 ] as const;
 
 /**
@@ -181,6 +185,14 @@ class FakeApiClient extends ApiClient {
   override async updateArticle(_id: string, _body: unknown): Promise<unknown> {
     return { id: "00000000-0000-0000-0000-000000000050", title: "Updated Story" };
   }
+
+  override async deleteCandidate(_tripId: string, _scheduleId: string): Promise<unknown> {
+    return { id: _scheduleId, deleted: true, remaining: { count: 0, max: 300 } };
+  }
+
+  override async deleteSouvenir(_tripId: string, _itemId: string): Promise<unknown> {
+    return { id: _itemId, deleted: true, remaining: { count: 0, max: 30 } };
+  }
 }
 
 /**
@@ -243,15 +255,15 @@ describe("MCP server — tools/list", () => {
     await mcpServer.close();
   });
 
-  it("returns exactly 27 tools", async () => {
+  it("returns exactly 29 tools", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
 
     // Assert
-    expect(result.tools).toHaveLength(27);
+    expect(result.tools).toHaveLength(29);
   });
 
-  it("includes all 19 expected tool names", async () => {
+  it("includes all 27 expected tool names", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
     const names = result.tools.map((t) => t.name);

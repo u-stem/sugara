@@ -32,7 +32,7 @@ const lineItemShape = z.object({
 });
 
 export const INPUT_SHAPES = {
-  // --- Read tools (7) ---
+  // --- Read tools (9) ---
   list_trips: {
     scope: z.enum(["owned", "shared"]).optional(),
     limit: z.number().int().min(1).max(100).optional(),
@@ -81,7 +81,7 @@ export const INPUT_SHAPES = {
     q: z.string().optional(),
   },
 
-  // --- Write tools (18) ---
+  // --- Write tools (20) ---
 
   // POST /trips — caller becomes the owner member.
   create_trip: {
@@ -358,6 +358,18 @@ export const INPUT_SHAPES = {
       .max(50),
     onConflict: z.enum(["create", "skip"]).optional(),
   },
+
+  // DELETE /trips/:tripId/candidates/:scheduleId — idempotent; assigned schedules return deleted:false.
+  delete_candidate: {
+    tripId: z.string().uuid(),
+    scheduleId: z.string().uuid(),
+  },
+
+  // DELETE /trips/:tripId/souvenirs/:itemId — idempotent; other users' items return deleted:false.
+  delete_souvenir: {
+    tripId: z.string().uuid(),
+    itemId: z.string().uuid(),
+  },
 } as const;
 
 function toolError(message: string) {
@@ -389,9 +401,16 @@ const UPDATE_ANNOTATIONS = {
   idempotentHint: true,
   openWorldHint: false,
 } as const;
+// delete: idempotent (same delete applied twice yields the same state), destructive
+const DELETE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
 
 /**
- * Registers all 27 sugara v1 tools with the MCP server.
+ * Registers all 29 sugara v1 tools with the MCP server.
  * Each tool maps 1:1 to a v1 endpoint and returns the raw JSON response.
  * On client errors, returns an isError result with a human-readable message.
  *
@@ -402,11 +421,10 @@ const UPDATE_ANNOTATIONS = {
  * editor or owner role on that trip — verify with get_trip beforehand
  * (souvenir tools are the exception: any trip member, including viewers, may
  * manage their own souvenirs).
- * Delete operations are not exposed; there are no delete tools.
  */
 export function registerTools(server: McpServer, client: ApiClient): void {
   // ---------------------------------------------------------------------------
-  // Read tools (7)
+  // Read tools (9)
   // ---------------------------------------------------------------------------
 
   server.registerTool(
@@ -609,7 +627,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
   );
 
   // ---------------------------------------------------------------------------
-  // Write tools (18)
+  // Write tools (20)
   // ---------------------------------------------------------------------------
 
   server.registerTool(
@@ -665,7 +683,6 @@ export function registerTools(server: McpServer, client: ApiClient): void {
         "Writing to a shared trip requires editor or owner role. " +
         "Returns 409 when the trip is in scheduling/poll mode (no days) " +
         "or when the per-trip schedule limit is reached. " +
-        "Delete tools do not exist; schedules cannot be removed via MCP. " +
         "Requires trips:write scope.",
       inputSchema: INPUT_SHAPES.create_schedule,
       annotations: CREATE_ANNOTATIONS,
@@ -1022,6 +1039,53 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       const { tripId, items, onConflict } = args;
       try {
         const result = await client.batchCreateSouvenirs(tripId, items, onConflict);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_candidate",
+    {
+      description:
+        "Permanently delete an unassigned candidate from a trip's planning pool. " +
+        "Idempotent: always returns 200. deleted:true when the item was removed; " +
+        "deleted:false when the id is unknown, already deleted, or the schedule has been assigned to a day. " +
+        "remaining reflects the trip-wide schedule count after the operation. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.delete_candidate,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deleteCandidate(args.tripId, args.scheduleId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_souvenir",
+    {
+      description:
+        "Permanently delete a souvenir owned by the API key user. " +
+        "Idempotent: always returns 200. deleted:true when the caller's item was removed; " +
+        "deleted:false when the id is unknown, already deleted, or owned by a different member. " +
+        "Other members' items are never deleted and their existence is not revealed. " +
+        "remaining reflects the caller's per-user per-trip souvenir count after the operation. " +
+        "Any trip member (including viewers) may call this tool for their own items. " +
+        "Requires souvenirs:write scope.",
+      inputSchema: INPUT_SHAPES.delete_souvenir,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deleteSouvenir(args.tripId, args.itemId);
         return toolResult(result);
       } catch (err) {
         return toolError(err instanceof Error ? err.message : "Unexpected error");

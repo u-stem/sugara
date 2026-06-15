@@ -38,6 +38,7 @@ const {
   mockCreateCandidateCore,
   mockBatchCreateCandidatesCore,
   mockBatchCreateSouvenirsCore,
+  mockDbDelete,
 } = vi.hoisted(() => ({
   mockVerifyApiKey: vi.fn(),
   mockCheckTripAccess: vi.fn(),
@@ -69,6 +70,7 @@ const {
   mockCreateCandidateCore: vi.fn(),
   mockBatchCreateCandidatesCore: vi.fn(),
   mockBatchCreateSouvenirsCore: vi.fn(),
+  mockDbDelete: vi.fn(),
 }));
 
 vi.mock("../lib/external-api/api-key", () => ({
@@ -87,6 +89,7 @@ vi.mock("../db/index", () => {
     insert: (...args: unknown[]) => mockDbInsert(...args),
     update: (...args: unknown[]) => mockDbUpdate(...args),
     select: (...args: unknown[]) => mockDbSelect(...args),
+    delete: (...args: unknown[]) => mockDbDelete(...args),
   };
   return {
     db: { ...tx, transaction: (fn: (t: typeof tx) => unknown) => fn(tx) },
@@ -202,6 +205,13 @@ function jsonPatch(path: string, body: unknown) {
     method: "PATCH",
     headers: { ...AUTH_HEADER, "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+function jsonDelete(path: string) {
+  return v1App.request(path, {
+    method: "DELETE",
+    headers: AUTH_HEADER,
   });
 }
 
@@ -1639,5 +1649,151 @@ describe("POST /trips/:tripId/souvenirs/batch", () => {
     expect(body.created[0]).not.toHaveProperty("_meta");
     expect(body.created[0]).toHaveProperty("owner");
     expect(body).toHaveProperty("_meta");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/candidates/:scheduleId
+// ---------------------------------------------------------------------------
+
+describe("DELETE /trips/:tripId/candidates/:scheduleId", () => {
+  const CANDIDATE_ID = "33333333-0000-0000-0000-000000000001";
+
+  beforeEach(() => {
+    mockVerifyApiKey.mockResolvedValue({
+      ...WRITE_KEY,
+      scopes: ["trips:write"],
+    });
+    mockCheckTripAccess.mockResolvedValue("editor");
+  });
+
+  it("returns 403 when key has only trips:read scope", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["trips:read"] });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ID}`);
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when caller has viewer role (editor-gated)", async () => {
+    // Arrange
+    mockCheckTripAccess.mockResolvedValue("viewer");
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ID}`);
+
+    // Assert
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 with deleted:false when candidate not found or already deleted", async () => {
+    // Arrange: atomic delete returns empty rows (id unknown, assigned, or already gone)
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    mockGetScheduleCount.mockResolvedValue(0);
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(CANDIDATE_ID);
+  });
+
+  it("returns 200 with deleted:true and correct remaining when candidate deleted", async () => {
+    // Arrange: atomic delete returns the removed row; getActorName resolves for notification
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: CANDIDATE_ID, name: "Tokyo Tower" }]),
+      }),
+    });
+    mockGetScheduleCount.mockResolvedValue(0);
+    mockDbQuery.users.findFirst.mockResolvedValue({ name: "Alice" });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(true);
+    expect(body.remaining).toEqual({ count: 0, max: MAX_SCHEDULES_PER_TRIP });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/souvenirs/:itemId
+// ---------------------------------------------------------------------------
+
+describe("DELETE /trips/:tripId/souvenirs/:itemId", () => {
+  const SOUVENIR_ID = "44444444-0000-0000-0000-000000000001";
+
+  beforeEach(() => {
+    mockVerifyApiKey.mockResolvedValue({
+      ...WRITE_KEY,
+      scopes: ["souvenirs:write"],
+    });
+    mockCheckTripAccess.mockResolvedValue("viewer");
+  });
+
+  it("returns 403 when key has only souvenirs:read scope", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:read"] });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`);
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 200 with deleted:false when souvenir not found or owned by another user", async () => {
+    // Arrange: atomic delete returns empty rows (not found, another trip, or wrong owner)
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ itemCount: 3 }]),
+      }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(false);
+    expect(body.remaining.count).toBe(3);
+  });
+
+  it("returns 200 with deleted:true and correct remaining when souvenir deleted", async () => {
+    // Arrange: atomic delete returns the removed row; count query reflects post-delete state
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: SOUVENIR_ID }]),
+      }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ itemCount: 2 }]),
+      }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(true);
+    expect(body.remaining).toEqual({ count: 2, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
   });
 });
