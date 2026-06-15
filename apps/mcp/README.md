@@ -19,9 +19,11 @@ Claude Desktop や Claude Code から自分の旅行データの読み取りと�
 | `list_candidates` | 旅行の候補 (未割り当てのスポット) 一覧を取得 |
 | `list_souvenirs` | 旅行のお土産一覧を取得 (自分のもの + 他メンバーの共有アイテム)。所有者は memberNo で参照 |
 
-### 作成・更新
+`list_articles` / `list_bookmarks` / `list_candidates` / `list_souvenirs` は `q` で名前の部分一致検索ができます (大文字小文字を区別しません)。
 
-対応する write スコープを持つ API キーが必要です。削除ツールはありません(削除は Web UI から行います)。
+### 作成・更新・削除
+
+対応する write スコープを持つ API キーが必要です。
 
 | ツール名 | 説明 |
 |---|---|
@@ -41,6 +43,10 @@ Claude Desktop や Claude Code から自分の旅行データの読み取りと�
 | `update_candidate` | 候補を更新 (割り当て済みのスポットは 404) |
 | `create_souvenir` | お土産を追加 (`souvenirs:write` が必要。viewer を含む任意のメンバーが自分のお土産を作成可) |
 | `update_souvenir` | お土産を更新 (自分のお土産のみ) |
+| `batch_create_candidates` | 候補を一括追加 (`trips:write` が必要。重複名は `onConflict: "skip"` でスキップ可) |
+| `batch_create_souvenirs` | お土産を一括追加 (`souvenirs:write` が必要。重複名は `onConflict: "skip"` でスキップ可) |
+| `delete_candidate` | 候補を削除 (`trips:write` が必要。割り当て済みのスポットは対象外。冪等) |
+| `delete_souvenir` | お土産を削除 (`souvenirs:write` が必要。自分のお土産のみ。冪等) |
 
 **memberNo について**: `get_trip` や `list_trip_expenses` に登場する `memberNo` は旅行内の連番です。データベースの内部 ID ではありません。メンバーの増減で振り直されるため、`create_expense` 等で指定する前に `get_trip` で最新の対応を確認してください。
 
@@ -95,8 +101,9 @@ sugara の設定画面からAPIキーを発行してください。
 
 ## 注意事項
 
-- 削除はできません。削除は Web UI から行ってください
-- 作成・更新には write スコープ (`trips:write` 等) を持つ API キーが必要です。読み取り専用で使う場合は read スコープのみのキーを発行してください
+- 削除は候補・お土産のみ対応しています (`delete_candidate` / `delete_souvenir`)。それ以外のデータの削除は Web UI から行ってください
+- 削除ツールは冪等です。すでに削除済み・存在しない ID を指定してもエラーにならず、`deleted: false` を返します
+- 作成・更新・削除には write スコープ (`trips:write` 等) を持つ API キーが必要です。読み取り専用で使う場合は read スコープのみのキーを発行してください
 - 共有されている旅行への書き込みには、その旅行での editor 以上のロールが必要です
 - 通信方式は stdio です。ネットワークで公開されることはありません
 - 操作できるデータは API キーの所有者自身がアクセスできるデータのみです
