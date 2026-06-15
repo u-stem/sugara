@@ -14,7 +14,7 @@
         "hono": "4.12.24",
         "next": "16.2.7",
         "next-intl": "4.13.0",
-        "nodemailer": "8.0.10",
+        "nodemailer": "9.0.0",
         "postcss": "8.5.15",
         "vitest": "4.1.8",
       },
@@ -38,7 +38,7 @@
         "drizzle-orm": "0.45.2",
         "hono": "4.12.24",
         "hono-openapi": "1.3.0",
-        "nodemailer": "8.0.10",
+        "nodemailer": "9.0.0",
         "pino": "10.3.1",
         "postgres": "3.4.9",
         "web-push": "3.6.7",
@@ -1869,7 +1869,7 @@
 
     "node-releases": ["node-releases@2.0.46", "", {}, "sha512-GYVXHE2KnrzAfsAjl4uP++evGFCrAU1jta4ubEjIG7YWt/64Gqv66a30yKwWczVjA6j3bM4nBwH7Pk1JmDHaxQ=="],
 
-    "nodemailer": ["nodemailer@8.0.10", "", {}, "sha512-BLFuSth7QtHOkBzyqTehWWyub0NTRDuK2Q2SQfnGLsrJnzyU+Yeh4WpV1eZGuARFj1xQJHIdnTuJZLP+b9R1GQ=="],
+    "nodemailer": ["nodemailer@9.0.0", "", {}, "sha512-tbPTid7d/p9jAA8CRZ3iomvrMaST0o6NYuY7v6JQZHpPRZ61mLFSPKYd7342NtOFuej9/+L48SOIxwfu2uDvtw=="],
 
     "normalize-path": ["normalize-path@3.0.0", "", {}, "sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA=="],
 
