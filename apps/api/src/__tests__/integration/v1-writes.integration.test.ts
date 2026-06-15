@@ -39,8 +39,9 @@ vi.mock("../../lib/notifications", () => ({
   notifyUsers: vi.fn(),
 }));
 
+import { MAX_SCHEDULES_PER_TRIP, MAX_SOUVENIRS_PER_USER_PER_TRIP } from "@sugara/shared";
 import { eq } from "drizzle-orm";
-import { articles, expenses, tripDays, tripMembers } from "../../db/schema";
+import { articles, expenses, schedules, tripDays, tripMembers } from "../../db/schema";
 import { v1App } from "../../routes/v1/index";
 import { cleanupTables, createTestUser, getTestDb, teardownTestDb } from "./setup";
 
@@ -360,5 +361,601 @@ describe("v1 write routes integration", () => {
     });
     const sortOrders = rows.map((r) => r.sortOrder);
     expect(new Set(sortOrders).size).toBe(sortOrders.length);
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /trips/:tripId/souvenirs — _meta reflects per-user-per-trip count
+  // -------------------------------------------------------------------------
+
+  it("POST /trips/:tripId/souvenirs returns _meta with count=1 and correct max after first insert", async () => {
+    // Arrange: create trip (owner becomes member automatically)
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Matcha KitKat" }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body._meta).toEqual({ count: 1, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /trips/:tripId/candidates/batch
+  // -------------------------------------------------------------------------
+
+  it("POST /trips/:tripId/candidates/batch creates all items with consecutive sortOrders", async () => {
+    // Arrange: 1-day trip, caller is editor
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Batch Trip", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/candidates/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "Tokyo Tower", category: "sightseeing" },
+          { name: "Akihabara", category: "sightseeing" },
+          { name: "Shibuya", category: "sightseeing" },
+        ],
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(3);
+    expect(body.skipped).toHaveLength(0);
+    expect(body._meta.count).toBe(3);
+
+    // sortOrders must be unique and ascending (consecutive allocation in-memory)
+    const sortOrders = body.created
+      .map((c: { sortOrder: number }) => c.sortOrder)
+      .sort((a: number, b: number) => a - b);
+    expect(new Set(sortOrders).size).toBe(3);
+    expect(sortOrders[1] - sortOrders[0]).toBe(1);
+    expect(sortOrders[2] - sortOrders[1]).toBe(1);
+  });
+
+  it("POST /trips/:tripId/candidates/batch with onConflict=skip deduplicates by name (trim+lowercase)", async () => {
+    // Arrange: create trip and a pre-existing candidate
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Dedup Trip", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    const trip = await tripRes.json();
+
+    // Pre-insert one candidate via single create
+    const preRes = await v1App.request(`/trips/${trip.id}/candidates`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo Tower", category: "sightseeing" }),
+    });
+    expect(preRes.status).toBe(201);
+
+    // Act: batch with existing name + case/space variants + in-batch dupe + new name
+    const res = await v1App.request(`/trips/${trip.id}/candidates/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "tokyo tower", category: "sightseeing" }, // same after lowercase
+          { name: "  Tokyo Tower  ", category: "sightseeing" }, // same after trim
+          { name: "Akihabara", category: "sightseeing" }, // new — should be created
+          { name: "Akihabara", category: "sightseeing" }, // in-batch dupe — skipped
+        ],
+        onConflict: "skip",
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    // Only "Akihabara" (first occurrence) is created; the rest are skipped as duplicates
+    expect(body.created).toHaveLength(1);
+    expect(body.created[0].name).toBe("Akihabara");
+    expect(body.skipped).toHaveLength(3);
+    expect(body.skipped.every((s: { reason: string }) => s.reason === "duplicate")).toBe(true);
+  });
+
+  it("POST /trips/:tripId/candidates/batch with onConflict=create inserts same-name items", async () => {
+    // Arrange
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "No-dedup Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    // Act: two items with the same name, onConflict defaults to "create"
+    const res = await v1App.request(`/trips/${trip.id}/candidates/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "Tokyo Tower", category: "sightseeing" },
+          { name: "Tokyo Tower", category: "sightseeing" },
+        ],
+      }),
+    });
+
+    // Assert: both inserted, no skipped
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(2);
+    expect(body.skipped).toHaveLength(0);
+  });
+
+  it("POST /trips/:tripId/candidates/batch returns partial success when limit is reached mid-batch", async () => {
+    // Arrange: create a trip and fill it to MAX-1 using many batch calls, then test overflow
+    const db = getTestDb();
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Limit Trip", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    const trip = await tripRes.json();
+
+    // Fill to MAX_SCHEDULES_PER_TRIP - 1 with individual creates to avoid test complexity
+    // (use db directly for speed)
+    const { schedules } = await import("../../db/schema");
+    const placeholders = Array.from({ length: MAX_SCHEDULES_PER_TRIP - 1 }, (_, i) => ({
+      tripId: trip.id,
+      name: `Place ${i}`,
+      category: "sightseeing" as const,
+      sortOrder: i,
+    }));
+    await db.insert(schedules).values(placeholders);
+
+    // Act: batch with 3 items; only 1 should fit
+    const res = await v1App.request(`/trips/${trip.id}/candidates/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "Last Slot", category: "sightseeing" },
+          { name: "Overflow 1", category: "sightseeing" },
+          { name: "Overflow 2", category: "sightseeing" },
+        ],
+      }),
+    });
+
+    // Assert: 201 with partial success, _meta.count at the cap
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(1);
+    expect(body.created[0].name).toBe("Last Slot");
+    expect(body.skipped).toHaveLength(2);
+    expect(body.skipped.every((s: { reason: string }) => s.reason === "limit_reached")).toBe(true);
+    expect(body._meta.count).toBe(MAX_SCHEDULES_PER_TRIP);
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /trips/:tripId/souvenirs/batch
+  // -------------------------------------------------------------------------
+
+  it("POST /trips/:tripId/souvenirs/batch creates all items and returns correct _meta.count", async () => {
+    // Arrange: create trip, switch to souvenirs:write scope
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Batch Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [{ name: "Matcha KitKat" }, { name: "Pocky" }],
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(2);
+    expect(body.skipped).toHaveLength(0);
+    expect(body._meta).toEqual({ count: 2, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
+  it("POST /trips/:tripId/souvenirs/batch with onConflict=skip deduplicates caller's own items", async () => {
+    // Arrange: create trip and a pre-existing souvenir
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Dedup Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Pre-insert one souvenir
+    const preRes = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Matcha KitKat" }),
+    });
+    expect(preRes.status).toBe(201);
+
+    // Act: batch with existing name + case variant + in-batch dupe + new name
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "MATCHA KITKAT" }, // same after lowercase — skipped
+          { name: "Pocky" }, // new — created
+          { name: "Pocky" }, // in-batch dupe — skipped
+        ],
+        onConflict: "skip",
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(1);
+    expect(body.created[0].name).toBe("Pocky");
+    expect(body.skipped).toHaveLength(2);
+    expect(body.skipped.every((s: { reason: string }) => s.reason === "duplicate")).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /trips/:tripId/candidates — _meta.count includes ALL schedules
+  // (assigned + candidates), not just candidates
+  // -------------------------------------------------------------------------
+
+  it("POST /trips/:tripId/candidates _meta.count includes pre-existing assigned schedules", async () => {
+    // Arrange: create a 1-day trip and add one schedule to day 1 (assigned).
+    // Then POST a candidate. The _meta.count must be 2 (1 assigned + 1 candidate),
+    // confirming getScheduleCount counts ALL schedules, not just candidates.
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Candidate Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    // Add one assigned schedule to day 1 via the existing schedule endpoint
+    const schedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo Tower", category: "sightseeing" }),
+    });
+    expect(schedRes.status).toBe(201);
+
+    // Act: POST candidate (unassigned schedule)
+    const res = await v1App.request(`/trips/${trip.id}/candidates`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Akihabara", category: "sightseeing" }),
+    });
+
+    // Assert: _meta.count is 2 — both assigned schedule and new candidate are
+    // counted because MAX_SCHEDULES_PER_TRIP is a trip-wide cap over all schedules.
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body._meta).toEqual({ count: 2, max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE /trips/:tripId/candidates/:scheduleId
+  // -------------------------------------------------------------------------
+
+  it("DELETE candidate returns deleted:true and decrements remaining on first delete", async () => {
+    // Arrange: create trip and one candidate
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Delete Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    const candRes = await v1App.request(`/trips/${trip.id}/candidates`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo Tower", category: "sightseeing" }),
+    });
+    expect(candRes.status).toBe(201);
+    const cand = await candRes.json();
+
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/candidates/${cand.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(true);
+    expect(body.id).toBe(cand.id);
+    // The trip only had the one candidate (no assigned schedules), so after deleting
+    // it the trip-wide schedule count is 0.
+    expect(body.remaining).toEqual({ count: 0, max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  it("DELETE candidate is idempotent: second call returns deleted:false with same remaining", async () => {
+    // Arrange: create trip, one candidate, delete it once
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Idempotent Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    const candRes = await v1App.request(`/trips/${trip.id}/candidates`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Akihabara", category: "sightseeing" }),
+    });
+    const cand = await candRes.json();
+
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // First delete
+    const first = await v1App.request(`/trips/${trip.id}/candidates/${cand.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+    expect((await first.json()).deleted).toBe(true);
+
+    // Act: second delete (idempotent)
+    const second = await v1App.request(`/trips/${trip.id}/candidates/${cand.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(second.status).toBe(200);
+    const body = await second.json();
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(cand.id);
+  });
+
+  it("DELETE candidate returns deleted:false when schedule is assigned to a day (not a candidate)", async () => {
+    // Arrange: create 1-day trip, add a schedule to day 1 (assigned, not a candidate)
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Assigned Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    const schedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo Tower", category: "sightseeing" }),
+    });
+    expect(schedRes.status).toBe(201);
+    const sched = await schedRes.json();
+
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Act: attempt to DELETE the assigned schedule via the candidates endpoint
+    const res = await v1App.request(`/trips/${trip.id}/candidates/${sched.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: assigned schedules are not candidates → deleted:false, NOT physically removed
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(false);
+
+    // Regression guard: confirm the row still exists in DB (atomic WHERE must
+    // have excluded it, not physically removed it).
+    const db = getTestDb();
+    const row = await db.query.schedules.findFirst({ where: eq(schedules.id, sched.id) });
+    expect(row).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE /trips/:tripId/souvenirs/:itemId
+  // -------------------------------------------------------------------------
+
+  it("DELETE souvenir returns deleted:true and decrements remaining on first delete", async () => {
+    // Arrange: create trip and one souvenir
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Delete Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const createRes = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Matcha KitKat" }),
+    });
+    expect(createRes.status).toBe(201);
+    const souvenir = await createRes.json();
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs/${souvenir.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(true);
+    expect(body.id).toBe(souvenir.id);
+    expect(body.remaining).toEqual({ count: 0, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
+  it("DELETE souvenir is idempotent: second call returns deleted:false", async () => {
+    // Arrange: create trip and souvenir, delete once
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Idempotent Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const createRes = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Pocky" }),
+    });
+    const souvenir = await createRes.json();
+
+    // First delete
+    const first = await v1App.request(`/trips/${trip.id}/souvenirs/${souvenir.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+    expect((await first.json()).deleted).toBe(true);
+
+    // Act: second delete
+    const second = await v1App.request(`/trips/${trip.id}/souvenirs/${souvenir.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(second.status).toBe(200);
+    const body = await second.json();
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(souvenir.id);
+  });
+
+  it("DELETE souvenir returns deleted:false for another user's item (no information leak)", async () => {
+    // Arrange: create trip, add Bob as member, create souvenir owned by Alice,
+    // then try to delete it as Bob — must return deleted:false, item stays.
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Ownership Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    const db = getTestDb();
+    const bob = await createTestUser({ name: "Bob", email: "bob@souvenir-delete.test" });
+    await db.insert(tripMembers).values({ tripId: trip.id, userId: bob.id, role: "viewer" });
+
+    // Alice creates a souvenir
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+    const createRes = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Alice's KitKat" }),
+    });
+    const aliceSouvenir = await createRes.json();
+
+    // Bob tries to delete Alice's souvenir
+    const bobApiKey = {
+      id: "cccccccc-0000-0000-0000-000000000001",
+      userId: bob.id,
+      scopes: ["souvenirs:write"],
+      expiresAt: new Date(Date.now() + 3_600_000),
+    };
+    mockVerifyApiKey.mockResolvedValue(bobApiKey);
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs/${aliceSouvenir.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: deleted:false — Bob cannot see or delete Alice's item
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(false);
+
+    // Assert: Alice's souvenir still exists in the DB
+    const { souvenirItems } = await import("../../db/schema");
+    const { eq: eqFn } = await import("drizzle-orm");
+    const row = await db.query.souvenirItems.findFirst({
+      where: eqFn(souvenirItems.id, aliceSouvenir.id),
+    });
+    expect(row).toBeDefined();
   });
 });

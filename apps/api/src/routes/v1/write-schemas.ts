@@ -232,6 +232,13 @@ export type V1UpdateExpenseInput = z.infer<typeof v1UpdateExpenseSchema>;
 // Response schemas — external DTO shapes for write operations
 // ---------------------------------------------------------------------------
 
+// _meta: count/limit context returned on write operations where callers need to
+// know the resulting item count relative to the per-resource cap.
+export const v1WriteMetaSchema = z.object({
+  count: z.number().int(),
+  max: z.number().int(),
+});
+
 // Trip write response: basic fields only, no ownerId or cover image internals.
 export const v1TripWriteResponseSchema = z.object({
   id: z.string(),
@@ -246,6 +253,7 @@ export const v1TripWriteResponseSchema = z.object({
 });
 
 // Schedule write response: all non-internal fields.
+// Used by trips-write (POST/PATCH /schedules) which are not cap-context aware.
 export const v1ScheduleWriteResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -264,6 +272,13 @@ export const v1ScheduleWriteResponseSchema = z.object({
   sortOrder: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+// Candidate write response = schedule DTO + _meta (count of ALL schedules in the
+// trip vs. MAX_SCHEDULES_PER_TRIP). Only candidate routes include _meta because
+// they write to the trip-wide schedule pool that callers need to track.
+export const v1CandidateWriteResponseSchema = v1ScheduleWriteResponseSchema.extend({
+  _meta: v1WriteMetaSchema,
 });
 
 // Expense write response: memberNo-based references, no internal userId exposure.
@@ -328,7 +343,9 @@ const v1SouvenirOwnerSchema = z.object({
   displayName: z.string(),
 });
 
-export const v1SouvenirWriteResponseSchema = z.object({
+// Base souvenir DTO shape (without _meta) reused by both the single-create and
+// the batch-create response schemas.
+const v1SouvenirDtoSchema = z.object({
   id: z.string(),
   name: z.string(),
   recipient: z.string().nullable(),
@@ -342,4 +359,78 @@ export const v1SouvenirWriteResponseSchema = z.object({
   owner: v1SouvenirOwnerSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+export const v1SouvenirWriteResponseSchema = v1SouvenirDtoSchema.extend({
+  _meta: v1WriteMetaSchema,
+});
+
+// ---------------------------------------------------------------------------
+// Batch write schemas — shared helpers
+// ---------------------------------------------------------------------------
+
+// Skipped-item type carried in both candidate and souvenir batch responses.
+const v1BatchSkippedItemSchema = z.object({
+  name: z.string(),
+  reason: z.enum(["duplicate", "limit_reached"]),
+});
+
+// Conflict resolution for batch creates.
+// "create" (default): always insert — matches single-create semantics.
+// "skip": items whose name (trim + toLowerCase) matches an existing entry in
+//   the trip/user scope OR an earlier item in the same batch are skipped with
+//   reason "duplicate". This is an exact-match check; unlike list q= which
+//   uses partial/case-insensitive substring matching.
+const v1BatchOnConflictSchema = z.enum(["create", "skip"]).default("create");
+
+// ---------------------------------------------------------------------------
+// Candidate batch schemas
+// ---------------------------------------------------------------------------
+
+export const v1BatchCreateCandidateSchema = z.object({
+  items: z.array(v1CreateScheduleSchema).min(1).max(50),
+  onConflict: v1BatchOnConflictSchema,
+});
+
+export type V1BatchCreateCandidateInput = z.infer<typeof v1BatchCreateCandidateSchema>;
+
+// Batch response: created carries plain schedule DTOs (no per-item _meta);
+// _meta at the response root reflects the post-batch trip-wide schedule count.
+export const v1CandidateBatchWriteResponseSchema = z.object({
+  created: z.array(v1ScheduleWriteResponseSchema),
+  skipped: z.array(v1BatchSkippedItemSchema),
+  _meta: v1WriteMetaSchema,
+});
+
+// ---------------------------------------------------------------------------
+// Souvenir batch schemas
+// ---------------------------------------------------------------------------
+
+export const v1BatchCreateSouvenirSchema = z.object({
+  items: z.array(createSouvenirSchema).min(1).max(50),
+  onConflict: v1BatchOnConflictSchema,
+});
+
+export type V1BatchCreateSouvenirInput = z.infer<typeof v1BatchCreateSouvenirSchema>;
+
+// Batch response: created items use the base souvenir DTO without per-item _meta.
+export const v1SouvenirBatchWriteResponseSchema = z.object({
+  created: z.array(v1SouvenirDtoSchema),
+  skipped: z.array(v1BatchSkippedItemSchema),
+  _meta: v1WriteMetaSchema,
+});
+
+// ---------------------------------------------------------------------------
+// Delete response schema — shared by candidate and souvenir delete endpoints
+// ---------------------------------------------------------------------------
+
+// Idempotent delete: always returns 200. deleted:true when the item was found
+// and removed; deleted:false when the item was already gone, belongs to another
+// trip, or (for souvenirs) is owned by a different user. remaining carries the
+// same cap context as the create response for the same resource type, computed
+// after the operation.
+export const v1DeleteResponseSchema = z.object({
+  id: z.string(),
+  deleted: z.boolean(),
+  remaining: v1WriteMetaSchema,
 });

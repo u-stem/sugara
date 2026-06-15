@@ -3,15 +3,15 @@ import { z } from "zod";
 import { INPUT_SHAPES } from "../tools.js";
 
 describe("INPUT_SHAPES", () => {
-  it("defines 25 tools", () => {
+  it("defines 29 tools", () => {
     // Arrange + Act
     const toolNames = Object.keys(INPUT_SHAPES);
 
     // Assert
-    expect(toolNames).toHaveLength(25);
+    expect(toolNames).toHaveLength(29);
   });
 
-  it("includes the candidate and souvenir tools", () => {
+  it("includes the candidate and souvenir tools including batch variants", () => {
     const toolNames = Object.keys(INPUT_SHAPES);
 
     expect(toolNames).toEqual(
@@ -19,9 +19,13 @@ describe("INPUT_SHAPES", () => {
         "list_candidates",
         "create_candidate",
         "update_candidate",
+        "batch_create_candidates",
         "list_souvenirs",
         "create_souvenir",
         "update_souvenir",
+        "batch_create_souvenirs",
+        "delete_candidate",
+        "delete_souvenir",
       ]),
     );
   });
@@ -652,6 +656,195 @@ describe("update_article input schema", () => {
     const result = schema.safeParse({ id: "550e8400-e29b-41d4-a716-446655440000" });
 
     // Assert
+    expect(result.success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// q (name/title search) parameter in list schemas
+// ---------------------------------------------------------------------------
+
+describe("list_candidates q parameter", () => {
+  const schema = z.object(INPUT_SHAPES.list_candidates);
+
+  it("preserves q in parsed output so the tool handler can forward it", () => {
+    // Zod strips unknown keys by default, so q must be declared in the schema
+    // for it to survive parsing. This test would fail without q in INPUT_SHAPES.
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), q: "Tokyo" });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBe("Tokyo");
+  });
+
+  it("preserves q as undefined when absent", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID() });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBeUndefined();
+  });
+});
+
+describe("list_souvenirs q parameter", () => {
+  const schema = z.object(INPUT_SHAPES.list_souvenirs);
+
+  it("preserves q in parsed output", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), q: "Matcha" });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBe("Matcha");
+  });
+});
+
+describe("list_articles q parameter", () => {
+  const schema = z.object(INPUT_SHAPES.list_articles);
+
+  it("preserves q in parsed output", () => {
+    const result = schema.safeParse({ q: "Kyoto" });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBe("Kyoto");
+  });
+});
+
+describe("list_bookmarks q parameter", () => {
+  const schema = z.object(INPUT_SHAPES.list_bookmarks);
+
+  it("preserves q in parsed output alongside listId", () => {
+    const result = schema.safeParse({ listId: crypto.randomUUID(), q: "Senso" });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBe("Senso");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Batch create schemas
+// ---------------------------------------------------------------------------
+
+describe("batch_create_candidates input schema", () => {
+  const schema = z.object(INPUT_SHAPES.batch_create_candidates);
+  const validItem = { name: "Tokyo Tower", category: "sightseeing" as const };
+
+  it("requires tripId and at least one item", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), items: [] }).success).toBe(false);
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), items: [validItem] }).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects more than 50 items", () => {
+    const items = Array.from({ length: 51 }, () => validItem);
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), items });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid category in items", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [{ name: "Tower", category: "nope" }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid onConflict value", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [validItem],
+      onConflict: "upsert",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts onConflict skip", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [validItem],
+      onConflict: "skip",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts onConflict create", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [validItem],
+      onConflict: "create",
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("delete_candidate input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_candidate);
+
+  it("requires tripId and scheduleId", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-UUID scheduleId", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("delete_souvenir input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_souvenir);
+
+  it("requires tripId and itemId", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), itemId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-UUID itemId", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), itemId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("batch_create_souvenirs input schema", () => {
+  const schema = z.object(INPUT_SHAPES.batch_create_souvenirs);
+  const validItem = { name: "Matcha KitKat" };
+
+  it("requires tripId and at least one item", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), items: [] }).success).toBe(false);
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), items: [validItem] }).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects more than 50 items", () => {
+    const items = Array.from({ length: 51 }, () => validItem);
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), items });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid shareStyle in items", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [{ name: "KitKat", shareStyle: "gift" }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid priority in items", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [{ name: "KitKat", priority: "low" }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts onConflict skip", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [validItem],
+      onConflict: "skip",
+    });
     expect(result.success).toBe(true);
   });
 });

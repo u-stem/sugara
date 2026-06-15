@@ -36,6 +36,9 @@ const {
   mockGetScheduleCount,
   mockGetNextSortOrder,
   mockCreateCandidateCore,
+  mockBatchCreateCandidatesCore,
+  mockBatchCreateSouvenirsCore,
+  mockDbDelete,
 } = vi.hoisted(() => ({
   mockVerifyApiKey: vi.fn(),
   mockCheckTripAccess: vi.fn(),
@@ -65,6 +68,9 @@ const {
   mockGetScheduleCount: vi.fn(),
   mockGetNextSortOrder: vi.fn(),
   mockCreateCandidateCore: vi.fn(),
+  mockBatchCreateCandidatesCore: vi.fn(),
+  mockBatchCreateSouvenirsCore: vi.fn(),
+  mockDbDelete: vi.fn(),
 }));
 
 vi.mock("../lib/external-api/api-key", () => ({
@@ -83,6 +89,7 @@ vi.mock("../db/index", () => {
     insert: (...args: unknown[]) => mockDbInsert(...args),
     update: (...args: unknown[]) => mockDbUpdate(...args),
     select: (...args: unknown[]) => mockDbSelect(...args),
+    delete: (...args: unknown[]) => mockDbDelete(...args),
   };
   return {
     db: { ...tx, transaction: (fn: (t: typeof tx) => unknown) => fn(tx) },
@@ -135,6 +142,11 @@ vi.mock("../lib/sort-order", () => ({
 
 vi.mock("../lib/candidate-service", () => ({
   createCandidateCore: (...args: unknown[]) => mockCreateCandidateCore(...args),
+  batchCreateCandidatesCore: (...args: unknown[]) => mockBatchCreateCandidatesCore(...args),
+}));
+
+vi.mock("../lib/souvenir-service", () => ({
+  batchCreateSouvenirsCore: (...args: unknown[]) => mockBatchCreateSouvenirsCore(...args),
 }));
 
 import { v1App } from "../routes/v1/index";
@@ -193,6 +205,13 @@ function jsonPatch(path: string, body: unknown) {
     method: "PATCH",
     headers: { ...AUTH_HEADER, "Content-Type": "application/json" },
     body: JSON.stringify(body),
+  });
+}
+
+function jsonDelete(path: string) {
+  return v1App.request(path, {
+    method: "DELETE",
+    headers: AUTH_HEADER,
   });
 }
 
@@ -455,6 +474,33 @@ describe("POST /trips/:tripId/days/:dayNumber/schedules", () => {
     expect(body.error.code).toBe("conflict");
     expect(body.error.reason).toBe("schedule_limit_reached");
     expect(body.error.details).toEqual({ max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  it("returns 201 with schedule DTO and no _meta (only candidate write routes carry _meta)", async () => {
+    // This test pins the contract that trips-write schedule routes are not
+    // cap-context aware. _meta belongs only on candidate write responses.
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripDays.findMany.mockResolvedValue([
+      { id: "day-1", dayNumber: 1, patterns: [{ id: "pattern-1" }] },
+    ]);
+    mockGetScheduleCount.mockResolvedValueOnce(0);
+    mockGetNextSortOrder.mockResolvedValueOnce(0);
+    mockDbInsert.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([CANDIDATE_ROW]),
+      }),
+    });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/1/schedules`, {
+      name: "Tokyo Tower",
+      category: "sightseeing",
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.id).toBe(CANDIDATE_ROW.id);
+    expect(body._meta).toBeUndefined();
   });
 });
 
@@ -930,6 +976,24 @@ describe("POST /trips/:tripId/candidates", () => {
     expect(res.status).toBe(403);
   });
 
+  it("includes _meta with post-insert schedule count and max in the 201 response", async () => {
+    // Arrange: createCandidateCore inserts 1 row; getScheduleCount returns 1.
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockCreateCandidateCore.mockResolvedValue({ ok: true, schedule: CANDIDATE_ROW });
+    mockGetScheduleCount.mockResolvedValueOnce(1);
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates`, {
+      name: "Tokyo Tower",
+      category: "sightseeing",
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(body._meta).toEqual({ count: 1, max: MAX_SCHEDULES_PER_TRIP });
+  });
+
   it("returns 404 when caller has viewer role (editor-gated)", async () => {
     mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
     mockCheckTripAccess.mockResolvedValue("viewer");
@@ -946,10 +1010,9 @@ describe("POST /trips/:tripId/candidates", () => {
     mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
     mockCheckTripAccess.mockResolvedValue("editor");
     mockCreateCandidateCore.mockResolvedValue({ ok: true, schedule: CANDIDATE_ROW });
-    // getActorName select (for the notification payload)
-    mockDbSelect.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ name: "Alice" }]) }),
-    });
+    // getActorName uses db.query.users.findFirst (not db.select); no mockDbSelect needed.
+    // getScheduleCount is mocked separately via mockGetScheduleCount.
+    mockGetScheduleCount.mockResolvedValueOnce(3);
 
     const res = await jsonPost(`/trips/${TRIP_ID}/candidates`, {
       name: "Tokyo Tower",
@@ -1024,6 +1087,7 @@ describe("PATCH /trips/:tripId/candidates/:scheduleId", () => {
     mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
     mockCheckTripAccess.mockResolvedValue("editor");
     mockDbQuery.schedules.findFirst.mockResolvedValue(CANDIDATE_ROW);
+    mockGetScheduleCount.mockResolvedValueOnce(3);
     mockDbUpdate.mockReturnValue({
       set: vi.fn().mockReturnValue({
         where: vi.fn().mockReturnValue({
@@ -1039,6 +1103,47 @@ describe("PATCH /trips/:tripId/candidates/:scheduleId", () => {
 
     expect(res.status).toBe(200);
     expect(body.name).toBe("Updated");
+  });
+
+  it("includes _meta with schedule count and max in the 200 response on update", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue(CANDIDATE_ROW);
+    mockGetScheduleCount.mockResolvedValueOnce(3);
+    mockDbUpdate.mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ ...CANDIDATE_ROW, name: "Updated" }]),
+        }),
+      }),
+    });
+
+    // Act
+    const res = await jsonPatch(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ROW.id}`, {
+      name: "Updated",
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(body._meta).toEqual({ count: 3, max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  it("includes _meta in the 200 response on a no-op update (when no fields change)", async () => {
+    // Arrange: send the same name as the existing candidate → hasChanges returns false.
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue(CANDIDATE_ROW);
+    mockGetScheduleCount.mockResolvedValueOnce(2);
+
+    // Act: same name as existing record → no-op path
+    const res = await jsonPatch(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ROW.id}`, {
+      name: CANDIDATE_ROW.name,
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(body._meta).toEqual({ count: 2, max: MAX_SCHEDULES_PER_TRIP });
   });
 });
 
@@ -1098,6 +1203,20 @@ describe("POST /trips/:tripId/souvenirs", () => {
     expect(res.status).toBe(403);
   });
 
+  it("includes _meta with post-insert count and max in the 201 response", async () => {
+    // Arrange: arrangeSouvenirCreate sets itemCount to 0 → post-insert count is 1.
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("viewer");
+    arrangeSouvenirCreate(souvenirRow());
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs`, { name: "Matcha KitKat" });
+    const body = await res.json();
+
+    // Assert
+    expect(body._meta).toEqual({ count: 1, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
   it("allows a viewer to create their own souvenir (no editor role required)", async () => {
     mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
     mockCheckTripAccess.mockResolvedValue("viewer");
@@ -1151,6 +1270,32 @@ describe("POST /trips/:tripId/souvenirs", () => {
 });
 
 describe("PATCH /trips/:tripId/souvenirs/:itemId", () => {
+  it("includes _meta with current count and max in the 200 response", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.souvenirItems.findFirst.mockResolvedValue(souvenirRow());
+    mockDbUpdate.mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([souvenirRow()]),
+        }),
+      }),
+    });
+    mockDbQuery.tripMembers.findMany.mockResolvedValue(SOUVENIR_MEMBER_ROWS);
+    // count SELECT executed after the update (same per-user filter as the cap check)
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ itemCount: 2 }]) }),
+    });
+
+    // Act
+    const res = await jsonPatch(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`, { name: "Updated" });
+    const body = await res.json();
+
+    // Assert
+    expect(body._meta).toEqual({ count: 2, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
   it("returns 404 when the souvenir is owned by another member", async () => {
     // The ownership-scoped query (userId === caller) yields no row for others' items.
     mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
@@ -1188,13 +1333,467 @@ describe("PATCH /trips/:tripId/souvenirs/:itemId", () => {
     });
     mockDbUpdate.mockReturnValue({ set: setSpy });
     mockDbQuery.tripMembers.findMany.mockResolvedValue(SOUVENIR_MEMBER_ROWS);
+    // count SELECT executed after the update in Promise.all
     mockDbSelect.mockReturnValueOnce({
-      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ name: "Alice" }]) }),
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ itemCount: 1 }]) }),
     });
 
     const res = await jsonPatch(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`, { isShared: false });
 
     expect(res.status).toBe(200);
     expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ shareStyle: null }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Candidates — batch create
+// ---------------------------------------------------------------------------
+
+function arrangeCandidateBatch(result: {
+  created: unknown[];
+  skipped: { name: string; reason: "duplicate" | "limit_reached" }[];
+}) {
+  mockBatchCreateCandidatesCore.mockResolvedValue(result);
+  // getScheduleCount is called after the batch for _meta
+  mockGetScheduleCount.mockResolvedValue(result.created.length);
+}
+
+describe("POST /trips/:tripId/candidates/batch", () => {
+  it("returns 403 when key has only trips:read", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["trips:read"] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [{ name: "Tokyo Tower", category: "sightseeing" }],
+    });
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when caller has viewer role (editor-gated)", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("viewer");
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [{ name: "Tokyo Tower", category: "sightseeing" }],
+    });
+
+    // Assert
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 for an empty items array", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, { items: [] });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("invalid_request");
+  });
+
+  it("returns 201 with created, skipped, and _meta when all items are created", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeCandidateBatch({
+      created: [
+        CANDIDATE_ROW,
+        {
+          ...CANDIDATE_ROW,
+          id: "33333333-0000-0000-0000-000000000002",
+          name: "Akihabara",
+          sortOrder: 1,
+        },
+      ],
+      skipped: [],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [
+        { name: "Tokyo Tower", category: "sightseeing" },
+        { name: "Akihabara", category: "sightseeing" },
+      ],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(2);
+    expect(body.skipped).toHaveLength(0);
+    expect(body._meta).toEqual({ count: 2, max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  it("returns 201 with partial success when some items are skipped due to limit", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeCandidateBatch({
+      created: [CANDIDATE_ROW],
+      skipped: [{ name: "Akihabara", reason: "limit_reached" }],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [
+        { name: "Tokyo Tower", category: "sightseeing" },
+        { name: "Akihabara", category: "sightseeing" },
+      ],
+    });
+    const body = await res.json();
+
+    // Assert — still 201, no global 409
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+    expect(body.skipped).toEqual([{ name: "Akihabara", reason: "limit_reached" }]);
+  });
+
+  it("returns 201 with duplicate skipped when onConflict is skip", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeCandidateBatch({
+      created: [CANDIDATE_ROW],
+      skipped: [{ name: "Tokyo Tower", reason: "duplicate" }],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [
+        { name: "Tokyo Tower", category: "sightseeing" },
+        { name: "Tokyo Tower", category: "sightseeing" },
+      ],
+      onConflict: "skip",
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+    expect(body.skipped[0]).toEqual({ name: "Tokyo Tower", reason: "duplicate" });
+  });
+
+  it("created items have no per-item _meta (only response-level _meta)", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeCandidateBatch({ created: [CANDIDATE_ROW], skipped: [] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [{ name: "Tokyo Tower", category: "sightseeing" }],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(body.created[0]).not.toHaveProperty("_meta");
+    expect(body).toHaveProperty("_meta");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Souvenirs — batch create
+// ---------------------------------------------------------------------------
+
+function arrangeSouvenirBatch(result: {
+  created: unknown[];
+  skipped: { name: string; reason: "duplicate" | "limit_reached" }[];
+}) {
+  mockBatchCreateSouvenirsCore.mockResolvedValue(result);
+  mockDbQuery.tripMembers.findMany.mockResolvedValue(SOUVENIR_MEMBER_ROWS);
+  // getActorName uses db.query.users.findFirst, not db.select
+  mockDbQuery.users.findFirst.mockResolvedValue({ name: "Alice" });
+  // post-batch count SELECT for _meta (the only db.select call in the batch route)
+  mockDbSelect.mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([{ itemCount: result.created.length }]),
+    }),
+  });
+}
+
+describe("POST /trips/:tripId/souvenirs/batch", () => {
+  it("returns 403 when key has only souvenirs:read", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:read"] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }],
+    });
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("allows a viewer to batch-create their own souvenirs (no editor role required)", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("viewer");
+    arrangeSouvenirBatch({ created: [souvenirRow()], skipped: [] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+  });
+
+  it("returns 400 for an empty items array", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, { items: [] });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("invalid_request");
+  });
+
+  it("returns 201 with created, skipped, and _meta when all items are created", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeSouvenirBatch({
+      created: [
+        souvenirRow(),
+        souvenirRow({ id: "44444444-0000-0000-0000-000000000002", name: "Pocky" }),
+      ],
+      skipped: [],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }, { name: "Pocky" }],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(2);
+    expect(body.skipped).toHaveLength(0);
+    expect(body._meta).toEqual({ count: 2, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
+  it("returns 201 with partial success when some items exceed the limit", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeSouvenirBatch({
+      created: [souvenirRow()],
+      skipped: [{ name: "Pocky", reason: "limit_reached" }],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }, { name: "Pocky" }],
+    });
+    const body = await res.json();
+
+    // Assert — still 201, no global 409
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+    expect(body.skipped).toEqual([{ name: "Pocky", reason: "limit_reached" }]);
+  });
+
+  it("returns 201 with duplicate skipped when onConflict is skip", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeSouvenirBatch({
+      created: [souvenirRow()],
+      skipped: [{ name: "Matcha KitKat", reason: "duplicate" }],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }, { name: "Matcha KitKat" }],
+      onConflict: "skip",
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+    expect(body.skipped[0]).toEqual({ name: "Matcha KitKat", reason: "duplicate" });
+  });
+
+  it("created items have no per-item _meta (owner is a memberNo ref)", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeSouvenirBatch({ created: [souvenirRow()], skipped: [] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }],
+    });
+    const body = await res.json();
+
+    // Assert: items have owner (memberNo ref) but no _meta on each item
+    expect(body.created[0]).not.toHaveProperty("_meta");
+    expect(body.created[0]).toHaveProperty("owner");
+    expect(body).toHaveProperty("_meta");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/candidates/:scheduleId
+// ---------------------------------------------------------------------------
+
+describe("DELETE /trips/:tripId/candidates/:scheduleId", () => {
+  const CANDIDATE_ID = "33333333-0000-0000-0000-000000000001";
+
+  beforeEach(() => {
+    mockVerifyApiKey.mockResolvedValue({
+      ...WRITE_KEY,
+      scopes: ["trips:write"],
+    });
+    mockCheckTripAccess.mockResolvedValue("editor");
+  });
+
+  it("returns 403 when key has only trips:read scope", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["trips:read"] });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ID}`);
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when caller has viewer role (editor-gated)", async () => {
+    // Arrange
+    mockCheckTripAccess.mockResolvedValue("viewer");
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ID}`);
+
+    // Assert
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 with deleted:false when candidate not found or already deleted", async () => {
+    // Arrange: atomic delete returns empty rows (id unknown, assigned, or already gone)
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    mockGetScheduleCount.mockResolvedValue(0);
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(CANDIDATE_ID);
+  });
+
+  it("returns 200 with deleted:true and correct remaining when candidate deleted", async () => {
+    // Arrange: atomic delete returns the removed row; getActorName resolves for notification
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: CANDIDATE_ID, name: "Tokyo Tower" }]),
+      }),
+    });
+    mockGetScheduleCount.mockResolvedValue(0);
+    mockDbQuery.users.findFirst.mockResolvedValue({ name: "Alice" });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(true);
+    expect(body.remaining).toEqual({ count: 0, max: MAX_SCHEDULES_PER_TRIP });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/souvenirs/:itemId
+// ---------------------------------------------------------------------------
+
+describe("DELETE /trips/:tripId/souvenirs/:itemId", () => {
+  const SOUVENIR_ID = "44444444-0000-0000-0000-000000000001";
+
+  beforeEach(() => {
+    mockVerifyApiKey.mockResolvedValue({
+      ...WRITE_KEY,
+      scopes: ["souvenirs:write"],
+    });
+    mockCheckTripAccess.mockResolvedValue("viewer");
+  });
+
+  it("returns 403 when key has only souvenirs:read scope", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:read"] });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`);
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 200 with deleted:false when souvenir not found or owned by another user", async () => {
+    // Arrange: atomic delete returns empty rows (not found, another trip, or wrong owner)
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ itemCount: 3 }]),
+      }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(false);
+    expect(body.remaining.count).toBe(3);
+  });
+
+  it("returns 200 with deleted:true and correct remaining when souvenir deleted", async () => {
+    // Arrange: atomic delete returns the removed row; count query reflects post-delete state
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: SOUVENIR_ID }]),
+      }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue([{ itemCount: 2 }]),
+      }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/souvenirs/${SOUVENIR_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(true);
+    expect(body.remaining).toEqual({ count: 2, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
   });
 });

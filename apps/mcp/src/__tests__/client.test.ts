@@ -699,6 +699,66 @@ describe("ApiClient", () => {
     });
   });
 
+  describe("q (name search) parameter", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const listId = "880e8400-e29b-41d4-a716-446655440000";
+
+    it("listCandidates appends q to the URL when provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listCandidates(tripId, { q: "Tower" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("q=Tower");
+    });
+
+    it("listCandidates does not append q when absent", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listCandidates(tripId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).not.toContain("q=");
+    });
+
+    it("listSouvenirs appends q to the URL when provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listSouvenirs(tripId, { q: "Matcha" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("q=Matcha");
+    });
+
+    it("listArticles appends q to the URL when provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listArticles({ q: "Kyoto" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("q=Kyoto");
+    });
+
+    it("listBookmarks appends q to the URL when provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listBookmarks(listId, { q: "Senso" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("q=Senso");
+    });
+  });
+
   describe("souvenir methods — request assembly", () => {
     const tripId = "550e8400-e29b-41d4-a716-446655440000";
     const itemId = "770e8400-e29b-41d4-a716-446655440000";
@@ -727,6 +787,188 @@ describe("ApiClient", () => {
       await client.updateSouvenir(tripId, itemId, { isPurchased: true });
 
       expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("PATCH");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/souvenirs/${itemId}`,
+      );
+    });
+  });
+
+  describe("batch methods — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const batchResponse = { created: [], skipped: [], _meta: { count: 0, max: 300 } };
+
+    it("batchCreateCandidates POSTs to /trips/:tripId/candidates/batch", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(batchResponse, 201));
+
+      // Act
+      await client.batchCreateCandidates(tripId, [{ name: "Tower", category: "sightseeing" }]);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/candidates/batch`,
+      );
+    });
+
+    it("batchCreateCandidates sends items in the request body", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(batchResponse, 201));
+      const items = [{ name: "Tower", category: "sightseeing" }];
+
+      // Act
+      await client.batchCreateCandidates(tripId, items);
+
+      // Assert
+      const body = getFirstCallBody(mockFetch.mock.calls);
+      expect(body).toEqual({ items });
+    });
+
+    it("batchCreateCandidates includes onConflict when provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(batchResponse, 201));
+
+      // Act
+      await client.batchCreateCandidates(
+        tripId,
+        [{ name: "Tower", category: "sightseeing" }],
+        "skip",
+      );
+
+      // Assert
+      const body = getFirstCallBody(mockFetch.mock.calls);
+      expect(body).toMatchObject({ onConflict: "skip" });
+    });
+
+    it("batchCreateCandidates omits onConflict when not provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(batchResponse, 201));
+
+      // Act
+      await client.batchCreateCandidates(tripId, [{ name: "Tower", category: "sightseeing" }]);
+
+      // Assert
+      const body = getFirstCallBody(mockFetch.mock.calls) as Record<string, unknown>;
+      expect(body).not.toHaveProperty("onConflict");
+    });
+
+    it("batchCreateSouvenirs POSTs to /trips/:tripId/souvenirs/batch", async () => {
+      // Arrange
+      const souvenirBatchResponse = { created: [], skipped: [], _meta: { count: 0, max: 50 } };
+      mockFetch.mockResolvedValue(makeResponse(souvenirBatchResponse, 201));
+
+      // Act
+      await client.batchCreateSouvenirs(tripId, [{ name: "KitKat" }]);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/souvenirs/batch`,
+      );
+    });
+
+    it("batchCreateSouvenirs sends items in the request body", async () => {
+      // Arrange
+      const souvenirBatchResponse = { created: [], skipped: [], _meta: { count: 0, max: 50 } };
+      mockFetch.mockResolvedValue(makeResponse(souvenirBatchResponse, 201));
+      const items = [{ name: "KitKat" }, { name: "Pocky" }];
+
+      // Act
+      await client.batchCreateSouvenirs(tripId, items);
+
+      // Assert
+      const body = getFirstCallBody(mockFetch.mock.calls);
+      expect(body).toEqual({ items });
+    });
+
+    it("batchCreateSouvenirs includes onConflict when provided", async () => {
+      // Arrange
+      const souvenirBatchResponse = { created: [], skipped: [], _meta: { count: 0, max: 50 } };
+      mockFetch.mockResolvedValue(makeResponse(souvenirBatchResponse, 201));
+
+      // Act
+      await client.batchCreateSouvenirs(tripId, [{ name: "KitKat" }], "skip");
+
+      // Assert
+      const body = getFirstCallBody(mockFetch.mock.calls);
+      expect(body).toMatchObject({ onConflict: "skip" });
+    });
+  });
+
+  describe("deleteCandidate — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const scheduleId = "550e8400-e29b-41d4-a716-446655440001";
+
+    it("uses DELETE method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: scheduleId, deleted: true, remaining: { count: 0, max: 300 } }, 200),
+      );
+
+      // Act
+      await client.deleteCandidate(tripId, scheduleId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+    });
+
+    it("sends to /api/v1/trips/:tripId/candidates/:scheduleId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: scheduleId, deleted: true, remaining: { count: 0, max: 300 } }, 200),
+      );
+
+      // Act
+      await client.deleteCandidate(tripId, scheduleId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/candidates/${scheduleId}`,
+      );
+    });
+
+    it("does not send a Content-Type header (no body)", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: scheduleId, deleted: false, remaining: { count: 0, max: 300 } }, 200),
+      );
+
+      // Act
+      await client.deleteCandidate(tripId, scheduleId);
+
+      // Assert
+      const headers = getFirstCallHeaders(mockFetch.mock.calls);
+      expect(headers["Content-Type"]).toBeUndefined();
+    });
+  });
+
+  describe("deleteSouvenir — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const itemId = "550e8400-e29b-41d4-a716-446655440002";
+
+    it("uses DELETE method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: itemId, deleted: true, remaining: { count: 0, max: 30 } }, 200),
+      );
+
+      // Act
+      await client.deleteSouvenir(tripId, itemId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+    });
+
+    it("sends to /api/v1/trips/:tripId/souvenirs/:itemId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: itemId, deleted: true, remaining: { count: 0, max: 30 } }, 200),
+      );
+
+      // Act
+      await client.deleteSouvenir(tripId, itemId);
+
+      // Assert
       expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
         `/api/v1/trips/${tripId}/souvenirs/${itemId}`,
       );

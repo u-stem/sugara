@@ -109,9 +109,18 @@ export type PaginationOptions = {
   offset?: number;
 };
 
+// Extended options for list endpoints that support ?q= partial-match filtering.
+export type ListWithSearchOptions = PaginationOptions & {
+  q?: string;
+};
+
 function addPagination(params: URLSearchParams, limit?: number, offset?: number): void {
   if (limit !== undefined) params.set("limit", String(limit));
   if (offset !== undefined) params.set("offset", String(offset));
+}
+
+function addSearch(params: URLSearchParams, q: string | undefined): void {
+  if (q !== undefined) params.set("q", q);
 }
 
 /**
@@ -212,15 +221,17 @@ export class ApiClient {
     return this.request("/bookmark-lists", params);
   }
 
-  async listBookmarks(listId: string, opts?: PaginationOptions): Promise<unknown> {
+  async listBookmarks(listId: string, opts?: ListWithSearchOptions): Promise<unknown> {
     const params = new URLSearchParams();
     addPagination(params, opts?.limit, opts?.offset);
+    addSearch(params, opts?.q);
     return this.request(`/bookmark-lists/${encodeURIComponent(listId)}/bookmarks`, params);
   }
 
-  async listArticles(opts?: PaginationOptions): Promise<unknown> {
+  async listArticles(opts?: ListWithSearchOptions): Promise<unknown> {
     const params = new URLSearchParams();
     addPagination(params, opts?.limit, opts?.offset);
+    addSearch(params, opts?.q);
     return this.request("/articles", params);
   }
 
@@ -228,19 +239,46 @@ export class ApiClient {
     return this.request(`/articles/${encodeURIComponent(id)}`);
   }
 
-  async listCandidates(tripId: string, opts?: PaginationOptions): Promise<unknown> {
+  async listCandidates(tripId: string, opts?: ListWithSearchOptions): Promise<unknown> {
     const params = new URLSearchParams();
     addPagination(params, opts?.limit, opts?.offset);
+    addSearch(params, opts?.q);
     return this.request(`/trips/${encodeURIComponent(tripId)}/candidates`, params);
   }
 
-  async listSouvenirs(tripId: string, opts?: PaginationOptions): Promise<unknown> {
+  async listSouvenirs(tripId: string, opts?: ListWithSearchOptions): Promise<unknown> {
     const params = new URLSearchParams();
     addPagination(params, opts?.limit, opts?.offset);
+    addSearch(params, opts?.q);
     return this.request(`/trips/${encodeURIComponent(tripId)}/souvenirs`, params);
   }
 
-  // --- Write methods (12 endpoints, 1:1 with v1 write routes) ---
+  // Sends a DELETE request with no body. Used for idempotent resource removal.
+  // The API always returns 200 + JSON (never 204) so response.json() is always valid.
+  private async remove(path: string): Promise<unknown> {
+    const url = new URL(`${this.baseUrl}/api/v1${path}`);
+
+    let response: Response;
+    try {
+      response = await this._fetch(url.toString(), {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          Accept: "application/json",
+        },
+      });
+    } catch {
+      throw new Error("SUGARA_API_URL に接続できません");
+    }
+
+    if (!response.ok) {
+      throw await buildApiError(response);
+    }
+
+    return response.json();
+  }
+
+  // --- Write methods (14 endpoints, 1:1 with v1 write routes) ---
 
   async createTrip(body: unknown): Promise<unknown> {
     return this.mutate("POST", "/trips", body);
@@ -328,6 +366,40 @@ export class ApiClient {
       "PATCH",
       `/trips/${encodeURIComponent(tripId)}/souvenirs/${encodeURIComponent(itemId)}`,
       body,
+    );
+  }
+
+  async batchCreateCandidates(
+    tripId: string,
+    items: unknown[],
+    onConflict?: "create" | "skip",
+  ): Promise<unknown> {
+    return this.mutate("POST", `/trips/${encodeURIComponent(tripId)}/candidates/batch`, {
+      items,
+      ...(onConflict !== undefined && { onConflict }),
+    });
+  }
+
+  async batchCreateSouvenirs(
+    tripId: string,
+    items: unknown[],
+    onConflict?: "create" | "skip",
+  ): Promise<unknown> {
+    return this.mutate("POST", `/trips/${encodeURIComponent(tripId)}/souvenirs/batch`, {
+      items,
+      ...(onConflict !== undefined && { onConflict }),
+    });
+  }
+
+  async deleteCandidate(tripId: string, scheduleId: string): Promise<unknown> {
+    return this.remove(
+      `/trips/${encodeURIComponent(tripId)}/candidates/${encodeURIComponent(scheduleId)}`,
+    );
+  }
+
+  async deleteSouvenir(tripId: string, itemId: string): Promise<unknown> {
+    return this.remove(
+      `/trips/${encodeURIComponent(tripId)}/souvenirs/${encodeURIComponent(itemId)}`,
     );
   }
 }

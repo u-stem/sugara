@@ -32,7 +32,7 @@ const lineItemShape = z.object({
 });
 
 export const INPUT_SHAPES = {
-  // --- Read tools (7) ---
+  // --- Read tools (9) ---
   list_trips: {
     scope: z.enum(["owned", "shared"]).optional(),
     limit: z.number().int().min(1).max(100).optional(),
@@ -54,10 +54,14 @@ export const INPUT_SHAPES = {
     listId: z.string().uuid(),
     limit: z.number().int().min(1).max(100).optional(),
     offset: z.number().int().min(0).optional(),
+    // Case-insensitive partial match on bookmark name; omit to return all.
+    q: z.string().optional(),
   },
   list_articles: {
     limit: z.number().int().min(1).max(100).optional(),
     offset: z.number().int().min(0).optional(),
+    // Case-insensitive partial match on article title; omit to return all.
+    q: z.string().optional(),
   },
   get_article: {
     id: z.string().uuid(),
@@ -66,14 +70,18 @@ export const INPUT_SHAPES = {
     tripId: z.string().uuid(),
     limit: z.number().int().min(1).max(100).optional(),
     offset: z.number().int().min(0).optional(),
+    // Case-insensitive partial match on candidate name; omit to return all.
+    q: z.string().optional(),
   },
   list_souvenirs: {
     tripId: z.string().uuid(),
     limit: z.number().int().min(1).max(100).optional(),
     offset: z.number().int().min(0).optional(),
+    // Case-insensitive partial match on souvenir name; omit to return all.
+    q: z.string().optional(),
   },
 
-  // --- Write tools (16) ---
+  // --- Write tools (20) ---
 
   // POST /trips — caller becomes the owner member.
   create_trip: {
@@ -290,6 +298,78 @@ export const INPUT_SHAPES = {
     isShared: z.boolean().optional(),
     shareStyle: z.enum(["recommend", "errand"]).nullable().optional(),
   },
+
+  // POST /trips/:tripId/candidates/batch — up to 50 candidates in one transaction.
+  // onConflict="skip": items whose name (trimmed, lowercase exact match) matches an
+  // existing schedule in the trip OR an earlier item in the same batch are returned
+  // in `skipped` with reason "duplicate". This is NOT a partial match — unlike the
+  // q= search parameter which does case-insensitive substring matching.
+  // Items that exceed the per-trip limit are returned in `skipped` with reason
+  // "limit_reached"; items that fit are always created (partial success is normal).
+  // Requires trips:write scope and editor/owner role.
+  batch_create_candidates: {
+    tripId: z.string().uuid(),
+    items: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(200),
+          category: scheduleCategorySchema,
+          address: z.string().max(500).optional(),
+          startTime: z.string().optional(),
+          endTime: z.string().optional(),
+          memo: z.string().max(2000).optional(),
+          urls: z.array(z.string()).max(5).optional(),
+          departurePlace: z.string().max(200).optional(),
+          arrivalPlace: z.string().max(200).optional(),
+          transportMethod: transportMethodSchema.optional(),
+          cost: z.number().int().nonnegative().max(99999999).optional(),
+          color: scheduleColorSchema.optional(),
+          endDayOffset: z.number().int().min(1).max(30).optional(),
+        }),
+      )
+      .min(1)
+      .max(50),
+    // "create" (default): always insert — matches single-create semantics.
+    // "skip": skip items whose name (trim+lowercase) collides with existing or batch-prior entries.
+    onConflict: z.enum(["create", "skip"]).optional(),
+  },
+
+  // POST /trips/:tripId/souvenirs/batch — up to 50 souvenir items in one transaction.
+  // Dedup scope (onConflict="skip"): caller's own items in the trip only, NOT other
+  // members' items. This differs from the candidate dedup which is trip-wide.
+  // Partial success semantics and limit_reached behaviour are the same as batch_create_candidates.
+  // Requires souvenirs:write scope; any member (including viewers) may call this.
+  batch_create_souvenirs: {
+    tripId: z.string().uuid(),
+    items: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(200),
+          recipient: z.string().max(100).nullable().optional(),
+          urls: z.array(z.string()).max(5).optional(),
+          addresses: z.array(z.string().max(500)).max(5).optional(),
+          memo: z.string().nullable().optional(),
+          priority: z.enum(["high", "medium"]).nullable().optional(),
+          isShared: z.boolean().optional(),
+          shareStyle: z.enum(["recommend", "errand"]).nullable().optional(),
+        }),
+      )
+      .min(1)
+      .max(50),
+    onConflict: z.enum(["create", "skip"]).optional(),
+  },
+
+  // DELETE /trips/:tripId/candidates/:scheduleId — idempotent; assigned schedules return deleted:false.
+  delete_candidate: {
+    tripId: z.string().uuid(),
+    scheduleId: z.string().uuid(),
+  },
+
+  // DELETE /trips/:tripId/souvenirs/:itemId — idempotent; other users' items return deleted:false.
+  delete_souvenir: {
+    tripId: z.string().uuid(),
+    itemId: z.string().uuid(),
+  },
 } as const;
 
 function toolError(message: string) {
@@ -321,9 +401,16 @@ const UPDATE_ANNOTATIONS = {
   idempotentHint: true,
   openWorldHint: false,
 } as const;
+// delete: idempotent (same delete applied twice yields the same state), destructive
+const DELETE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
 
 /**
- * Registers all 25 sugara v1 tools with the MCP server.
+ * Registers all 29 sugara v1 tools with the MCP server.
  * Each tool maps 1:1 to a v1 endpoint and returns the raw JSON response.
  * On client errors, returns an isError result with a human-readable message.
  *
@@ -334,11 +421,10 @@ const UPDATE_ANNOTATIONS = {
  * editor or owner role on that trip — verify with get_trip beforehand
  * (souvenir tools are the exception: any trip member, including viewers, may
  * manage their own souvenirs).
- * Delete operations are not exposed; there are no delete tools.
  */
 export function registerTools(server: McpServer, client: ApiClient): void {
   // ---------------------------------------------------------------------------
-  // Read tools (7)
+  // Read tools (9)
   // ---------------------------------------------------------------------------
 
   server.registerTool(
@@ -433,7 +519,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       description:
         "List bookmarks inside a specific bookmark list. " +
         "Only lists owned by the API key holder are accessible. " +
-        "Supports limit/offset pagination.",
+        "Supports limit/offset pagination and optional q for partial name matching.",
       inputSchema: INPUT_SHAPES.list_bookmarks,
       annotations: READ_ANNOTATIONS,
     },
@@ -442,6 +528,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
         const result = await client.listBookmarks(args.listId, {
           limit: args.limit,
           offset: args.offset,
+          q: args.q,
         });
         return toolResult(result);
       } catch (err) {
@@ -456,7 +543,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       description:
         "List articles owned by the API key holder (without content body). " +
         "Use get_article to fetch the full content of a specific article. " +
-        "Supports limit/offset pagination.",
+        "Supports limit/offset pagination and optional q for partial title matching.",
       inputSchema: INPUT_SHAPES.list_articles,
       annotations: READ_ANNOTATIONS,
     },
@@ -495,7 +582,8 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       description:
         "List a trip's candidates — unassigned spots in the planning pool " +
         "(schedules not yet placed on a specific day). Ordered by sortOrder. " +
-        "Supports limit/offset pagination. Requires trips:read scope.",
+        "Supports limit/offset pagination and optional q for partial name matching. " +
+        "Requires trips:read scope.",
       inputSchema: INPUT_SHAPES.list_candidates,
       annotations: READ_ANNOTATIONS,
     },
@@ -504,6 +592,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
         const result = await client.listCandidates(args.tripId, {
           limit: args.limit,
           offset: args.offset,
+          q: args.q,
         });
         return toolResult(result);
       } catch (err) {
@@ -518,7 +607,8 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       description:
         "List a trip's souvenirs: the API key user's own items plus other members' shared items. " +
         "The owner is identified by memberNo (consistent with get_trip's member list). " +
-        "Supports limit/offset pagination. Requires souvenirs:read scope.",
+        "Supports limit/offset pagination and optional q for partial name matching. " +
+        "Requires souvenirs:read scope.",
       inputSchema: INPUT_SHAPES.list_souvenirs,
       annotations: READ_ANNOTATIONS,
     },
@@ -527,6 +617,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
         const result = await client.listSouvenirs(args.tripId, {
           limit: args.limit,
           offset: args.offset,
+          q: args.q,
         });
         return toolResult(result);
       } catch (err) {
@@ -536,7 +627,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
   );
 
   // ---------------------------------------------------------------------------
-  // Write tools (16)
+  // Write tools (20)
   // ---------------------------------------------------------------------------
 
   server.registerTool(
@@ -592,7 +683,6 @@ export function registerTools(server: McpServer, client: ApiClient): void {
         "Writing to a shared trip requires editor or owner role. " +
         "Returns 409 when the trip is in scheduling/poll mode (no days) " +
         "or when the per-trip schedule limit is reached. " +
-        "Delete tools do not exist; schedules cannot be removed via MCP. " +
         "Requires trips:write scope.",
       inputSchema: INPUT_SHAPES.create_schedule,
       annotations: CREATE_ANNOTATIONS,
@@ -888,6 +978,114 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       const { tripId, itemId, ...body } = args;
       try {
         const result = await client.updateSouvenir(tripId, itemId, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "batch_create_candidates",
+    {
+      description:
+        "Create up to 50 candidates in a single transaction. " +
+        "Returns { created, skipped, _meta } — partial success is normal. " +
+        "onConflict='skip': items whose name (trimmed, lowercase EXACT match) collides with an " +
+        "existing schedule name in the trip OR an earlier item in the same batch are put in " +
+        "`skipped` with reason 'duplicate'. " +
+        "NOTE: this is an exact match after trim+lowercase, NOT the partial substring match " +
+        "used by list_candidates q= search. " +
+        "onConflict='create' (default): all items are always inserted regardless of name collisions. " +
+        "Items that exceed the per-trip schedule limit go to `skipped` with reason 'limit_reached'; " +
+        "items that fit are created. No 409 is returned for limit overflow. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.batch_create_candidates,
+      annotations: CREATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, items, onConflict } = args;
+      try {
+        const result = await client.batchCreateCandidates(tripId, items, onConflict);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "batch_create_souvenirs",
+    {
+      description:
+        "Create up to 50 souvenir items in a single transaction. " +
+        "Returns { created, skipped, _meta } — partial success is normal. " +
+        "onConflict='skip': items whose name (trimmed, lowercase EXACT match) collides with an " +
+        "existing souvenir owned by the caller in the trip OR an earlier item in the same batch " +
+        "are put in `skipped` with reason 'duplicate'. " +
+        "Dedup scope is the caller's own items only — other members' items are NOT compared. " +
+        "NOTE: this is an exact match after trim+lowercase, NOT the partial substring match " +
+        "used by list_souvenirs q= search. " +
+        "onConflict='create' (default): all items are always inserted regardless of name collisions. " +
+        "Items that exceed the per-user per-trip souvenir limit go to `skipped` with reason " +
+        "'limit_reached'; items that fit are created. No 409 is returned for limit overflow. " +
+        "Any trip member (including viewers) may call this tool. " +
+        "Requires souvenirs:write scope.",
+      inputSchema: INPUT_SHAPES.batch_create_souvenirs,
+      annotations: CREATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, items, onConflict } = args;
+      try {
+        const result = await client.batchCreateSouvenirs(tripId, items, onConflict);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_candidate",
+    {
+      description:
+        "Permanently delete an unassigned candidate from a trip's planning pool. " +
+        "Idempotent: always returns 200. deleted:true when the item was removed; " +
+        "deleted:false when the id is unknown, already deleted, or the schedule has been assigned to a day. " +
+        "remaining reflects the trip-wide schedule count after the operation. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.delete_candidate,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deleteCandidate(args.tripId, args.scheduleId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_souvenir",
+    {
+      description:
+        "Permanently delete a souvenir owned by the API key user. " +
+        "Idempotent: always returns 200. deleted:true when the caller's item was removed; " +
+        "deleted:false when the id is unknown, already deleted, or owned by a different member. " +
+        "Other members' items are never deleted and their existence is not revealed. " +
+        "remaining reflects the caller's per-user per-trip souvenir count after the operation. " +
+        "Any trip member (including viewers) may call this tool for their own items. " +
+        "Requires souvenirs:write scope.",
+      inputSchema: INPUT_SHAPES.delete_souvenir,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deleteSouvenir(args.tripId, args.itemId);
         return toolResult(result);
       } catch (err) {
         return toolError(err instanceof Error ? err.message : "Unexpected error");

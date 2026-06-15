@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, isNull, ne, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { z } from "zod";
@@ -18,6 +18,7 @@ import { v1AuditLog } from "../../lib/external-api/audit-log";
 import { ApiV1Error, getApiKey, type V1Env, v1ErrorHandler } from "../../lib/external-api/errors";
 import { buildMemberNoMap } from "../../lib/external-api/member-no";
 import { v1RateLimit } from "../../lib/external-api/rate-limit";
+import { escapeLike } from "../../lib/like-escape";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { articlesWriteApp } from "./articles-write";
 import { bookmarksWriteApp } from "./bookmarks-write";
@@ -76,6 +77,13 @@ const paginationSchema = z.object({
 
 const tripsQuerySchema = paginationSchema.extend({
   scope: z.enum(["owned", "shared"]).optional(),
+});
+
+// Common query schema for list endpoints that support ?q= name/title filtering.
+// Callers must normalise empty/whitespace values to undefined before safeParse
+// so that an empty q is treated as "no filter" rather than a validation error.
+const listQuerySchema = paginationSchema.extend({
+  q: z.string().trim().min(1).optional(),
 });
 
 // ---------- GET /api/v1/trips ----------
@@ -500,6 +508,13 @@ v1App.get(
         description: "Number of items to skip.",
         schema: { type: "integer", minimum: 0, default: 0 },
       },
+      {
+        name: "q",
+        in: "query",
+        description:
+          "Case-insensitive partial match on candidate name. Omit or leave empty to return all candidates.",
+        schema: { type: "string" },
+      },
     ],
     responses: {
       200: {
@@ -526,16 +541,23 @@ v1App.get(
   }),
   requireApiKey("trips:read"),
   withTripAccess("tripId", async (c, tripId) => {
-    const parsed = paginationSchema.safeParse({
+    const rawQ = c.req.query("q");
+    const parsed = listQuerySchema.safeParse({
       limit: c.req.query("limit"),
       offset: c.req.query("offset"),
+      q: rawQ?.trim() || undefined,
     });
     if (!parsed.success) {
       throw new ApiV1Error(400, "invalid_request", "Invalid query parameters");
     }
-    const { limit: queryLimit, offset: queryOffset } = parsed.data;
+    const { limit: queryLimit, offset: queryOffset, q } = parsed.data;
 
-    const candidateFilter = and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId));
+    const qFilter = q !== undefined ? ilike(schedules.name, `%${escapeLike(q)}%`) : undefined;
+    const candidateFilter = and(
+      eq(schedules.tripId, tripId),
+      isNull(schedules.dayPatternId),
+      qFilter,
+    );
 
     const countResult = await db.select({ total: count() }).from(schedules).where(candidateFilter);
     const total = countResult[0]?.total ?? 0;
@@ -588,6 +610,13 @@ v1App.get(
         description: "Number of items to skip.",
         schema: { type: "integer", minimum: 0, default: 0 },
       },
+      {
+        name: "q",
+        in: "query",
+        description:
+          "Case-insensitive partial match on souvenir name. Omit or leave empty to return all souvenirs.",
+        schema: { type: "string" },
+      },
     ],
     responses: {
       200: {
@@ -615,14 +644,16 @@ v1App.get(
   requireApiKey("souvenirs:read"),
   withTripAccess("tripId", async (c, tripId) => {
     const key = getApiKey(c);
-    const parsed = paginationSchema.safeParse({
+    const rawQ = c.req.query("q");
+    const parsed = listQuerySchema.safeParse({
       limit: c.req.query("limit"),
       offset: c.req.query("offset"),
+      q: rawQ?.trim() || undefined,
     });
     if (!parsed.success) {
       throw new ApiV1Error(400, "invalid_request", "Invalid query parameters");
     }
-    const { limit: queryLimit, offset: queryOffset } = parsed.data;
+    const { limit: queryLimit, offset: queryOffset, q } = parsed.data;
 
     const memberRows = await db.query.tripMembers.findMany({
       where: eq(tripMembers.tripId, tripId),
@@ -632,9 +663,11 @@ v1App.get(
 
     // Own items + other members' shared items. Both count and page queries use
     // this same filter so the pagination total matches the page contents.
+    const qFilter = q !== undefined ? ilike(souvenirItems.name, `%${escapeLike(q)}%`) : undefined;
     const souvenirFilter = and(
       eq(souvenirItems.tripId, tripId),
       or(eq(souvenirItems.userId, key.userId), eq(souvenirItems.isShared, true)),
+      qFilter,
     );
 
     const countResult = await db
@@ -787,6 +820,13 @@ v1App.get(
         description: "Number of items to skip.",
         schema: { type: "integer", minimum: 0, default: 0 },
       },
+      {
+        name: "q",
+        in: "query",
+        description:
+          "Case-insensitive partial match on bookmark name. Omit or leave empty to return all bookmarks.",
+        schema: { type: "string" },
+      },
     ],
     responses: {
       200: {
@@ -823,14 +863,16 @@ v1App.get(
     }
     const listId = parsedId.data;
 
-    const parsed = paginationSchema.safeParse({
+    const rawQ = c.req.query("q");
+    const parsed = listQuerySchema.safeParse({
       limit: c.req.query("limit"),
       offset: c.req.query("offset"),
+      q: rawQ?.trim() || undefined,
     });
     if (!parsed.success) {
       throw new ApiV1Error(400, "invalid_request", "Invalid query parameters");
     }
-    const { limit: queryLimit, offset: queryOffset } = parsed.data;
+    const { limit: queryLimit, offset: queryOffset, q } = parsed.data;
 
     // Verify ownership before exposing bookmark contents
     const list = await verifyListOwnership(listId, userId);
@@ -838,15 +880,15 @@ v1App.get(
       throw new ApiV1Error(404, "not_found", "Bookmark list not found or access denied");
     }
 
+    const qFilter = q !== undefined ? ilike(bookmarks.name, `%${escapeLike(q)}%`) : undefined;
+    const bookmarkFilter = and(eq(bookmarks.listId, listId), qFilter);
+
     // Count total bookmarks in this list
-    const countResult = await db
-      .select({ total: count() })
-      .from(bookmarks)
-      .where(eq(bookmarks.listId, listId));
+    const countResult = await db.select({ total: count() }).from(bookmarks).where(bookmarkFilter);
     const total = countResult[0]?.total ?? 0;
 
     const bookmarkRows = await db.query.bookmarks.findMany({
-      where: eq(bookmarks.listId, listId),
+      where: bookmarkFilter,
       columns: {
         id: true,
         name: true,
@@ -898,6 +940,13 @@ v1App.get(
         description: "Number of items to skip.",
         schema: { type: "integer", minimum: 0, default: 0 },
       },
+      {
+        name: "q",
+        in: "query",
+        description:
+          "Case-insensitive partial match on article title. Omit or leave empty to return all articles.",
+        schema: { type: "string" },
+      },
     ],
     responses: {
       200: {
@@ -923,25 +972,27 @@ v1App.get(
     const key = getApiKey(c);
     const userId = key.userId;
 
-    const parsed = paginationSchema.safeParse({
+    const rawQ = c.req.query("q");
+    const parsed = listQuerySchema.safeParse({
       limit: c.req.query("limit"),
       offset: c.req.query("offset"),
+      q: rawQ?.trim() || undefined,
     });
     if (!parsed.success) {
       throw new ApiV1Error(400, "invalid_request", "Invalid query parameters");
     }
-    const { limit: queryLimit, offset: queryOffset } = parsed.data;
+    const { limit: queryLimit, offset: queryOffset, q } = parsed.data;
+
+    const qFilter = q !== undefined ? ilike(articles.title, `%${escapeLike(q)}%`) : undefined;
+    const articleFilter = and(eq(articles.ownerId, userId), qFilter);
 
     // Total count
-    const countResult = await db
-      .select({ total: count() })
-      .from(articles)
-      .where(eq(articles.ownerId, userId));
+    const countResult = await db.select({ total: count() }).from(articles).where(articleFilter);
     const total = countResult[0]?.total ?? 0;
 
     // Fetch page of articles (no content) with linked trip ids
     const articleRows = await db.query.articles.findMany({
-      where: eq(articles.ownerId, userId),
+      where: articleFilter,
       columns: {
         id: true,
         title: true,

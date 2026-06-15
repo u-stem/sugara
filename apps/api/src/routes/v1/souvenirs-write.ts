@@ -2,7 +2,9 @@
 //
 // File layout:
 //   POST   /trips/:tripId/souvenirs
+//   POST   /trips/:tripId/souvenirs/batch
 //   PATCH  /trips/:tripId/souvenirs/:itemId
+//   DELETE /trips/:tripId/souvenirs/:itemId
 //
 // Souvenirs are per-member items within a trip: any trip member (including
 // viewers) can create their own, and only the owner can update theirs. Unlike
@@ -18,12 +20,16 @@ import { db } from "../../db";
 import { souvenirItems, tripMembers } from "../../db/schema";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { buildMemberNoMap } from "../../lib/external-api/member-no";
+import { batchCreateSouvenirsCore } from "../../lib/souvenir-service";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
 import { serializeSouvenirDto } from "./serializers";
 import { getActorName, uuidSchema, withTripAccess } from "./shared";
 import {
+  v1BatchCreateSouvenirSchema,
   v1CreateSouvenirSchema,
+  v1DeleteResponseSchema,
+  v1SouvenirBatchWriteResponseSchema,
   v1SouvenirWriteResponseSchema,
   v1UpdateSouvenirSchema,
 } from "./write-schemas";
@@ -139,7 +145,104 @@ souvenirsWriteApp.post(
       getActorName(key.userId),
     ]);
 
-    return c.json(serializeSouvenirDto({ ...inserted, userName }, memberNoMap), 201);
+    return c.json(
+      {
+        ...serializeSouvenirDto({ ...inserted, userName }, memberNoMap),
+        _meta: { count: itemCount + 1, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
+      },
+      201,
+    );
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// POST /trips/:tripId/souvenirs/batch
+// ---------------------------------------------------------------------------
+
+souvenirsWriteApp.post(
+  "/trips/:tripId/souvenirs/batch",
+  describeRoute({
+    tags: ["Souvenirs"],
+    summary: "Batch create souvenirs",
+    description:
+      'Creates up to 50 souvenir items owned by the API key user in a single transaction. Items that exceed the per-user per-trip limit are returned in `skipped` with `reason: "limit_reached"`. When `onConflict` is `"skip"`, items whose name (trimmed, case-insensitive) matches an existing souvenir owned by the caller in the trip or an earlier item in the same batch are returned in `skipped` with `reason: "duplicate"`. Requires `souvenirs:write` scope.',
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    requestBody: {
+      required: true,
+      content: { "application/json": { schema: { type: "object" } } },
+    },
+    responses: {
+      201: {
+        description: "Batch processed (partial success is normal — check `skipped`)",
+        content: {
+          "application/json": { schema: resolver(v1SouvenirBatchWriteResponseSchema) },
+        },
+      },
+      400: {
+        description: "Invalid request body",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("souvenirs:write"),
+  withTripAccess("tripId", async (c, tripId) => {
+    const key = getApiKey(c);
+
+    const body = await c.req.json();
+    const parsed = v1BatchCreateSouvenirSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new ApiV1Error(400, "invalid_request", "Invalid request body");
+    }
+
+    const { items, onConflict } = parsed.data;
+    const { created, skipped } = await batchCreateSouvenirsCore(
+      tripId,
+      key.userId,
+      items,
+      onConflict,
+    );
+
+    // Resolve memberNo map and actor name for serialization.
+    const [memberNoMap, userName] = await Promise.all([
+      buildTripMemberNoMap(tripId),
+      getActorName(key.userId),
+    ]);
+
+    // Post-batch user souvenir count for _meta.
+    const [{ itemCount }] = await db
+      .select({ itemCount: count() })
+      .from(souvenirItems)
+      .where(and(eq(souvenirItems.tripId, tripId), eq(souvenirItems.userId, key.userId)));
+
+    return c.json(
+      {
+        created: created.map((item) => serializeSouvenirDto({ ...item, userName }, memberNoMap)),
+        skipped,
+        _meta: { count: itemCount, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
+      },
+      201,
+    );
   }),
 );
 
@@ -241,11 +344,112 @@ souvenirsWriteApp.patch(
       .where(eq(souvenirItems.id, itemId))
       .returning();
 
-    const [memberNoMap, userName] = await Promise.all([
+    const [memberNoMap, userName, [{ itemCount }]] = await Promise.all([
       buildTripMemberNoMap(tripId),
       getActorName(key.userId),
+      db
+        .select({ itemCount: count() })
+        .from(souvenirItems)
+        .where(and(eq(souvenirItems.tripId, tripId), eq(souvenirItems.userId, key.userId))),
     ]);
 
-    return c.json(serializeSouvenirDto({ ...updated, userName }, memberNoMap));
+    return c.json({
+      ...serializeSouvenirDto({ ...updated, userName }, memberNoMap),
+      _meta: { count: itemCount, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/souvenirs/:itemId
+// ---------------------------------------------------------------------------
+
+souvenirsWriteApp.delete(
+  "/trips/:tripId/souvenirs/:itemId",
+  describeRoute({
+    tags: ["Souvenirs"],
+    summary: "Delete a souvenir",
+    description:
+      "Physically deletes a souvenir owned by the API key user. Idempotent: returns 200 in all cases. deleted:true when the caller's item was found and removed; deleted:false when the id is unknown, already deleted, or the item belongs to a different trip member. Other members' items are never deleted and their existence is not revealed. remaining reflects the caller's per-user per-trip souvenir count after the operation. Any trip member (including viewers) may call this endpoint for their own items. Requires `souvenirs:write` scope.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "itemId",
+        in: "path",
+        required: true,
+        description: "Souvenir item UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    responses: {
+      200: {
+        description:
+          "Deletion result (deleted:true when removed, deleted:false when already gone or owned by another member)",
+        content: { "application/json": { schema: resolver(v1DeleteResponseSchema) } },
+      },
+      400: {
+        description: "Invalid souvenir id",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("souvenirs:write"),
+  withTripAccess("tripId", async (c, tripId) => {
+    const key = getApiKey(c);
+
+    const rawItemId = c.req.param("itemId");
+    const parsedItemId = uuidSchema.safeParse(rawItemId);
+    if (!parsedItemId.success) {
+      throw new ApiV1Error(400, "invalid_request", "Invalid souvenir id");
+    }
+    const itemId = parsedItemId.data;
+
+    // Atomic delete: ownership is enforced atomically in the WHERE clause
+    // (id + tripId + userId). Another user's item matches neither the userId
+    // condition nor any of the caller's own items, so it is never deleted and
+    // its existence is not revealed — deleted:false is returned either way.
+    const deletedRows = await db
+      .delete(souvenirItems)
+      .where(
+        and(
+          eq(souvenirItems.id, itemId),
+          eq(souvenirItems.tripId, tripId),
+          eq(souvenirItems.userId, key.userId),
+        ),
+      )
+      .returning({ id: souvenirItems.id });
+    const didDelete = deletedRows.length > 0;
+
+    // Post-operation count: the same query covers both paths (delete hit and
+    // no-op) so remaining always reflects the caller's current item total.
+    const [{ itemCount }] = await db
+      .select({ itemCount: count() })
+      .from(souvenirItems)
+      .where(and(eq(souvenirItems.tripId, tripId), eq(souvenirItems.userId, key.userId)));
+
+    return c.json({
+      id: itemId,
+      deleted: didDelete,
+      remaining: { count: itemCount, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
+    });
   }),
 );
