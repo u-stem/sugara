@@ -170,7 +170,7 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 
 **認証**: `requireAuth` + `requireNonGuest`（Cookie セッション + 本登録ユーザー限定）。ゲストアカウントや未認証ユーザーには公開しない。
 
-**spec の内容**: v1 の 27 エンドポイント（read 9 + write 18）のみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
+**spec の内容**: v1 の 29 エンドポイント（read 9 + write 20）のみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
 
 **Scalar UI のアセット**: `@scalar/api-reference` を `apps/web` の devDependency として固定バージョン管理する。`apps/web/scripts/copy-scalar-assets.ts` が dev サーバ起動時（`predev`）とビルド時（`prebuild`）に standalone バンドルを `apps/web/public/scalar/standalone.js` へコピーし、Next.js が同一オリジン（`/scalar/standalone.js`）から配信する。第三者オリジン依存ゼロ。生成物は `.gitignore` で除外済み（3.5 MB をリポジトリにコミットしない）。
 
@@ -183,7 +183,7 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 v1 REST を LLM（Claude Desktop / Claude Code 等）から扱うための MCP サーバ。`apps/mcp`（`private`、未公開）に置き、**stdio トランスポート**で動作する（LLM クライアントが子プロセスとして起動）。
 
 - 認証: API キーを環境変数 `SUGARA_API_KEY` で受け取り `Authorization: Bearer` で v1 を叩く。接続先は `SUGARA_API_URL`。生キーはログ・エラーに出さない
-- ツール: v1 の 27 エンドポイントに 1:1 対応する 29 ツール（batch 2 つを含む）。read 9 つ（`list_trips` / `get_trip` / `list_trip_expenses` / `list_bookmark_lists` / `list_bookmarks` / `list_articles` / `get_article` / `list_candidates` / `list_souvenirs`）+ write 20（`create_trip` / `update_trip` / `create_schedule` / `update_schedule` / `create_expense` / `update_expense` / `create_bookmark_list` / `update_bookmark_list` / `create_bookmark` / `update_bookmark` / `create_article` / `update_article` / `create_candidate` / `update_candidate` / `create_souvenir` / `update_souvenir` / `batch_create_candidates` / `batch_create_souvenirs` / `delete_candidate` / `delete_souvenir`）。入力は zod で境界検証（limit 1–100 / offset 0+ / uuid / scope enum）
+- ツール: v1 の 29 エンドポイントに 1:1 対応する 29 ツール（batch 2 つを含む）。read 9 つ（`list_trips` / `get_trip` / `list_trip_expenses` / `list_bookmark_lists` / `list_bookmarks` / `list_articles` / `get_article` / `list_candidates` / `list_souvenirs`）+ write 20（`create_trip` / `update_trip` / `create_schedule` / `update_schedule` / `create_expense` / `update_expense` / `create_bookmark_list` / `update_bookmark_list` / `create_bookmark` / `update_bookmark` / `create_article` / `update_article` / `create_candidate` / `update_candidate` / `create_souvenir` / `update_souvenir` / `batch_create_candidates` / `batch_create_souvenirs` / `delete_candidate` / `delete_souvenir`）。入力は zod で境界検証（limit 1–100 / offset 0+ / uuid / scope enum）
 - annotations: read ツールは `readOnlyHint: true`、create 系は `destructiveHint: false`、update/delete 系は `destructiveHint: true, idempotentHint: true` を明示し、MCP クライアント側の確認 UI 判断に供する
 - エラー: v1 の `{ error: { code, message } }` を人間可読メッセージに写像（`isError: true`）
 - stdio のため公開ネットワーク面はなく、攻撃面は「キーを持つローカルプロセス」に限定
