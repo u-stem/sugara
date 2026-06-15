@@ -39,6 +39,7 @@ vi.mock("../../lib/notifications", () => ({
   notifyUsers: vi.fn(),
 }));
 
+import { MAX_SCHEDULES_PER_TRIP, MAX_SOUVENIRS_PER_USER_PER_TRIP } from "@sugara/shared";
 import { eq } from "drizzle-orm";
 import { articles, expenses, tripDays, tripMembers } from "../../db/schema";
 import { v1App } from "../../routes/v1/index";
@@ -360,5 +361,82 @@ describe("v1 write routes integration", () => {
     });
     const sortOrders = rows.map((r) => r.sortOrder);
     expect(new Set(sortOrders).size).toBe(sortOrders.length);
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /trips/:tripId/souvenirs — _meta reflects per-user-per-trip count
+  // -------------------------------------------------------------------------
+
+  it("POST /trips/:tripId/souvenirs returns _meta with count=1 and correct max after first insert", async () => {
+    // Arrange: create trip (owner becomes member automatically)
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Matcha KitKat" }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body._meta).toEqual({ count: 1, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /trips/:tripId/candidates — _meta.count includes ALL schedules
+  // (assigned + candidates), not just candidates
+  // -------------------------------------------------------------------------
+
+  it("POST /trips/:tripId/candidates _meta.count includes pre-existing assigned schedules", async () => {
+    // Arrange: create a 1-day trip and add one schedule to day 1 (assigned).
+    // Then POST a candidate. The _meta.count must be 2 (1 assigned + 1 candidate),
+    // confirming getScheduleCount counts ALL schedules, not just candidates.
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Candidate Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    // Add one assigned schedule to day 1 via the existing schedule endpoint
+    const schedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo Tower", category: "sightseeing" }),
+    });
+    expect(schedRes.status).toBe(201);
+
+    // Act: POST candidate (unassigned schedule)
+    const res = await v1App.request(`/trips/${trip.id}/candidates`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Akihabara", category: "sightseeing" }),
+    });
+
+    // Assert: _meta.count is 2 — both assigned schedule and new candidate are
+    // counted because MAX_SCHEDULES_PER_TRIP is a trip-wide cap over all schedules.
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body._meta).toEqual({ count: 2, max: MAX_SCHEDULES_PER_TRIP });
   });
 });

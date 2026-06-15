@@ -25,13 +25,14 @@ import { createCandidateCore } from "../../lib/candidate-service";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { hasChanges } from "../../lib/has-changes";
 import { notifyTripMembersExcluding } from "../../lib/notifications";
+import { getScheduleCount } from "../../lib/schedule-count";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
 import { serializeScheduleDto } from "./serializers";
 import { getActorName, uuidSchema, withTripAccess } from "./shared";
 import {
+  v1CandidateWriteResponseSchema,
   v1CreateScheduleSchema,
-  v1ScheduleWriteResponseSchema,
   v1UpdateScheduleSchema,
 } from "./write-schemas";
 
@@ -65,7 +66,7 @@ candidatesWriteApp.post(
     responses: {
       201: {
         description: "Candidate created",
-        content: { "application/json": { schema: resolver(v1ScheduleWriteResponseSchema) } },
+        content: { "application/json": { schema: resolver(v1CandidateWriteResponseSchema) } },
       },
       400: {
         description: "Invalid request body",
@@ -111,7 +112,12 @@ candidatesWriteApp.post(
       }
       const schedule = result.schedule;
 
-      const actorName = await getActorName(key.userId);
+      // Run in parallel: count is needed for _meta and must reflect the
+      // post-insert state; actorName is needed for the notification payload.
+      const [scheduleCount, actorName] = await Promise.all([
+        getScheduleCount(db, tripId),
+        getActorName(key.userId),
+      ]);
       logActivity({
         tripId,
         userId: key.userId,
@@ -126,7 +132,13 @@ candidatesWriteApp.post(
         makePayload: (tripName) => ({ actorName, tripName, entityName: schedule.name }),
       });
 
-      return c.json(serializeScheduleDto(schedule), 201);
+      return c.json(
+        {
+          ...serializeScheduleDto(schedule),
+          _meta: { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP },
+        },
+        201,
+      );
     },
     { minRole: "editor" },
   ),
@@ -167,7 +179,7 @@ candidatesWriteApp.patch(
     responses: {
       200: {
         description: "Candidate updated",
-        content: { "application/json": { schema: resolver(v1ScheduleWriteResponseSchema) } },
+        content: { "application/json": { schema: resolver(v1CandidateWriteResponseSchema) } },
       },
       400: {
         description: "Invalid request body",
@@ -217,10 +229,15 @@ candidatesWriteApp.patch(
         throw new ApiV1Error(404, "not_found", "Candidate not found in this trip");
       }
 
+      // Fetch the current schedule count for _meta before branching on no-op /
+      // update: the count is included in both paths and does not change on PATCH.
+      const scheduleCount = await getScheduleCount(db, tripId);
+      const meta = { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP };
+
       // No-op update: skip the write and the activity log entirely (mirrors the
       // internal candidate route, which guards with hasChanges).
       if (!hasChanges(existing, parsed.data)) {
-        return c.json(serializeScheduleDto(existing));
+        return c.json({ ...serializeScheduleDto(existing), _meta: meta });
       }
 
       const [updated] = await db
@@ -238,7 +255,7 @@ candidatesWriteApp.patch(
         entityName: updated.name,
       });
 
-      return c.json(serializeScheduleDto(updated));
+      return c.json({ ...serializeScheduleDto(updated), _meta: meta });
     },
     { minRole: "editor" },
   ),

@@ -139,7 +139,13 @@ souvenirsWriteApp.post(
       getActorName(key.userId),
     ]);
 
-    return c.json(serializeSouvenirDto({ ...inserted, userName }, memberNoMap), 201);
+    return c.json(
+      {
+        ...serializeSouvenirDto({ ...inserted, userName }, memberNoMap),
+        _meta: { count: itemCount + 1, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
+      },
+      201,
+    );
   }),
 );
 
@@ -241,11 +247,18 @@ souvenirsWriteApp.patch(
       .where(eq(souvenirItems.id, itemId))
       .returning();
 
-    const [memberNoMap, userName] = await Promise.all([
+    const [memberNoMap, userName, [{ itemCount }]] = await Promise.all([
       buildTripMemberNoMap(tripId),
       getActorName(key.userId),
+      db
+        .select({ itemCount: count() })
+        .from(souvenirItems)
+        .where(and(eq(souvenirItems.tripId, tripId), eq(souvenirItems.userId, key.userId))),
     ]);
 
-    return c.json(serializeSouvenirDto({ ...updated, userName }, memberNoMap));
+    return c.json({
+      ...serializeSouvenirDto({ ...updated, userName }, memberNoMap),
+      _meta: { count: itemCount, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
+    });
   }),
 );

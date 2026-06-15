@@ -82,6 +82,11 @@ write は read を**含意しない**（最小権限。read と write は独立�
 - GET レスポンスの `amount` / `splits[].amount` は **minor units**（例: USD なら $12.50 が `1250`）。equal 分割の splits は旅行通貨建て、custom/itemized は費用通貨建て
 - memberNo はメンバー増減で振り直されるため、書き込み直前に `GET /trips/:id` で最新の対応を確認すること
 - 作成は `201`、更新は `200`。レスポンスは read 系と同じ外部 DTO（memberNo + displayName、内部 UUID 非公開）
+  - **例外**: `POST /trips/:tripId/candidates`、`PATCH /trips/:tripId/candidates/:scheduleId`、`POST /trips/:tripId/souvenirs`、`PATCH /trips/:tripId/souvenirs/:itemId` はトップレベルに `_meta: { count: number, max: number }` フィールドを追加で返す。他のエンドポイント（schedule write を含む）には付かない
+  - `_meta.count` の意味（リソースごとに異なる）
+    - **candidate**: 当該 trip 内の全 schedule 件数（割り当て済みと候補の合算）。`max` = `MAX_SCHEDULES_PER_TRIP`(300)
+    - **souvenir**: API キー所有者のこの trip における件数（共有アイテムは含めない自分のお土産のみ）。`max` = `MAX_SOUVENIRS_PER_USER_PER_TRIP`(100)
+  - **注意**: `_meta.count` は GET の `limit` / `offset` による候補一覧の総件数とは異なる。candidate は「割り当て済みも含めた全 schedule」、souvenir は「他メンバーの共有アイテムを除いた自分の件数」。上限チェック（409 conflict）のロジックと同じフィルタが使われる
 - 共有ロジック: 旅行更新・費用作成/更新は内部 API と同一のサービス関数（`apps/api/src/lib/trip-service.ts` / `expense-service.ts`）を経由し、検証・通知・アクティビティログの挙動を揃える
 
 **外部 DTO**:

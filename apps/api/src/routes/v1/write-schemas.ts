@@ -232,6 +232,13 @@ export type V1UpdateExpenseInput = z.infer<typeof v1UpdateExpenseSchema>;
 // Response schemas — external DTO shapes for write operations
 // ---------------------------------------------------------------------------
 
+// _meta: count/limit context returned on write operations where callers need to
+// know the resulting item count relative to the per-resource cap.
+export const v1WriteMetaSchema = z.object({
+  count: z.number().int(),
+  max: z.number().int(),
+});
+
 // Trip write response: basic fields only, no ownerId or cover image internals.
 export const v1TripWriteResponseSchema = z.object({
   id: z.string(),
@@ -246,6 +253,7 @@ export const v1TripWriteResponseSchema = z.object({
 });
 
 // Schedule write response: all non-internal fields.
+// Used by trips-write (POST/PATCH /schedules) which are not cap-context aware.
 export const v1ScheduleWriteResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -264,6 +272,13 @@ export const v1ScheduleWriteResponseSchema = z.object({
   sortOrder: z.number().int(),
   createdAt: z.string(),
   updatedAt: z.string(),
+});
+
+// Candidate write response = schedule DTO + _meta (count of ALL schedules in the
+// trip vs. MAX_SCHEDULES_PER_TRIP). Only candidate routes include _meta because
+// they write to the trip-wide schedule pool that callers need to track.
+export const v1CandidateWriteResponseSchema = v1ScheduleWriteResponseSchema.extend({
+  _meta: v1WriteMetaSchema,
 });
 
 // Expense write response: memberNo-based references, no internal userId exposure.
@@ -342,4 +357,5 @@ export const v1SouvenirWriteResponseSchema = z.object({
   owner: v1SouvenirOwnerSchema,
   createdAt: z.string(),
   updatedAt: z.string(),
+  _meta: v1WriteMetaSchema,
 });
