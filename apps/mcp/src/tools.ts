@@ -54,10 +54,14 @@ export const INPUT_SHAPES = {
     listId: z.string().uuid(),
     limit: z.number().int().min(1).max(100).optional(),
     offset: z.number().int().min(0).optional(),
+    // Case-insensitive partial match on bookmark name; omit to return all.
+    q: z.string().optional(),
   },
   list_articles: {
     limit: z.number().int().min(1).max(100).optional(),
     offset: z.number().int().min(0).optional(),
+    // Case-insensitive partial match on article title; omit to return all.
+    q: z.string().optional(),
   },
   get_article: {
     id: z.string().uuid(),
@@ -66,11 +70,15 @@ export const INPUT_SHAPES = {
     tripId: z.string().uuid(),
     limit: z.number().int().min(1).max(100).optional(),
     offset: z.number().int().min(0).optional(),
+    // Case-insensitive partial match on candidate name; omit to return all.
+    q: z.string().optional(),
   },
   list_souvenirs: {
     tripId: z.string().uuid(),
     limit: z.number().int().min(1).max(100).optional(),
     offset: z.number().int().min(0).optional(),
+    // Case-insensitive partial match on souvenir name; omit to return all.
+    q: z.string().optional(),
   },
 
   // --- Write tools (16) ---
@@ -433,7 +441,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       description:
         "List bookmarks inside a specific bookmark list. " +
         "Only lists owned by the API key holder are accessible. " +
-        "Supports limit/offset pagination.",
+        "Supports limit/offset pagination and optional q for partial name matching.",
       inputSchema: INPUT_SHAPES.list_bookmarks,
       annotations: READ_ANNOTATIONS,
     },
@@ -442,6 +450,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
         const result = await client.listBookmarks(args.listId, {
           limit: args.limit,
           offset: args.offset,
+          q: args.q,
         });
         return toolResult(result);
       } catch (err) {
@@ -456,7 +465,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       description:
         "List articles owned by the API key holder (without content body). " +
         "Use get_article to fetch the full content of a specific article. " +
-        "Supports limit/offset pagination.",
+        "Supports limit/offset pagination and optional q for partial title matching.",
       inputSchema: INPUT_SHAPES.list_articles,
       annotations: READ_ANNOTATIONS,
     },
@@ -495,7 +504,8 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       description:
         "List a trip's candidates — unassigned spots in the planning pool " +
         "(schedules not yet placed on a specific day). Ordered by sortOrder. " +
-        "Supports limit/offset pagination. Requires trips:read scope.",
+        "Supports limit/offset pagination and optional q for partial name matching. " +
+        "Requires trips:read scope.",
       inputSchema: INPUT_SHAPES.list_candidates,
       annotations: READ_ANNOTATIONS,
     },
@@ -504,6 +514,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
         const result = await client.listCandidates(args.tripId, {
           limit: args.limit,
           offset: args.offset,
+          q: args.q,
         });
         return toolResult(result);
       } catch (err) {
@@ -518,7 +529,8 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       description:
         "List a trip's souvenirs: the API key user's own items plus other members' shared items. " +
         "The owner is identified by memberNo (consistent with get_trip's member list). " +
-        "Supports limit/offset pagination. Requires souvenirs:read scope.",
+        "Supports limit/offset pagination and optional q for partial name matching. " +
+        "Requires souvenirs:read scope.",
       inputSchema: INPUT_SHAPES.list_souvenirs,
       annotations: READ_ANNOTATIONS,
     },
@@ -527,6 +539,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
         const result = await client.listSouvenirs(args.tripId, {
           limit: args.limit,
           offset: args.offset,
+          q: args.q,
         });
         return toolResult(result);
       } catch (err) {

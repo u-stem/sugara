@@ -109,9 +109,18 @@ export type PaginationOptions = {
   offset?: number;
 };
 
+// Extended options for list endpoints that support ?q= partial-match filtering.
+export type ListWithSearchOptions = PaginationOptions & {
+  q?: string;
+};
+
 function addPagination(params: URLSearchParams, limit?: number, offset?: number): void {
   if (limit !== undefined) params.set("limit", String(limit));
   if (offset !== undefined) params.set("offset", String(offset));
+}
+
+function addSearch(params: URLSearchParams, q: string | undefined): void {
+  if (q !== undefined) params.set("q", q);
 }
 
 /**
@@ -212,15 +221,17 @@ export class ApiClient {
     return this.request("/bookmark-lists", params);
   }
 
-  async listBookmarks(listId: string, opts?: PaginationOptions): Promise<unknown> {
+  async listBookmarks(listId: string, opts?: ListWithSearchOptions): Promise<unknown> {
     const params = new URLSearchParams();
     addPagination(params, opts?.limit, opts?.offset);
+    addSearch(params, opts?.q);
     return this.request(`/bookmark-lists/${encodeURIComponent(listId)}/bookmarks`, params);
   }
 
-  async listArticles(opts?: PaginationOptions): Promise<unknown> {
+  async listArticles(opts?: ListWithSearchOptions): Promise<unknown> {
     const params = new URLSearchParams();
     addPagination(params, opts?.limit, opts?.offset);
+    addSearch(params, opts?.q);
     return this.request("/articles", params);
   }
 
@@ -228,15 +239,17 @@ export class ApiClient {
     return this.request(`/articles/${encodeURIComponent(id)}`);
   }
 
-  async listCandidates(tripId: string, opts?: PaginationOptions): Promise<unknown> {
+  async listCandidates(tripId: string, opts?: ListWithSearchOptions): Promise<unknown> {
     const params = new URLSearchParams();
     addPagination(params, opts?.limit, opts?.offset);
+    addSearch(params, opts?.q);
     return this.request(`/trips/${encodeURIComponent(tripId)}/candidates`, params);
   }
 
-  async listSouvenirs(tripId: string, opts?: PaginationOptions): Promise<unknown> {
+  async listSouvenirs(tripId: string, opts?: ListWithSearchOptions): Promise<unknown> {
     const params = new URLSearchParams();
     addPagination(params, opts?.limit, opts?.offset);
+    addSearch(params, opts?.q);
     return this.request(`/trips/${encodeURIComponent(tripId)}/souvenirs`, params);
   }
 

@@ -655,3 +655,60 @@ describe("update_article input schema", () => {
     expect(result.success).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// q (name/title search) parameter in list schemas
+// ---------------------------------------------------------------------------
+
+describe("list_candidates q parameter", () => {
+  const schema = z.object(INPUT_SHAPES.list_candidates);
+
+  it("preserves q in parsed output so the tool handler can forward it", () => {
+    // Zod strips unknown keys by default, so q must be declared in the schema
+    // for it to survive parsing. This test would fail without q in INPUT_SHAPES.
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), q: "Tokyo" });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBe("Tokyo");
+  });
+
+  it("preserves q as undefined when absent", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID() });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBeUndefined();
+  });
+});
+
+describe("list_souvenirs q parameter", () => {
+  const schema = z.object(INPUT_SHAPES.list_souvenirs);
+
+  it("preserves q in parsed output", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), q: "Matcha" });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBe("Matcha");
+  });
+});
+
+describe("list_articles q parameter", () => {
+  const schema = z.object(INPUT_SHAPES.list_articles);
+
+  it("preserves q in parsed output", () => {
+    const result = schema.safeParse({ q: "Kyoto" });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBe("Kyoto");
+  });
+});
+
+describe("list_bookmarks q parameter", () => {
+  const schema = z.object(INPUT_SHAPES.list_bookmarks);
+
+  it("preserves q in parsed output alongside listId", () => {
+    const result = schema.safeParse({ listId: crypto.randomUUID(), q: "Senso" });
+
+    expect(result.success).toBe(true);
+    expect(result.data?.q).toBe("Senso");
+  });
+});

@@ -699,6 +699,66 @@ describe("ApiClient", () => {
     });
   });
 
+  describe("q (name search) parameter", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const listId = "880e8400-e29b-41d4-a716-446655440000";
+
+    it("listCandidates appends q to the URL when provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listCandidates(tripId, { q: "Tower" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("q=Tower");
+    });
+
+    it("listCandidates does not append q when absent", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listCandidates(tripId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).not.toContain("q=");
+    });
+
+    it("listSouvenirs appends q to the URL when provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listSouvenirs(tripId, { q: "Matcha" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("q=Matcha");
+    });
+
+    it("listArticles appends q to the URL when provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listArticles({ q: "Kyoto" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("q=Kyoto");
+    });
+
+    it("listBookmarks appends q to the URL when provided", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ data: [], pagination: {} }, 200));
+
+      // Act
+      await client.listBookmarks(listId, { q: "Senso" });
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain("q=Senso");
+    });
+  });
+
   describe("souvenir methods — request assembly", () => {
     const tripId = "550e8400-e29b-41d4-a716-446655440000";
     const itemId = "770e8400-e29b-41d4-a716-446655440000";

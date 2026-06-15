@@ -728,6 +728,59 @@ describe("GET /bookmark-lists/:listId/bookmarks", () => {
     const body = await res.json();
     expect(body).toEqual({ error: { code: "invalid_request", message: expect.any(String) } });
   });
+
+  it("accepts q and returns 200 with name-filtered bookmarks", async () => {
+    // Arrange
+    setupValidKey();
+    mockDbQuery.bookmarkLists.findFirst.mockResolvedValue({
+      id: LIST_ID,
+      userId: USER_ID_1,
+      name: "Places",
+    });
+    mockCountQuery(1);
+    mockDbQuery.bookmarks.findMany.mockResolvedValue([
+      {
+        id: "bm-1",
+        name: "Senso-ji",
+        memo: null,
+        urls: [],
+        sortOrder: 0,
+        createdAt: new Date("2026-01-01T00:00:00Z"),
+        updatedAt: new Date("2026-01-01T00:00:00Z"),
+      },
+    ]);
+
+    // Act
+    const res = await v1App.request(`/bookmark-lists/${LIST_ID}/bookmarks?q=Senso`, {
+      headers: AUTH_HEADER,
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.pagination.total).toBe(1);
+  });
+
+  it("treats empty q as no filter and returns all bookmarks", async () => {
+    // Arrange
+    setupValidKey();
+    mockDbQuery.bookmarkLists.findFirst.mockResolvedValue({
+      id: LIST_ID,
+      userId: USER_ID_1,
+      name: "Places",
+    });
+    mockCountQuery(0);
+    mockDbQuery.bookmarks.findMany.mockResolvedValue([]);
+
+    // Act — q= (empty) must not cause 400
+    const res = await v1App.request(`/bookmark-lists/${LIST_ID}/bookmarks?q=`, {
+      headers: AUTH_HEADER,
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -792,6 +845,35 @@ describe("GET /articles", () => {
     const body = await res.json();
 
     expect(articleListResponseSchema.safeParse(body).success).toBe(true);
+  });
+
+  it("accepts q and returns 200 with title-filtered articles", async () => {
+    // Arrange
+    setupValidKey();
+    mockCountQuery(1);
+    mockDbQuery.articles.findMany.mockResolvedValue([articleSummaryRow]);
+
+    // Act
+    const res = await v1App.request("/articles?q=Kyoto", { headers: AUTH_HEADER });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.pagination.total).toBe(1);
+  });
+
+  it("treats empty q as no filter and returns all articles", async () => {
+    // Arrange
+    setupValidKey();
+    mockCountQuery(0);
+    mockDbQuery.articles.findMany.mockResolvedValue([]);
+
+    // Act — q= (empty) must not cause 400
+    const res = await v1App.request("/articles?q=", { headers: AUTH_HEADER });
+
+    // Assert
+    expect(res.status).toBe(200);
   });
 });
 
@@ -928,6 +1010,62 @@ describe("GET /trips/:tripId/candidates", () => {
     expect(json).not.toContain('"dayPatternId"');
     expect(json).not.toContain('"tripId"');
   });
+
+  it("accepts q and returns 200 with data from the filtered DB result", async () => {
+    // Arrange
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockCountQuery(1);
+    mockDbQuery.schedules.findMany.mockResolvedValue([
+      {
+        id: "cand-1",
+        tripId: TRIP_ID,
+        dayPatternId: null,
+        name: "Tokyo Tower",
+        category: "sightseeing",
+        startTime: null,
+        endTime: null,
+        address: null,
+        memo: null,
+        urls: [],
+        departurePlace: null,
+        arrivalPlace: null,
+        transportMethod: null,
+        cost: null,
+        color: "blue",
+        endDayOffset: null,
+        sortOrder: 0,
+        createdAt: new Date("2026-06-01T00:00:00Z"),
+        updatedAt: new Date("2026-06-01T00:00:00Z"),
+      },
+    ]);
+
+    // Act
+    const res = await v1App.request(`/trips/${TRIP_ID}/candidates?q=Tower`, {
+      headers: AUTH_HEADER,
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0].name).toBe("Tokyo Tower");
+    expect(body.pagination.total).toBe(1);
+  });
+
+  it("treats empty q as no filter and returns all candidates", async () => {
+    // Arrange
+    setupValidKey();
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockCountQuery(0);
+    mockDbQuery.schedules.findMany.mockResolvedValue([]);
+
+    // Act — q= (empty string after URL decoding) must not cause 400
+    const res = await v1App.request(`/trips/${TRIP_ID}/candidates?q=`, { headers: AUTH_HEADER });
+
+    // Assert
+    expect(res.status).toBe(200);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1027,5 +1165,74 @@ describe("GET /trips/:tripId/souvenirs", () => {
     const body = await res.json();
 
     expect(souvenirListResponseSchema.safeParse(body).success).toBe(true);
+  });
+
+  it("accepts q and returns 200 with filtered data", async () => {
+    // Arrange
+    setupValidKey(SOUVENIR_KEY);
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: USER_ID_1 }]);
+    mockCountQuery(1);
+    mockDbQuery.souvenirItems.findMany.mockResolvedValue([
+      {
+        id: "souv-1",
+        userId: USER_ID_1,
+        name: "Matcha KitKat",
+        recipient: null,
+        urls: [],
+        addresses: [],
+        memo: null,
+        priority: null,
+        isPurchased: false,
+        isShared: false,
+        shareStyle: null,
+        createdAt: new Date("2026-06-01T00:00:00Z"),
+        updatedAt: new Date("2026-06-01T00:00:00Z"),
+        user: { name: "Alice" },
+      },
+    ]);
+
+    // Act
+    const res = await v1App.request(`/trips/${TRIP_ID}/souvenirs?q=Matcha`, {
+      headers: AUTH_HEADER,
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.data).toHaveLength(1);
+    expect(body.pagination.total).toBe(1);
+  });
+
+  it("treats empty q as no filter and returns all souvenirs", async () => {
+    // Arrange
+    setupValidKey(SOUVENIR_KEY);
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: USER_ID_1 }]);
+    mockCountQuery(0);
+    mockDbQuery.souvenirItems.findMany.mockResolvedValue([]);
+
+    // Act
+    const res = await v1App.request(`/trips/${TRIP_ID}/souvenirs?q=`, { headers: AUTH_HEADER });
+
+    // Assert — empty q must not cause 400
+    expect(res.status).toBe(200);
+  });
+
+  it("accepts q with LIKE metacharacters without error", async () => {
+    // Arrange — percent sign must be escaped so it is not treated as a wildcard
+    setupValidKey(SOUVENIR_KEY);
+    mockCheckTripAccess.mockResolvedValue("owner");
+    mockDbQuery.tripMembers.findMany.mockResolvedValue([{ userId: USER_ID_1 }]);
+    mockCountQuery(0);
+    mockDbQuery.souvenirItems.findMany.mockResolvedValue([]);
+
+    // Act
+    const res = await v1App.request(`/trips/${TRIP_ID}/souvenirs?q=100%25`, {
+      headers: AUTH_HEADER,
+    });
+
+    // Assert — route must not crash or return 400
+    expect(res.status).toBe(200);
   });
 });
