@@ -2,6 +2,7 @@
 //
 // File layout:
 //   POST   /trips/:tripId/candidates
+//   POST   /trips/:tripId/candidates/batch
 //   PATCH  /trips/:tripId/candidates/:scheduleId
 //
 // A candidate is a schedule row with dayPatternId = NULL — an unassigned spot in
@@ -21,7 +22,7 @@ import { describeRoute, resolver } from "hono-openapi";
 import { db } from "../../db";
 import { schedules } from "../../db/schema";
 import { logActivity } from "../../lib/activity-logger";
-import { createCandidateCore } from "../../lib/candidate-service";
+import { batchCreateCandidatesCore, createCandidateCore } from "../../lib/candidate-service";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { hasChanges } from "../../lib/has-changes";
 import { notifyTripMembersExcluding } from "../../lib/notifications";
@@ -31,6 +32,8 @@ import { errorResponseSchema } from "./openapi-schemas";
 import { serializeScheduleDto } from "./serializers";
 import { getActorName, uuidSchema, withTripAccess } from "./shared";
 import {
+  v1BatchCreateCandidateSchema,
+  v1CandidateBatchWriteResponseSchema,
   v1CandidateWriteResponseSchema,
   v1CreateScheduleSchema,
   v1UpdateScheduleSchema,
@@ -135,6 +138,87 @@ candidatesWriteApp.post(
       return c.json(
         {
           ...serializeScheduleDto(schedule),
+          _meta: { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP },
+        },
+        201,
+      );
+    },
+    { minRole: "editor" },
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// POST /trips/:tripId/candidates/batch
+// ---------------------------------------------------------------------------
+
+candidatesWriteApp.post(
+  "/trips/:tripId/candidates/batch",
+  describeRoute({
+    tags: ["Candidates"],
+    summary: "Batch create candidates",
+    description:
+      'Creates up to 50 candidates in a single transaction. Items that exceed the per-trip schedule limit are returned in `skipped` with `reason: "limit_reached"`. When `onConflict` is `"skip"`, items whose name (trimmed, case-insensitive) matches an existing schedule in the trip or an earlier item in the same batch are returned in `skipped` with `reason: "duplicate"`. Requires `trips:write` scope and editor/owner role on the trip.',
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    requestBody: {
+      required: true,
+      content: { "application/json": { schema: { type: "object" } } },
+    },
+    responses: {
+      201: {
+        description: "Batch processed (partial success is normal — check `skipped`)",
+        content: {
+          "application/json": { schema: resolver(v1CandidateBatchWriteResponseSchema) },
+        },
+      },
+      400: {
+        description: "Invalid request body",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("trips:write"),
+  withTripAccess(
+    "tripId",
+    async (c, tripId) => {
+      const body = await c.req.json();
+      const parsed = v1BatchCreateCandidateSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new ApiV1Error(400, "invalid_request", "Invalid request body");
+      }
+
+      const { items, onConflict } = parsed.data;
+      const { created, skipped } = await batchCreateCandidatesCore(tripId, items, onConflict);
+
+      // Intentionally no logActivity/notifyTripMembersExcluding here: a batch can
+      // create up to 50 items, and per-item logs/notifications would spam members.
+      // Post-batch trip-wide schedule count for _meta.
+      const scheduleCount = await getScheduleCount(db, tripId);
+
+      return c.json(
+        {
+          created: created.map((s) => serializeScheduleDto(s)),
+          skipped,
           _meta: { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP },
         },
         201,

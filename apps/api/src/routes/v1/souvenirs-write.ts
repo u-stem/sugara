@@ -2,6 +2,7 @@
 //
 // File layout:
 //   POST   /trips/:tripId/souvenirs
+//   POST   /trips/:tripId/souvenirs/batch
 //   PATCH  /trips/:tripId/souvenirs/:itemId
 //
 // Souvenirs are per-member items within a trip: any trip member (including
@@ -18,12 +19,15 @@ import { db } from "../../db";
 import { souvenirItems, tripMembers } from "../../db/schema";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { buildMemberNoMap } from "../../lib/external-api/member-no";
+import { batchCreateSouvenirsCore } from "../../lib/souvenir-service";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
 import { serializeSouvenirDto } from "./serializers";
 import { getActorName, uuidSchema, withTripAccess } from "./shared";
 import {
+  v1BatchCreateSouvenirSchema,
   v1CreateSouvenirSchema,
+  v1SouvenirBatchWriteResponseSchema,
   v1SouvenirWriteResponseSchema,
   v1UpdateSouvenirSchema,
 } from "./write-schemas";
@@ -143,6 +147,97 @@ souvenirsWriteApp.post(
       {
         ...serializeSouvenirDto({ ...inserted, userName }, memberNoMap),
         _meta: { count: itemCount + 1, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
+      },
+      201,
+    );
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// POST /trips/:tripId/souvenirs/batch
+// ---------------------------------------------------------------------------
+
+souvenirsWriteApp.post(
+  "/trips/:tripId/souvenirs/batch",
+  describeRoute({
+    tags: ["Souvenirs"],
+    summary: "Batch create souvenirs",
+    description:
+      'Creates up to 50 souvenir items owned by the API key user in a single transaction. Items that exceed the per-user per-trip limit are returned in `skipped` with `reason: "limit_reached"`. When `onConflict` is `"skip"`, items whose name (trimmed, case-insensitive) matches an existing souvenir owned by the caller in the trip or an earlier item in the same batch are returned in `skipped` with `reason: "duplicate"`. Requires `souvenirs:write` scope.',
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    requestBody: {
+      required: true,
+      content: { "application/json": { schema: { type: "object" } } },
+    },
+    responses: {
+      201: {
+        description: "Batch processed (partial success is normal — check `skipped`)",
+        content: {
+          "application/json": { schema: resolver(v1SouvenirBatchWriteResponseSchema) },
+        },
+      },
+      400: {
+        description: "Invalid request body",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("souvenirs:write"),
+  withTripAccess("tripId", async (c, tripId) => {
+    const key = getApiKey(c);
+
+    const body = await c.req.json();
+    const parsed = v1BatchCreateSouvenirSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new ApiV1Error(400, "invalid_request", "Invalid request body");
+    }
+
+    const { items, onConflict } = parsed.data;
+    const { created, skipped } = await batchCreateSouvenirsCore(
+      tripId,
+      key.userId,
+      items,
+      onConflict,
+    );
+
+    // Resolve memberNo map and actor name for serialization.
+    const [memberNoMap, userName] = await Promise.all([
+      buildTripMemberNoMap(tripId),
+      getActorName(key.userId),
+    ]);
+
+    // Post-batch user souvenir count for _meta.
+    const [{ itemCount }] = await db
+      .select({ itemCount: count() })
+      .from(souvenirItems)
+      .where(and(eq(souvenirItems.tripId, tripId), eq(souvenirItems.userId, key.userId)));
+
+    return c.json(
+      {
+        created: created.map((item) => serializeSouvenirDto({ ...item, userName }, memberNoMap)),
+        skipped,
+        _meta: { count: itemCount, max: MAX_SOUVENIRS_PER_USER_PER_TRIP },
       },
       201,
     );

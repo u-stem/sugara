@@ -36,6 +36,8 @@ const {
   mockGetScheduleCount,
   mockGetNextSortOrder,
   mockCreateCandidateCore,
+  mockBatchCreateCandidatesCore,
+  mockBatchCreateSouvenirsCore,
 } = vi.hoisted(() => ({
   mockVerifyApiKey: vi.fn(),
   mockCheckTripAccess: vi.fn(),
@@ -65,6 +67,8 @@ const {
   mockGetScheduleCount: vi.fn(),
   mockGetNextSortOrder: vi.fn(),
   mockCreateCandidateCore: vi.fn(),
+  mockBatchCreateCandidatesCore: vi.fn(),
+  mockBatchCreateSouvenirsCore: vi.fn(),
 }));
 
 vi.mock("../lib/external-api/api-key", () => ({
@@ -135,6 +139,11 @@ vi.mock("../lib/sort-order", () => ({
 
 vi.mock("../lib/candidate-service", () => ({
   createCandidateCore: (...args: unknown[]) => mockCreateCandidateCore(...args),
+  batchCreateCandidatesCore: (...args: unknown[]) => mockBatchCreateCandidatesCore(...args),
+}));
+
+vi.mock("../lib/souvenir-service", () => ({
+  batchCreateSouvenirsCore: (...args: unknown[]) => mockBatchCreateSouvenirsCore(...args),
 }));
 
 import { v1App } from "../routes/v1/index";
@@ -1323,5 +1332,312 @@ describe("PATCH /trips/:tripId/souvenirs/:itemId", () => {
 
     expect(res.status).toBe(200);
     expect(setSpy).toHaveBeenCalledWith(expect.objectContaining({ shareStyle: null }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Candidates — batch create
+// ---------------------------------------------------------------------------
+
+function arrangeCandidateBatch(result: {
+  created: unknown[];
+  skipped: { name: string; reason: "duplicate" | "limit_reached" }[];
+}) {
+  mockBatchCreateCandidatesCore.mockResolvedValue(result);
+  // getScheduleCount is called after the batch for _meta
+  mockGetScheduleCount.mockResolvedValue(result.created.length);
+}
+
+describe("POST /trips/:tripId/candidates/batch", () => {
+  it("returns 403 when key has only trips:read", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["trips:read"] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [{ name: "Tokyo Tower", category: "sightseeing" }],
+    });
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when caller has viewer role (editor-gated)", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("viewer");
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [{ name: "Tokyo Tower", category: "sightseeing" }],
+    });
+
+    // Assert
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 for an empty items array", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, { items: [] });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("invalid_request");
+  });
+
+  it("returns 201 with created, skipped, and _meta when all items are created", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeCandidateBatch({
+      created: [
+        CANDIDATE_ROW,
+        {
+          ...CANDIDATE_ROW,
+          id: "33333333-0000-0000-0000-000000000002",
+          name: "Akihabara",
+          sortOrder: 1,
+        },
+      ],
+      skipped: [],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [
+        { name: "Tokyo Tower", category: "sightseeing" },
+        { name: "Akihabara", category: "sightseeing" },
+      ],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(2);
+    expect(body.skipped).toHaveLength(0);
+    expect(body._meta).toEqual({ count: 2, max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  it("returns 201 with partial success when some items are skipped due to limit", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeCandidateBatch({
+      created: [CANDIDATE_ROW],
+      skipped: [{ name: "Akihabara", reason: "limit_reached" }],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [
+        { name: "Tokyo Tower", category: "sightseeing" },
+        { name: "Akihabara", category: "sightseeing" },
+      ],
+    });
+    const body = await res.json();
+
+    // Assert — still 201, no global 409
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+    expect(body.skipped).toEqual([{ name: "Akihabara", reason: "limit_reached" }]);
+  });
+
+  it("returns 201 with duplicate skipped when onConflict is skip", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeCandidateBatch({
+      created: [CANDIDATE_ROW],
+      skipped: [{ name: "Tokyo Tower", reason: "duplicate" }],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [
+        { name: "Tokyo Tower", category: "sightseeing" },
+        { name: "Tokyo Tower", category: "sightseeing" },
+      ],
+      onConflict: "skip",
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+    expect(body.skipped[0]).toEqual({ name: "Tokyo Tower", reason: "duplicate" });
+  });
+
+  it("created items have no per-item _meta (only response-level _meta)", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeCandidateBatch({ created: [CANDIDATE_ROW], skipped: [] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/batch`, {
+      items: [{ name: "Tokyo Tower", category: "sightseeing" }],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(body.created[0]).not.toHaveProperty("_meta");
+    expect(body).toHaveProperty("_meta");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Souvenirs — batch create
+// ---------------------------------------------------------------------------
+
+function arrangeSouvenirBatch(result: {
+  created: unknown[];
+  skipped: { name: string; reason: "duplicate" | "limit_reached" }[];
+}) {
+  mockBatchCreateSouvenirsCore.mockResolvedValue(result);
+  mockDbQuery.tripMembers.findMany.mockResolvedValue(SOUVENIR_MEMBER_ROWS);
+  // getActorName uses db.query.users.findFirst, not db.select
+  mockDbQuery.users.findFirst.mockResolvedValue({ name: "Alice" });
+  // post-batch count SELECT for _meta (the only db.select call in the batch route)
+  mockDbSelect.mockReturnValueOnce({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockResolvedValue([{ itemCount: result.created.length }]),
+    }),
+  });
+}
+
+describe("POST /trips/:tripId/souvenirs/batch", () => {
+  it("returns 403 when key has only souvenirs:read", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:read"] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }],
+    });
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("allows a viewer to batch-create their own souvenirs (no editor role required)", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("viewer");
+    arrangeSouvenirBatch({ created: [souvenirRow()], skipped: [] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+  });
+
+  it("returns 400 for an empty items array", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, { items: [] });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(400);
+    expect(body.error.code).toBe("invalid_request");
+  });
+
+  it("returns 201 with created, skipped, and _meta when all items are created", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeSouvenirBatch({
+      created: [
+        souvenirRow(),
+        souvenirRow({ id: "44444444-0000-0000-0000-000000000002", name: "Pocky" }),
+      ],
+      skipped: [],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }, { name: "Pocky" }],
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(2);
+    expect(body.skipped).toHaveLength(0);
+    expect(body._meta).toEqual({ count: 2, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
+  it("returns 201 with partial success when some items exceed the limit", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeSouvenirBatch({
+      created: [souvenirRow()],
+      skipped: [{ name: "Pocky", reason: "limit_reached" }],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }, { name: "Pocky" }],
+    });
+    const body = await res.json();
+
+    // Assert — still 201, no global 409
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+    expect(body.skipped).toEqual([{ name: "Pocky", reason: "limit_reached" }]);
+  });
+
+  it("returns 201 with duplicate skipped when onConflict is skip", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeSouvenirBatch({
+      created: [souvenirRow()],
+      skipped: [{ name: "Matcha KitKat", reason: "duplicate" }],
+    });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }, { name: "Matcha KitKat" }],
+      onConflict: "skip",
+    });
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(201);
+    expect(body.created).toHaveLength(1);
+    expect(body.skipped[0]).toEqual({ name: "Matcha KitKat", reason: "duplicate" });
+  });
+
+  it("created items have no per-item _meta (owner is a memberNo ref)", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["souvenirs:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+    arrangeSouvenirBatch({ created: [souvenirRow()], skipped: [] });
+
+    // Act
+    const res = await jsonPost(`/trips/${TRIP_ID}/souvenirs/batch`, {
+      items: [{ name: "Matcha KitKat" }],
+    });
+    const body = await res.json();
+
+    // Assert: items have owner (memberNo ref) but no _meta on each item
+    expect(body.created[0]).not.toHaveProperty("_meta");
+    expect(body.created[0]).toHaveProperty("owner");
+    expect(body).toHaveProperty("_meta");
   });
 });

@@ -243,12 +243,12 @@ describe("MCP server — tools/list", () => {
     await mcpServer.close();
   });
 
-  it("returns exactly 25 tools", async () => {
+  it("returns exactly 27 tools", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
 
     // Assert
-    expect(result.tools).toHaveLength(25);
+    expect(result.tools).toHaveLength(27);
   });
 
   it("includes all 19 expected tool names", async () => {

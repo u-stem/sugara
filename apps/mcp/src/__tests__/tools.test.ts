@@ -3,15 +3,15 @@ import { z } from "zod";
 import { INPUT_SHAPES } from "../tools.js";
 
 describe("INPUT_SHAPES", () => {
-  it("defines 25 tools", () => {
+  it("defines 27 tools", () => {
     // Arrange + Act
     const toolNames = Object.keys(INPUT_SHAPES);
 
     // Assert
-    expect(toolNames).toHaveLength(25);
+    expect(toolNames).toHaveLength(27);
   });
 
-  it("includes the candidate and souvenir tools", () => {
+  it("includes the candidate and souvenir tools including batch variants", () => {
     const toolNames = Object.keys(INPUT_SHAPES);
 
     expect(toolNames).toEqual(
@@ -19,9 +19,11 @@ describe("INPUT_SHAPES", () => {
         "list_candidates",
         "create_candidate",
         "update_candidate",
+        "batch_create_candidates",
         "list_souvenirs",
         "create_souvenir",
         "update_souvenir",
+        "batch_create_souvenirs",
       ]),
     );
   });
@@ -710,5 +712,105 @@ describe("list_bookmarks q parameter", () => {
 
     expect(result.success).toBe(true);
     expect(result.data?.q).toBe("Senso");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Batch create schemas
+// ---------------------------------------------------------------------------
+
+describe("batch_create_candidates input schema", () => {
+  const schema = z.object(INPUT_SHAPES.batch_create_candidates);
+  const validItem = { name: "Tokyo Tower", category: "sightseeing" as const };
+
+  it("requires tripId and at least one item", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), items: [] }).success).toBe(false);
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), items: [validItem] }).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects more than 50 items", () => {
+    const items = Array.from({ length: 51 }, () => validItem);
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), items });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid category in items", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [{ name: "Tower", category: "nope" }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid onConflict value", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [validItem],
+      onConflict: "upsert",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts onConflict skip", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [validItem],
+      onConflict: "skip",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts onConflict create", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [validItem],
+      onConflict: "create",
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("batch_create_souvenirs input schema", () => {
+  const schema = z.object(INPUT_SHAPES.batch_create_souvenirs);
+  const validItem = { name: "Matcha KitKat" };
+
+  it("requires tripId and at least one item", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), items: [] }).success).toBe(false);
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), items: [validItem] }).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects more than 50 items", () => {
+    const items = Array.from({ length: 51 }, () => validItem);
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), items });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid shareStyle in items", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [{ name: "KitKat", shareStyle: "gift" }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an invalid priority in items", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [{ name: "KitKat", priority: "low" }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts onConflict skip", () => {
+    const result = schema.safeParse({
+      tripId: crypto.randomUUID(),
+      items: [validItem],
+      onConflict: "skip",
+    });
+    expect(result.success).toBe(true);
   });
 });

@@ -81,7 +81,7 @@ export const INPUT_SHAPES = {
     q: z.string().optional(),
   },
 
-  // --- Write tools (16) ---
+  // --- Write tools (18) ---
 
   // POST /trips — caller becomes the owner member.
   create_trip: {
@@ -298,6 +298,66 @@ export const INPUT_SHAPES = {
     isShared: z.boolean().optional(),
     shareStyle: z.enum(["recommend", "errand"]).nullable().optional(),
   },
+
+  // POST /trips/:tripId/candidates/batch — up to 50 candidates in one transaction.
+  // onConflict="skip": items whose name (trimmed, lowercase exact match) matches an
+  // existing schedule in the trip OR an earlier item in the same batch are returned
+  // in `skipped` with reason "duplicate". This is NOT a partial match — unlike the
+  // q= search parameter which does case-insensitive substring matching.
+  // Items that exceed the per-trip limit are returned in `skipped` with reason
+  // "limit_reached"; items that fit are always created (partial success is normal).
+  // Requires trips:write scope and editor/owner role.
+  batch_create_candidates: {
+    tripId: z.string().uuid(),
+    items: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(200),
+          category: scheduleCategorySchema,
+          address: z.string().max(500).optional(),
+          startTime: z.string().optional(),
+          endTime: z.string().optional(),
+          memo: z.string().max(2000).optional(),
+          urls: z.array(z.string()).max(5).optional(),
+          departurePlace: z.string().max(200).optional(),
+          arrivalPlace: z.string().max(200).optional(),
+          transportMethod: transportMethodSchema.optional(),
+          cost: z.number().int().nonnegative().max(99999999).optional(),
+          color: scheduleColorSchema.optional(),
+          endDayOffset: z.number().int().min(1).max(30).optional(),
+        }),
+      )
+      .min(1)
+      .max(50),
+    // "create" (default): always insert — matches single-create semantics.
+    // "skip": skip items whose name (trim+lowercase) collides with existing or batch-prior entries.
+    onConflict: z.enum(["create", "skip"]).optional(),
+  },
+
+  // POST /trips/:tripId/souvenirs/batch — up to 50 souvenir items in one transaction.
+  // Dedup scope (onConflict="skip"): caller's own items in the trip only, NOT other
+  // members' items. This differs from the candidate dedup which is trip-wide.
+  // Partial success semantics and limit_reached behaviour are the same as batch_create_candidates.
+  // Requires souvenirs:write scope; any member (including viewers) may call this.
+  batch_create_souvenirs: {
+    tripId: z.string().uuid(),
+    items: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(200),
+          recipient: z.string().max(100).nullable().optional(),
+          urls: z.array(z.string()).max(5).optional(),
+          addresses: z.array(z.string().max(500)).max(5).optional(),
+          memo: z.string().nullable().optional(),
+          priority: z.enum(["high", "medium"]).nullable().optional(),
+          isShared: z.boolean().optional(),
+          shareStyle: z.enum(["recommend", "errand"]).nullable().optional(),
+        }),
+      )
+      .min(1)
+      .max(50),
+    onConflict: z.enum(["create", "skip"]).optional(),
+  },
 } as const;
 
 function toolError(message: string) {
@@ -331,7 +391,7 @@ const UPDATE_ANNOTATIONS = {
 } as const;
 
 /**
- * Registers all 25 sugara v1 tools with the MCP server.
+ * Registers all 27 sugara v1 tools with the MCP server.
  * Each tool maps 1:1 to a v1 endpoint and returns the raw JSON response.
  * On client errors, returns an isError result with a human-readable message.
  *
@@ -549,7 +609,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
   );
 
   // ---------------------------------------------------------------------------
-  // Write tools (16)
+  // Write tools (18)
   // ---------------------------------------------------------------------------
 
   server.registerTool(
@@ -901,6 +961,67 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       const { tripId, itemId, ...body } = args;
       try {
         const result = await client.updateSouvenir(tripId, itemId, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "batch_create_candidates",
+    {
+      description:
+        "Create up to 50 candidates in a single transaction. " +
+        "Returns { created, skipped, _meta } — partial success is normal. " +
+        "onConflict='skip': items whose name (trimmed, lowercase EXACT match) collides with an " +
+        "existing schedule name in the trip OR an earlier item in the same batch are put in " +
+        "`skipped` with reason 'duplicate'. " +
+        "NOTE: this is an exact match after trim+lowercase, NOT the partial substring match " +
+        "used by list_candidates q= search. " +
+        "onConflict='create' (default): all items are always inserted regardless of name collisions. " +
+        "Items that exceed the per-trip schedule limit go to `skipped` with reason 'limit_reached'; " +
+        "items that fit are created. No 409 is returned for limit overflow. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.batch_create_candidates,
+      annotations: CREATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, items, onConflict } = args;
+      try {
+        const result = await client.batchCreateCandidates(tripId, items, onConflict);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "batch_create_souvenirs",
+    {
+      description:
+        "Create up to 50 souvenir items in a single transaction. " +
+        "Returns { created, skipped, _meta } — partial success is normal. " +
+        "onConflict='skip': items whose name (trimmed, lowercase EXACT match) collides with an " +
+        "existing souvenir owned by the caller in the trip OR an earlier item in the same batch " +
+        "are put in `skipped` with reason 'duplicate'. " +
+        "Dedup scope is the caller's own items only — other members' items are NOT compared. " +
+        "NOTE: this is an exact match after trim+lowercase, NOT the partial substring match " +
+        "used by list_souvenirs q= search. " +
+        "onConflict='create' (default): all items are always inserted regardless of name collisions. " +
+        "Items that exceed the per-user per-trip souvenir limit go to `skipped` with reason " +
+        "'limit_reached'; items that fit are created. No 409 is returned for limit overflow. " +
+        "Any trip member (including viewers) may call this tool. " +
+        "Requires souvenirs:write scope.",
+      inputSchema: INPUT_SHAPES.batch_create_souvenirs,
+      annotations: CREATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, items, onConflict } = args;
+      try {
+        const result = await client.batchCreateSouvenirs(tripId, items, onConflict);
         return toolResult(result);
       } catch (err) {
         return toolError(err instanceof Error ? err.message : "Unexpected error");

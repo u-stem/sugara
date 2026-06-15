@@ -398,6 +398,252 @@ describe("v1 write routes integration", () => {
   });
 
   // -------------------------------------------------------------------------
+  // POST /trips/:tripId/candidates/batch
+  // -------------------------------------------------------------------------
+
+  it("POST /trips/:tripId/candidates/batch creates all items with consecutive sortOrders", async () => {
+    // Arrange: 1-day trip, caller is editor
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Batch Trip", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/candidates/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "Tokyo Tower", category: "sightseeing" },
+          { name: "Akihabara", category: "sightseeing" },
+          { name: "Shibuya", category: "sightseeing" },
+        ],
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(3);
+    expect(body.skipped).toHaveLength(0);
+    expect(body._meta.count).toBe(3);
+
+    // sortOrders must be unique and ascending (consecutive allocation in-memory)
+    const sortOrders = body.created
+      .map((c: { sortOrder: number }) => c.sortOrder)
+      .sort((a: number, b: number) => a - b);
+    expect(new Set(sortOrders).size).toBe(3);
+    expect(sortOrders[1] - sortOrders[0]).toBe(1);
+    expect(sortOrders[2] - sortOrders[1]).toBe(1);
+  });
+
+  it("POST /trips/:tripId/candidates/batch with onConflict=skip deduplicates by name (trim+lowercase)", async () => {
+    // Arrange: create trip and a pre-existing candidate
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Dedup Trip", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    const trip = await tripRes.json();
+
+    // Pre-insert one candidate via single create
+    const preRes = await v1App.request(`/trips/${trip.id}/candidates`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo Tower", category: "sightseeing" }),
+    });
+    expect(preRes.status).toBe(201);
+
+    // Act: batch with existing name + case/space variants + in-batch dupe + new name
+    const res = await v1App.request(`/trips/${trip.id}/candidates/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "tokyo tower", category: "sightseeing" }, // same after lowercase
+          { name: "  Tokyo Tower  ", category: "sightseeing" }, // same after trim
+          { name: "Akihabara", category: "sightseeing" }, // new — should be created
+          { name: "Akihabara", category: "sightseeing" }, // in-batch dupe — skipped
+        ],
+        onConflict: "skip",
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    // Only "Akihabara" (first occurrence) is created; the rest are skipped as duplicates
+    expect(body.created).toHaveLength(1);
+    expect(body.created[0].name).toBe("Akihabara");
+    expect(body.skipped).toHaveLength(3);
+    expect(body.skipped.every((s: { reason: string }) => s.reason === "duplicate")).toBe(true);
+  });
+
+  it("POST /trips/:tripId/candidates/batch with onConflict=create inserts same-name items", async () => {
+    // Arrange
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "No-dedup Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    // Act: two items with the same name, onConflict defaults to "create"
+    const res = await v1App.request(`/trips/${trip.id}/candidates/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "Tokyo Tower", category: "sightseeing" },
+          { name: "Tokyo Tower", category: "sightseeing" },
+        ],
+      }),
+    });
+
+    // Assert: both inserted, no skipped
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(2);
+    expect(body.skipped).toHaveLength(0);
+  });
+
+  it("POST /trips/:tripId/candidates/batch returns partial success when limit is reached mid-batch", async () => {
+    // Arrange: create a trip and fill it to MAX-1 using many batch calls, then test overflow
+    const db = getTestDb();
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Limit Trip", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    const trip = await tripRes.json();
+
+    // Fill to MAX_SCHEDULES_PER_TRIP - 1 with individual creates to avoid test complexity
+    // (use db directly for speed)
+    const { schedules } = await import("../../db/schema");
+    const placeholders = Array.from({ length: MAX_SCHEDULES_PER_TRIP - 1 }, (_, i) => ({
+      tripId: trip.id,
+      name: `Place ${i}`,
+      category: "sightseeing" as const,
+      sortOrder: i,
+    }));
+    await db.insert(schedules).values(placeholders);
+
+    // Act: batch with 3 items; only 1 should fit
+    const res = await v1App.request(`/trips/${trip.id}/candidates/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "Last Slot", category: "sightseeing" },
+          { name: "Overflow 1", category: "sightseeing" },
+          { name: "Overflow 2", category: "sightseeing" },
+        ],
+      }),
+    });
+
+    // Assert: 201 with partial success, _meta.count at the cap
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(1);
+    expect(body.created[0].name).toBe("Last Slot");
+    expect(body.skipped).toHaveLength(2);
+    expect(body.skipped.every((s: { reason: string }) => s.reason === "limit_reached")).toBe(true);
+    expect(body._meta.count).toBe(MAX_SCHEDULES_PER_TRIP);
+  });
+
+  // -------------------------------------------------------------------------
+  // POST /trips/:tripId/souvenirs/batch
+  // -------------------------------------------------------------------------
+
+  it("POST /trips/:tripId/souvenirs/batch creates all items and returns correct _meta.count", async () => {
+    // Arrange: create trip, switch to souvenirs:write scope
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Batch Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [{ name: "Matcha KitKat" }, { name: "Pocky" }],
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(2);
+    expect(body.skipped).toHaveLength(0);
+    expect(body._meta).toEqual({ count: 2, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+
+  it("POST /trips/:tripId/souvenirs/batch with onConflict=skip deduplicates caller's own items", async () => {
+    // Arrange: create trip and a pre-existing souvenir
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Souvenir Dedup Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    apiKey = { ...apiKey, scopes: ["souvenirs:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    // Pre-insert one souvenir
+    const preRes = await v1App.request(`/trips/${trip.id}/souvenirs`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Matcha KitKat" }),
+    });
+    expect(preRes.status).toBe(201);
+
+    // Act: batch with existing name + case variant + in-batch dupe + new name
+    const res = await v1App.request(`/trips/${trip.id}/souvenirs/batch`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: [
+          { name: "MATCHA KITKAT" }, // same after lowercase — skipped
+          { name: "Pocky" }, // new — created
+          { name: "Pocky" }, // in-batch dupe — skipped
+        ],
+        onConflict: "skip",
+      }),
+    });
+
+    // Assert
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.created).toHaveLength(1);
+    expect(body.created[0].name).toBe("Pocky");
+    expect(body.skipped).toHaveLength(2);
+    expect(body.skipped.every((s: { reason: string }) => s.reason === "duplicate")).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
   // POST /trips/:tripId/candidates — _meta.count includes ALL schedules
   // (assigned + candidates), not just candidates
   // -------------------------------------------------------------------------

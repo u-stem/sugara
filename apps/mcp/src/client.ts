@@ -343,4 +343,26 @@ export class ApiClient {
       body,
     );
   }
+
+  async batchCreateCandidates(
+    tripId: string,
+    items: unknown[],
+    onConflict?: "create" | "skip",
+  ): Promise<unknown> {
+    return this.mutate("POST", `/trips/${encodeURIComponent(tripId)}/candidates/batch`, {
+      items,
+      ...(onConflict !== undefined && { onConflict }),
+    });
+  }
+
+  async batchCreateSouvenirs(
+    tripId: string,
+    items: unknown[],
+    onConflict?: "create" | "skip",
+  ): Promise<unknown> {
+    return this.mutate("POST", `/trips/${encodeURIComponent(tripId)}/souvenirs/batch`, {
+      items,
+      ...(onConflict !== undefined && { onConflict }),
+    });
+  }
 }
