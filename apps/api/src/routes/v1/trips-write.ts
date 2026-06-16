@@ -5,9 +5,10 @@
 //   PATCH  /trips/:id
 //   POST   /trips/:tripId/days/:dayNumber/schedules
 //   PATCH  /trips/:tripId/schedules/:scheduleId
+//   DELETE /trips/:tripId/schedules/:scheduleId
 
 import { MAX_SCHEDULES_PER_TRIP } from "@sugara/shared";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq, isNotNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { db } from "../../db";
@@ -27,6 +28,7 @@ import { getActorName, uuidSchema, withTripAccess } from "./shared";
 import {
   v1CreateScheduleSchema,
   v1CreateTripSchema,
+  v1DeleteResponseSchema,
   v1ScheduleWriteResponseSchema,
   v1TripWriteResponseSchema,
   v1UpdateScheduleSchema,
@@ -545,6 +547,133 @@ tripsWriteApp.patch(
       });
 
       return c.json(serializeScheduleDto(updated));
+    },
+    { minRole: "editor" },
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/schedules/:scheduleId
+// ---------------------------------------------------------------------------
+
+tripsWriteApp.delete(
+  "/trips/:tripId/schedules/:scheduleId",
+  describeRoute({
+    tags: ["Trips"],
+    summary: "Delete a schedule",
+    description:
+      "Physically deletes an assigned schedule (dayPatternId is not null) from a trip day. " +
+      "Idempotent: returns 200 in all cases. " +
+      "deleted:true when the schedule was found and removed; deleted:false when the id is unknown, " +
+      "belongs to another trip, or the schedule is an unassigned candidate (dayPatternId is null). " +
+      "remaining reflects the post-operation trip-wide schedule count. " +
+      "Requires `trips:write` scope and editor/owner role on the trip.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "scheduleId",
+        in: "path",
+        required: true,
+        description: "Schedule UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    responses: {
+      200: {
+        description:
+          "Deletion result (deleted:true when removed, deleted:false when already gone or is a candidate)",
+        content: { "application/json": { schema: resolver(v1DeleteResponseSchema) } },
+      },
+      400: {
+        description: "Invalid schedule id",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("trips:write"),
+  withTripAccess(
+    "tripId",
+    async (c, tripId) => {
+      const key = getApiKey(c);
+
+      const rawScheduleId = c.req.param("scheduleId");
+      const parsedId = uuidSchema.safeParse(rawScheduleId);
+      if (!parsedId.success) {
+        throw new ApiV1Error(400, "invalid_request", "Invalid schedule id");
+      }
+      const scheduleId = parsedId.data;
+
+      // Atomic delete: guard conditions (tripId + assigned) are folded into
+      // the WHERE clause so there is no TOCTOU window. dayPatternId NOT NULL
+      // restricts to assigned schedules only — candidates (dayPatternId NULL)
+      // are left untouched and reported as deleted:false, which is the
+      // complement of the candidate DELETE (dayPatternId IS NULL).
+      const deletedRows = await db
+        .delete(schedules)
+        .where(
+          and(
+            eq(schedules.id, scheduleId),
+            eq(schedules.tripId, tripId),
+            isNotNull(schedules.dayPatternId),
+          ),
+        )
+        .returning({ id: schedules.id, name: schedules.name });
+      const didDelete = deletedRows.length > 0;
+
+      if (didDelete) {
+        // Run in parallel: count needs the post-delete state, actorName is
+        // needed for the schedule_deleted notification payload.
+        const [scheduleCount, actorName] = await Promise.all([
+          getScheduleCount(db, tripId),
+          getActorName(key.userId),
+        ]);
+        logActivity({
+          tripId,
+          userId: key.userId,
+          action: "deleted",
+          entityType: "schedule",
+          entityName: deletedRows[0].name,
+        });
+        notifyTripMembersExcluding({
+          type: "schedule_deleted",
+          tripId,
+          actorId: key.userId,
+          makePayload: (tripName) => ({ actorName, tripName }),
+        });
+        return c.json({
+          id: scheduleId,
+          deleted: true,
+          remaining: { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP },
+        });
+      }
+
+      // Idempotent: id unknown, belongs to another trip, already deleted,
+      // or is a candidate (dayPatternId IS NULL — not an assigned schedule).
+      const scheduleCount = await getScheduleCount(db, tripId);
+      return c.json({
+        id: scheduleId,
+        deleted: false,
+        remaining: { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP },
+      });
     },
     { minRole: "editor" },
   ),
