@@ -51,7 +51,7 @@ const FAKE_CREATED_TRIP = {
   updatedAt: "2025-01-01T00:00:00.000Z",
 };
 
-// The 29 tool names that registerTools must expose.
+// The 34 tool names that registerTools must expose.
 const EXPECTED_TOOL_NAMES = [
   "list_trips",
   "get_trip",
@@ -82,6 +82,11 @@ const EXPECTED_TOOL_NAMES = [
   "batch_create_souvenirs",
   "delete_candidate",
   "delete_souvenir",
+  "delete_schedule",
+  "delete_expense",
+  "delete_bookmark",
+  "delete_bookmark_list",
+  "delete_article",
 ] as const;
 
 /**
@@ -193,6 +198,26 @@ class FakeApiClient extends ApiClient {
   override async deleteSouvenir(_tripId: string, _itemId: string): Promise<unknown> {
     return { id: _itemId, deleted: true, remaining: { count: 0, max: 30 } };
   }
+
+  override async deleteSchedule(_tripId: string, _scheduleId: string): Promise<unknown> {
+    return { id: _scheduleId, deleted: true, remaining: { count: 0, max: 300 } };
+  }
+
+  override async deleteExpense(_tripId: string, _expenseId: string): Promise<unknown> {
+    return { id: _expenseId, deleted: true, remaining: { count: 0, max: 200 } };
+  }
+
+  override async deleteBookmark(_listId: string, _bookmarkId: string): Promise<unknown> {
+    return { id: _bookmarkId, deleted: true, remaining: { count: 0, max: 20 } };
+  }
+
+  override async deleteBookmarkList(_listId: string): Promise<unknown> {
+    return { id: _listId, deleted: true, remaining: { count: 0, max: 5 } };
+  }
+
+  override async deleteArticle(_articleId: string): Promise<unknown> {
+    return { id: _articleId, deleted: true, remaining: { count: 0, max: 20 } };
+  }
 }
 
 /**
@@ -255,15 +280,15 @@ describe("MCP server — tools/list", () => {
     await mcpServer.close();
   });
 
-  it("returns exactly 29 tools", async () => {
+  it("returns exactly 34 tools", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
 
     // Assert
-    expect(result.tools).toHaveLength(29);
+    expect(result.tools).toHaveLength(34);
   });
 
-  it("includes all 27 expected tool names", async () => {
+  it("includes all 34 expected tool names", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
     const names = result.tools.map((t) => t.name);

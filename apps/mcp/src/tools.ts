@@ -81,7 +81,7 @@ export const INPUT_SHAPES = {
     q: z.string().optional(),
   },
 
-  // --- Write tools (20) ---
+  // --- Write tools (25) ---
 
   // POST /trips — caller becomes the owner member.
   create_trip: {
@@ -370,6 +370,34 @@ export const INPUT_SHAPES = {
     tripId: z.string().uuid(),
     itemId: z.string().uuid(),
   },
+
+  // DELETE /trips/:tripId/schedules/:scheduleId — idempotent; requires editor or owner role.
+  delete_schedule: {
+    tripId: z.string().uuid(),
+    scheduleId: z.string().uuid(),
+  },
+
+  // DELETE /trips/:tripId/expenses/:expenseId — idempotent; requires editor or owner role.
+  delete_expense: {
+    tripId: z.string().uuid(),
+    expenseId: z.string().uuid(),
+  },
+
+  // DELETE /bookmark-lists/:listId/bookmarks/:bookmarkId — idempotent; caller must own the list.
+  delete_bookmark: {
+    listId: z.string().uuid(),
+    bookmarkId: z.string().uuid(),
+  },
+
+  // DELETE /bookmark-lists/:listId — idempotent; deletes the list and all its bookmarks; caller must own.
+  delete_bookmark_list: {
+    listId: z.string().uuid(),
+  },
+
+  // DELETE /articles/:articleId — idempotent; caller must own the article.
+  delete_article: {
+    articleId: z.string().uuid(),
+  },
 } as const;
 
 function toolError(message: string) {
@@ -410,7 +438,7 @@ const DELETE_ANNOTATIONS = {
 } as const;
 
 /**
- * Registers all 29 sugara v1 tools with the MCP server.
+ * Registers all 34 sugara v1 tools with the MCP server.
  * Each tool maps 1:1 to a v1 endpoint and returns the raw JSON response.
  * On client errors, returns an isError result with a human-readable message.
  *
@@ -1086,6 +1114,119 @@ export function registerTools(server: McpServer, client: ApiClient): void {
     async (args) => {
       try {
         const result = await client.deleteSouvenir(args.tripId, args.itemId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_schedule",
+    {
+      description:
+        "Permanently delete a schedule from a trip's day. " +
+        "Idempotent: always returns 200. deleted:true when the item was removed; " +
+        "deleted:false when the id is unknown or already deleted. " +
+        "remaining reflects the trip-wide schedule count after the operation. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.delete_schedule,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deleteSchedule(args.tripId, args.scheduleId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_expense",
+    {
+      description:
+        "Permanently delete an expense from a trip. " +
+        "Idempotent: always returns 200. deleted:true when the item was removed; " +
+        "deleted:false when the id is unknown or already deleted. " +
+        "remaining reflects the trip-wide expense count after the operation. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Requires expenses:write scope.",
+      inputSchema: INPUT_SHAPES.delete_expense,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deleteExpense(args.tripId, args.expenseId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_bookmark",
+    {
+      description:
+        "Permanently delete a bookmark from a list owned by the API key holder. " +
+        "Idempotent within an owned list: returns 200 with deleted:true when the bookmark was removed, " +
+        "or deleted:false when the bookmark id is unknown, already deleted, or belongs to a different list. " +
+        "Returns an error when the list does not exist or is owned by another user. " +
+        "remaining reflects the bookmark count in the list after the operation. " +
+        "Requires bookmarks:write scope.",
+      inputSchema: INPUT_SHAPES.delete_bookmark,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deleteBookmark(args.listId, args.bookmarkId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_bookmark_list",
+    {
+      description:
+        "Permanently delete a bookmark list and all its bookmarks owned by the API key holder. " +
+        "Idempotent: always returns 200. deleted:true when the list was removed; " +
+        "deleted:false when the id is unknown, already deleted, or owned by another user. " +
+        "remaining reflects the user's bookmark list count after the operation. " +
+        "Requires bookmarks:write scope.",
+      inputSchema: INPUT_SHAPES.delete_bookmark_list,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deleteBookmarkList(args.listId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_article",
+    {
+      description:
+        "Permanently delete an article owned by the API key holder. " +
+        "Idempotent: always returns 200. deleted:true when the item was removed; " +
+        "deleted:false when the id is unknown, already deleted, or owned by another user. " +
+        "remaining reflects the user's article count after the operation. " +
+        "Requires articles:write scope.",
+      inputSchema: INPUT_SHAPES.delete_article,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deleteArticle(args.articleId);
         return toolResult(result);
       } catch (err) {
         return toolError(err instanceof Error ? err.message : "Unexpected error");
