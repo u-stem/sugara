@@ -425,7 +425,7 @@ const JA_FAQS = [
   {
     question: "外部APIとは何ができますか？",
     answer:
-      "設定画面で発行した API キーを使うと、スクリプトやツールから自分の旅行データを読み書きできます。旅行・予定・費用・ブックマーク・記事・候補・お土産の取得に加え、キーに「作成・更新」の権限を付けると作成と更新もできます。削除には対応していないため、削除はアプリの画面から行ってください。共有されている旅行への書き込みには、その旅行での編集者以上の権限が必要です（お土産は例外で、メンバーなら誰でも自分のお土産を追加・更新できます）。",
+      "設定画面で発行した API キーを使うと、スクリプトやツールから自分の旅行データを読み書きできます。旅行・予定・費用・ブックマーク・記事・候補・お土産の取得に加え、キーに「作成・更新」の権限を付けると作成・更新・削除もできます。旅行自体の削除はセキュリティのためアプリの画面からのみ可能で、外部 API では対応していません。共有されている旅行への書き込みには、その旅行での編集者以上の権限が必要です（お土産は例外で、メンバーなら誰でも自分のお土産を追加・更新・削除できます）。",
     sortOrder: 110,
   },
   {
@@ -445,6 +445,12 @@ const JA_FAQS = [
     answer:
       "設定画面でログインした状態で /api/_docs を開くと、API リファレンスが表示されます。エンドポイントの一覧・パラメータ・レスポンスの形式を確認でき、ブラウザ上で試すこともできます。ゲストアカウントでは利用できません。",
     sortOrder: 113,
+  },
+  {
+    question: "外部 API でデータを削除できますか？",
+    answer:
+      "はい。API キーに「作成・更新」の権限があれば、予定・費用・ブックマーク・記事・候補・お土産を削除できます。旅行自体の削除はセキュリティのためアプリの画面からのみ可能です。削除する際に新しいスコープの追加は不要です。共有されている旅行の予定・費用を削除するには「編集者」以上の権限が必要です。お土産・ブックマーク・記事は、メンバーであれば自分のものを削除できます。削除操作は取り消せず、存在しないデータの削除はエラーにならず無視されます。",
+    sortOrder: 114,
   },
 ];
 
@@ -859,7 +865,7 @@ const EN_FAQS = [
   {
     question: "What can I do with the external API?",
     answer:
-      "By using an API key issued from your Settings, you can read and write your own travel data from scripts or tools. In addition to reading trips, schedules, expenses, bookmarks, articles, candidates, and souvenirs, keys with 'create & update' access can also create and update them. Deletion is not supported — please delete data from the app instead. Writing to a shared trip requires the editor role or higher in that trip (souvenirs are an exception: any member can add and update their own souvenirs).",
+      "By using an API key issued from your Settings, you can read and write your own travel data from scripts or tools. In addition to reading trips, schedules, expenses, bookmarks, articles, candidates, and souvenirs, keys with 'create & update' access can also create, update, and delete them. Trip deletion is available only through the app for security reasons and is not supported via the external API. Writing to a shared trip requires the editor role or higher in that trip (souvenirs are an exception: any member can add, update, and delete their own souvenirs).",
     sortOrder: 110,
   },
   {
@@ -879,6 +885,12 @@ const EN_FAQS = [
     answer:
       "Open /api/_docs while logged in to see the API reference. It lists all endpoints with their parameters and response shapes, and you can try requests directly in the browser. Guest accounts cannot access this page.",
     sortOrder: 113,
+  },
+  {
+    question: "Can I delete data through the external API?",
+    answer:
+      "Yes. If your API key has 'create & update' access, you can delete schedules, expenses, bookmarks, articles, candidates, and souvenirs. Trip deletion is available only through the app for security reasons. No new scope is needed to delete via the API. Deleting schedules and expenses in a shared trip requires the 'editor' role or higher. For souvenirs, bookmarks, and articles, any member can delete their own items. Deletions cannot be undone, and attempts to delete non-existent data silently succeed without error.",
+    sortOrder: 114,
   },
 ];
 
