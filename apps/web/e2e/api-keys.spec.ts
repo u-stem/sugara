@@ -124,7 +124,7 @@ test.describe("API keys", () => {
     };
 
     const readKey = await issueKey("e2e read key", "旅行(読み取り)");
-    const writeKey = await issueKey("e2e write key", "旅行(作成・更新)");
+    const writeKey = await issueKey("e2e write key", "旅行(作成・更新・削除)");
 
     const tripBody = {
       title: "E2E write trip",
