@@ -3,18 +3,26 @@
 // File layout:
 //   POST   /trips/:tripId/expenses
 //   PATCH  /trips/:tripId/expenses/:expenseId
+//   DELETE /trips/:tripId/expenses/:expenseId
 //
 // Expense member references use memberNo (stable 1-indexed identifiers) rather
 // than internal userId UUIDs. The conversion runs in both directions:
 //   request body  memberNo → userId  (before calling the service)
 //   response body userId  → memberNo (when serializing the result)
 
-import { MAX_EXPENSES_PER_TRIP } from "@sugara/shared";
-import { count, eq } from "drizzle-orm";
+import { formatCurrency, MAX_EXPENSES_PER_TRIP, toCurrencyCode } from "@sugara/shared";
+import { and, count, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { db } from "../../db";
-import { expenseSplits, tripDays, tripMembers } from "../../db/schema";
+import {
+  expenseSplits,
+  expenses,
+  settlementPayments,
+  tripDays,
+  tripMembers,
+} from "../../db/schema";
+import { logActivity } from "../../lib/activity-logger";
 import { createExpenseCore, updateExpenseCore } from "../../lib/expense-service";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { buildMemberNoMap, invertMemberNoMap } from "../../lib/external-api/member-no";
@@ -24,6 +32,7 @@ import { serializeExpenseDto } from "./serializers";
 import { getActorName, uuidSchema, withTripAccess } from "./shared";
 import {
   v1CreateExpenseSchema,
+  v1DeleteResponseSchema,
   v1ExpenseWriteResponseSchema,
   v1UpdateExpenseSchema,
 } from "./write-schemas";
@@ -414,6 +423,130 @@ expensesWriteApp.patch(
       return c.json(
         serializeExpenseDto({ ...result.expense, splits: splitRows }, memberNoMap, nameMap),
       );
+    },
+    { minRole: "editor" },
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/expenses/:expenseId
+// ---------------------------------------------------------------------------
+
+expensesWriteApp.delete(
+  "/trips/:tripId/expenses/:expenseId",
+  describeRoute({
+    tags: ["Expenses"],
+    summary: "Delete an expense",
+    description:
+      "Physically deletes an expense from a trip. " +
+      "Idempotent: returns 200 in all cases. " +
+      "deleted:true when the expense was found and removed; deleted:false when the id is unknown or " +
+      "belongs to another trip. " +
+      "When deleted, all associated splits and line items are cascade-deleted and the trip's " +
+      "settlement state is automatically reset. " +
+      "remaining reflects the post-operation trip-wide expense count. " +
+      "Requires `expenses:write` scope and editor/owner role on the trip.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "expenseId",
+        in: "path",
+        required: true,
+        description: "Expense UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    responses: {
+      200: {
+        description:
+          "Deletion result (deleted:true when removed, deleted:false when already gone or in another trip)",
+        content: { "application/json": { schema: resolver(v1DeleteResponseSchema) } },
+      },
+      400: {
+        description: "Invalid expense id",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Trip not found or access denied",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("expenses:write"),
+  withTripAccess(
+    "tripId",
+    async (c, tripId) => {
+      const key = getApiKey(c);
+
+      const rawExpenseId = c.req.param("expenseId");
+      const parsedExpId = uuidSchema.safeParse(rawExpenseId);
+      if (!parsedExpId.success) {
+        throw new ApiV1Error(400, "invalid_request", "Invalid expense id");
+      }
+      const expenseId = parsedExpId.data;
+
+      // Atomic delete + settlement reset in a single transaction. Guard
+      // conditions (id + tripId) fold the ownership check into the WHERE
+      // clause. On a hit, the settlement payments for the trip are wiped
+      // because any change to expense totals invalidates the settlement state
+      // (mirroring the internal DELETE /trips/:tripId/expenses/:expenseId route).
+      const deletedRows = await db.transaction(async (tx) => {
+        const rows = await tx
+          .delete(expenses)
+          .where(and(eq(expenses.id, expenseId), eq(expenses.tripId, tripId)))
+          .returning({
+            id: expenses.id,
+            title: expenses.title,
+            amount: expenses.amount,
+            currency: expenses.currency,
+          });
+        if (rows.length > 0) {
+          await tx.delete(settlementPayments).where(eq(settlementPayments.tripId, tripId));
+        }
+        return rows;
+      });
+      const didDelete = deletedRows.length > 0;
+
+      if (didDelete) {
+        logActivity({
+          tripId,
+          userId: key.userId,
+          action: "deleted",
+          entityType: "expense",
+          entityName: deletedRows[0].title,
+          detail: formatCurrency(
+            deletedRows[0].amount,
+            toCurrencyCode(deletedRows[0].currency),
+            "ja",
+          ),
+        });
+      }
+
+      const [{ expenseCount }] = await db
+        .select({ expenseCount: count() })
+        .from(expenses)
+        .where(eq(expenses.tripId, tripId));
+
+      return c.json({
+        id: expenseId,
+        deleted: didDelete,
+        remaining: { count: expenseCount, max: MAX_EXPENSES_PER_TRIP },
+      });
     },
     { minRole: "editor" },
   ),

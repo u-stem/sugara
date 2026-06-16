@@ -1653,6 +1653,355 @@ describe("POST /trips/:tripId/souvenirs/batch", () => {
 });
 
 // ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/schedules/:scheduleId
+// ---------------------------------------------------------------------------
+
+describe("DELETE /trips/:tripId/schedules/:scheduleId", () => {
+  const SCHEDULE_ID = "55555555-0000-0000-0000-000000000001";
+
+  beforeEach(() => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["trips:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+  });
+
+  it("returns 403 when key has only trips:read scope", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["trips:read"] });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/schedules/${SCHEDULE_ID}`);
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when caller has viewer role (editor-gated)", async () => {
+    // Arrange
+    mockCheckTripAccess.mockResolvedValue("viewer");
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/schedules/${SCHEDULE_ID}`);
+
+    // Assert
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 with deleted:false when schedule not found or is a candidate", async () => {
+    // Arrange: atomic delete returns empty rows (unknown, other trip, or dayPatternId IS NULL)
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    mockGetScheduleCount.mockResolvedValue(2);
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/schedules/${SCHEDULE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(SCHEDULE_ID);
+    expect(body.remaining.count).toBe(2);
+  });
+
+  it("returns 200 with deleted:true and correct remaining when assigned schedule deleted", async () => {
+    // Arrange: atomic delete returns the removed row; getActorName resolves for notification
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: SCHEDULE_ID, name: "Tokyo Tower" }]),
+      }),
+    });
+    mockGetScheduleCount.mockResolvedValue(1);
+    mockDbQuery.users.findFirst.mockResolvedValue({ name: "Alice" });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/schedules/${SCHEDULE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(true);
+    expect(body.remaining).toEqual({ count: 1, max: MAX_SCHEDULES_PER_TRIP });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /trips/:tripId/expenses/:expenseId
+// ---------------------------------------------------------------------------
+
+describe("DELETE /trips/:tripId/expenses/:expenseId", () => {
+  beforeEach(() => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["expenses:write"] });
+    mockCheckTripAccess.mockResolvedValue("editor");
+  });
+
+  it("returns 403 when key has only expenses:read scope", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["expenses:read"] });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/expenses/${EXPENSE_ID}`);
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 200 with deleted:false when expense not found or belongs to another trip", async () => {
+    // Arrange: transaction delete returns empty rows; count query returns current total
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ expenseCount: 3 }]) }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/expenses/${EXPENSE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(EXPENSE_ID);
+    expect(body.remaining.count).toBe(3);
+    expect(body.remaining.max).toBe(MAX_EXPENSES_PER_TRIP);
+  });
+
+  it("returns 200 with deleted:true and resets settlement when expense deleted", async () => {
+    // Arrange: first delete (expenses) hits; second delete (settlementPayments) runs
+    mockDbDelete
+      .mockReturnValueOnce({
+        where: vi.fn().mockReturnValue({
+          returning: vi
+            .fn()
+            .mockResolvedValue([
+              { id: EXPENSE_ID, title: "Dinner", amount: 3000, currency: "JPY" },
+            ]),
+        }),
+      })
+      .mockReturnValueOnce({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ expenseCount: 2 }]) }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/trips/${TRIP_ID}/expenses/${EXPENSE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(true);
+    expect(body.remaining).toEqual({ count: 2, max: MAX_EXPENSES_PER_TRIP });
+    // Verify settlement reset: mockDbDelete called twice (expenses + settlementPayments)
+    expect(mockDbDelete).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /bookmark-lists/:listId
+// ---------------------------------------------------------------------------
+
+describe("DELETE /bookmark-lists/:listId", () => {
+  beforeEach(() => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["bookmarks:write"] });
+  });
+
+  it("returns 403 when key has only bookmarks:read scope", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["bookmarks:read"] });
+
+    // Act
+    const res = await jsonDelete(`/bookmark-lists/${LIST_ID}`);
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 200 with deleted:false when list owned by another user (atomic WHERE guard)", async () => {
+    // Arrange: userId mismatch → atomic delete returns empty rows
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ listCount: 1 }]) }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/bookmark-lists/${LIST_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(LIST_ID);
+    expect(body.remaining.max).toBe(MAX_BOOKMARK_LISTS_PER_USER);
+  });
+
+  it("returns 200 with deleted:true when caller owns the list", async () => {
+    // Arrange: atomic delete hits the caller's list
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: LIST_ID }]),
+      }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ listCount: 0 }]) }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/bookmark-lists/${LIST_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(true);
+    expect(body.remaining).toEqual({ count: 0, max: MAX_BOOKMARK_LISTS_PER_USER });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /bookmark-lists/:listId/bookmarks/:bookmarkId
+// ---------------------------------------------------------------------------
+
+describe("DELETE /bookmark-lists/:listId/bookmarks/:bookmarkId", () => {
+  const BOOKMARK_ID = "66666666-0000-0000-0000-000000000001";
+
+  beforeEach(() => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["bookmarks:write"] });
+  });
+
+  it("returns 403 when key has only bookmarks:read scope", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["bookmarks:read"] });
+
+    // Act
+    const res = await jsonDelete(`/bookmark-lists/${LIST_ID}/bookmarks/${BOOKMARK_ID}`);
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when list is not owned by the caller", async () => {
+    // Arrange: verifyListOwnership returns null
+    mockVerifyListOwnership.mockResolvedValue(null);
+
+    // Act
+    const res = await jsonDelete(`/bookmark-lists/${LIST_ID}/bookmarks/${BOOKMARK_ID}`);
+
+    // Assert
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 with deleted:false when bookmark not in this list", async () => {
+    // Arrange: list owned, but bookmark atomic delete returns empty rows
+    mockVerifyListOwnership.mockResolvedValue({ id: LIST_ID, name: "My List" });
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ bCount: 2 }]) }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/bookmark-lists/${LIST_ID}/bookmarks/${BOOKMARK_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(BOOKMARK_ID);
+    expect(body.remaining.count).toBe(2);
+  });
+
+  it("returns 200 with deleted:true when bookmark found and removed", async () => {
+    // Arrange: list owned and bookmark atomic delete hits
+    mockVerifyListOwnership.mockResolvedValue({ id: LIST_ID, name: "My List" });
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: BOOKMARK_ID }]),
+      }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ bCount: 1 }]) }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/bookmark-lists/${LIST_ID}/bookmarks/${BOOKMARK_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(true);
+    expect(body.remaining).toEqual({ count: 1, max: MAX_BOOKMARKS_PER_LIST });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /articles/:articleId
+// ---------------------------------------------------------------------------
+
+describe("DELETE /articles/:articleId", () => {
+  beforeEach(() => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["articles:write"] });
+  });
+
+  it("returns 403 when key has only articles:read scope", async () => {
+    // Arrange
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["articles:read"] });
+
+    // Act
+    const res = await jsonDelete(`/articles/${ARTICLE_ID}`);
+
+    // Assert
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 200 with deleted:false when article owned by another user (atomic WHERE guard)", async () => {
+    // Arrange: ownerId mismatch → atomic delete returns empty rows
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([]) }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ articleCount: 5 }]) }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/articles/${ARTICLE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(false);
+    expect(body.id).toBe(ARTICLE_ID);
+    expect(body.remaining.count).toBe(5);
+    expect(body.remaining.max).toBe(MAX_ARTICLES_PER_USER);
+  });
+
+  it("returns 200 with deleted:true and correct remaining when article deleted", async () => {
+    // Arrange: atomic delete hits the caller's article; articleTrips/likes cascade in DB
+    mockDbDelete.mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: ARTICLE_ID }]),
+      }),
+    });
+    mockDbSelect.mockReturnValueOnce({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ articleCount: 4 }]) }),
+    });
+
+    // Act
+    const res = await jsonDelete(`/articles/${ARTICLE_ID}`);
+    const body = await res.json();
+
+    // Assert
+    expect(res.status).toBe(200);
+    expect(body.deleted).toBe(true);
+    expect(body.remaining).toEqual({ count: 4, max: MAX_ARTICLES_PER_USER });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // DELETE /trips/:tripId/candidates/:scheduleId
 // ---------------------------------------------------------------------------
 

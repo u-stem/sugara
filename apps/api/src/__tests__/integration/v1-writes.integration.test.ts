@@ -39,9 +39,27 @@ vi.mock("../../lib/notifications", () => ({
   notifyUsers: vi.fn(),
 }));
 
-import { MAX_SCHEDULES_PER_TRIP, MAX_SOUVENIRS_PER_USER_PER_TRIP } from "@sugara/shared";
+import {
+  MAX_ARTICLES_PER_USER,
+  MAX_BOOKMARK_LISTS_PER_USER,
+  MAX_BOOKMARKS_PER_LIST,
+  MAX_EXPENSES_PER_TRIP,
+  MAX_SCHEDULES_PER_TRIP,
+  MAX_SOUVENIRS_PER_USER_PER_TRIP,
+} from "@sugara/shared";
 import { eq } from "drizzle-orm";
-import { articles, expenses, schedules, tripDays, tripMembers } from "../../db/schema";
+import {
+  articles,
+  articleTrips,
+  bookmarkLists,
+  bookmarks,
+  expenseSplits,
+  expenses,
+  schedules,
+  settlementPayments,
+  tripDays,
+  tripMembers,
+} from "../../db/schema";
 import { v1App } from "../../routes/v1/index";
 import { cleanupTables, createTestUser, getTestDb, teardownTestDb } from "./setup";
 
@@ -956,6 +974,703 @@ describe("v1 write routes integration", () => {
     const row = await db.query.souvenirItems.findFirst({
       where: eqFn(souvenirItems.id, aliceSouvenir.id),
     });
+    expect(row).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE /trips/:tripId/schedules/:scheduleId
+  // -------------------------------------------------------------------------
+
+  it("DELETE schedule returns deleted:true, removes row from DB, and decrements remaining", async () => {
+    // Arrange: create trip + assign schedule to day 1
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Schedule Del Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    const schedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Shibuya Crossing", category: "sightseeing" }),
+    });
+    expect(schedRes.status).toBe(201);
+    const sched = await schedRes.json();
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/schedules/${sched.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const delBody = await res.json();
+    expect(delBody.deleted).toBe(true);
+    expect(delBody.id).toBe(sched.id);
+    expect(delBody.remaining).toEqual({ count: 0, max: MAX_SCHEDULES_PER_TRIP });
+
+    // DB row is gone
+    const db = getTestDb();
+    const row = await db.query.schedules.findFirst({ where: eq(schedules.id, sched.id) });
+    expect(row).toBeUndefined();
+  });
+
+  it("DELETE schedule is idempotent: second call returns deleted:false", async () => {
+    // Arrange
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Schedule Idem Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    const schedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo Skytree", category: "sightseeing" }),
+    });
+    const sched = await schedRes.json();
+
+    // First delete
+    const first = await v1App.request(`/trips/${trip.id}/schedules/${sched.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+    expect((await first.json()).deleted).toBe(true);
+
+    // Act: second delete (idempotent)
+    const second = await v1App.request(`/trips/${trip.id}/schedules/${sched.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(second.status).toBe(200);
+    expect((await second.json()).deleted).toBe(false);
+  });
+
+  it("DELETE schedule returns deleted:false for a candidate (dayPatternId IS NULL guard)", async () => {
+    // Arrange: create trip then add a candidate (dayPatternId IS NULL)
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Candidate Guard Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    const candRes = await v1App.request(`/trips/${trip.id}/candidates`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Akihabara", category: "sightseeing" }),
+    });
+    expect(candRes.status).toBe(201);
+    const cand = await candRes.json();
+
+    // Act: attempt to delete via schedule endpoint (isNotNull guard excludes candidates)
+    const res = await v1App.request(`/trips/${trip.id}/schedules/${cand.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: deleted:false and the DB row still exists
+    expect(res.status).toBe(200);
+    expect((await res.json()).deleted).toBe(false);
+    const db = getTestDb();
+    const row = await db.query.schedules.findFirst({ where: eq(schedules.id, cand.id) });
+    expect(row).toBeDefined();
+  });
+
+  it("DELETE schedule returns deleted:false when scheduleId belongs to a different trip", async () => {
+    // Arrange: two trips, an assigned schedule on trip B
+    apiKey = { ...apiKey, scopes: ["trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const tripARes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Trip A", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    const tripA = await tripARes.json();
+
+    const tripBRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Trip B", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    const tripB = await tripBRes.json();
+
+    const schedRes = await v1App.request(`/trips/${tripB.id}/days/1/schedules`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Trip B Spot", category: "sightseeing" }),
+    });
+    expect(schedRes.status).toBe(201);
+    const sched = await schedRes.json();
+
+    // Act: delete trip B's schedule via trip A's path
+    const res = await v1App.request(`/trips/${tripA.id}/schedules/${sched.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: tripId guard prevents the cross-trip delete; row still exists on trip B
+    expect(res.status).toBe(200);
+    expect((await res.json()).deleted).toBe(false);
+    const db = getTestDb();
+    const row = await db.query.schedules.findFirst({ where: eq(schedules.id, sched.id) });
+    expect(row).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE /trips/:tripId/expenses/:expenseId
+  // -------------------------------------------------------------------------
+
+  it("DELETE expense removes expense + cascade splits, resets settlement payments", async () => {
+    // Arrange: create trip (Alice = member 1)
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Expense Del Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+
+    // Create Bob, add as editor — we need two users for settlement payment insertion
+    const db = getTestDb();
+    const bob = await createTestUser({ name: "Bob", email: "bob@expense-delete.test" });
+    await db.insert(tripMembers).values({ tripId: trip.id, userId: bob.id, role: "editor" });
+
+    // Create expense (Alice paid, Alice-only split)
+    const expRes = await v1App.request(`/trips/${trip.id}/expenses`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Dinner",
+        amount: 1000,
+        paidByMemberNo: 1,
+        splitType: "equal",
+        splits: [{ memberNo: 1 }],
+      }),
+    });
+    expect(expRes.status).toBe(201);
+    const exp = await expRes.json();
+
+    // Verify split exists before delete
+    const splitsBefore = await db
+      .select()
+      .from(expenseSplits)
+      .where(eq(expenseSplits.expenseId, exp.id));
+    expect(splitsBefore.length).toBeGreaterThan(0);
+
+    // Insert a settlement payment to verify reset
+    await db.insert(settlementPayments).values({
+      tripId: trip.id,
+      fromUserId: bob.id,
+      toUserId: userId,
+      amount: 500,
+      paidByUserId: bob.id,
+    });
+
+    // Act
+    const res = await v1App.request(`/trips/${trip.id}/expenses/${exp.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: HTTP response
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(true);
+    expect(body.id).toBe(exp.id);
+    expect(body.remaining).toEqual({ count: 0, max: MAX_EXPENSES_PER_TRIP });
+
+    // Assert: expense row gone
+    const expRow = await db.query.expenses.findFirst({ where: eq(expenses.id, exp.id) });
+    expect(expRow).toBeUndefined();
+
+    // Assert: splits cascade-deleted
+    const splitsAfter = await db
+      .select()
+      .from(expenseSplits)
+      .where(eq(expenseSplits.expenseId, exp.id));
+    expect(splitsAfter).toHaveLength(0);
+
+    // Assert: settlement payments for trip reset
+    const settlements = await db
+      .select()
+      .from(settlementPayments)
+      .where(eq(settlementPayments.tripId, trip.id));
+    expect(settlements).toHaveLength(0);
+  });
+
+  it("DELETE expense is idempotent: second call returns deleted:false", async () => {
+    // Arrange
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Exp Idem Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    const trip = await tripRes.json();
+
+    const expRes = await v1App.request(`/trips/${trip.id}/expenses`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Lunch",
+        amount: 500,
+        paidByMemberNo: 1,
+        splitType: "equal",
+        splits: [{ memberNo: 1 }],
+      }),
+    });
+    const exp = await expRes.json();
+
+    const first = await v1App.request(`/trips/${trip.id}/expenses/${exp.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+    expect((await first.json()).deleted).toBe(true);
+
+    // Act: second delete
+    const second = await v1App.request(`/trips/${trip.id}/expenses/${exp.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(second.status).toBe(200);
+    expect((await second.json()).deleted).toBe(false);
+  });
+
+  it("DELETE expense returns deleted:false when expenseId belongs to a different trip", async () => {
+    // Arrange: two trips; expense on trip B, delete attempt uses trip A id
+    const tripARes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Trip A", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    const tripA = await tripARes.json();
+
+    const tripBRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Trip B", startDate: "2026-07-01", endDate: "2026-07-01" }),
+    });
+    const tripB = await tripBRes.json();
+
+    const expRes = await v1App.request(`/trips/${tripB.id}/expenses`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Ramen",
+        amount: 800,
+        paidByMemberNo: 1,
+        splitType: "equal",
+        splits: [{ memberNo: 1 }],
+      }),
+    });
+    const exp = await expRes.json();
+
+    // Act: delete using tripA's id (wrong trip)
+    const res = await v1App.request(`/trips/${tripA.id}/expenses/${exp.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: deleted:false; expense row still exists on trip B
+    expect(res.status).toBe(200);
+    expect((await res.json()).deleted).toBe(false);
+    const db = getTestDb();
+    const row = await db.query.expenses.findFirst({ where: eq(expenses.id, exp.id) });
+    expect(row).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE /bookmark-lists/:listId/bookmarks/:bookmarkId
+  // -------------------------------------------------------------------------
+
+  it("DELETE bookmark returns deleted:true and removes row from DB", async () => {
+    // Arrange
+    apiKey = { ...apiKey, scopes: ["bookmarks:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const listRes = await v1App.request("/bookmark-lists", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Tokyo List" }),
+    });
+    expect(listRes.status).toBe(201);
+    const list = await listRes.json();
+
+    const bkRes = await v1App.request(`/bookmark-lists/${list.id}/bookmarks`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Senso-ji", urls: [] }),
+    });
+    expect(bkRes.status).toBe(201);
+    const bk = await bkRes.json();
+
+    // Act
+    const res = await v1App.request(`/bookmark-lists/${list.id}/bookmarks/${bk.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(true);
+    expect(body.id).toBe(bk.id);
+    expect(body.remaining).toEqual({ count: 0, max: MAX_BOOKMARKS_PER_LIST });
+
+    const db = getTestDb();
+    const row = await db.query.bookmarks.findFirst({ where: eq(bookmarks.id, bk.id) });
+    expect(row).toBeUndefined();
+  });
+
+  it("DELETE bookmark is idempotent: second call returns deleted:false", async () => {
+    // Arrange
+    apiKey = { ...apiKey, scopes: ["bookmarks:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const listRes = await v1App.request("/bookmark-lists", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Osaka List" }),
+    });
+    const list = await listRes.json();
+
+    const bkRes = await v1App.request(`/bookmark-lists/${list.id}/bookmarks`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Dotonbori", urls: [] }),
+    });
+    const bk = await bkRes.json();
+
+    const first = await v1App.request(`/bookmark-lists/${list.id}/bookmarks/${bk.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+    expect((await first.json()).deleted).toBe(true);
+
+    // Act: second delete
+    const second = await v1App.request(`/bookmark-lists/${list.id}/bookmarks/${bk.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(second.status).toBe(200);
+    expect((await second.json()).deleted).toBe(false);
+  });
+
+  it("DELETE bookmark returns 404 when list is owned by another user", async () => {
+    // Arrange: Alice creates a list; Bob tries to delete a bookmark from it
+    const db = getTestDb();
+    const bob = await createTestUser({ name: "Bob", email: "bob@bookmark-del.test" });
+
+    apiKey = { ...apiKey, scopes: ["bookmarks:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const listRes = await v1App.request("/bookmark-lists", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Alice List" }),
+    });
+    const list = await listRes.json();
+
+    const bkRes = await v1App.request(`/bookmark-lists/${list.id}/bookmarks`, {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Namba", urls: [] }),
+    });
+    const bk = await bkRes.json();
+
+    // Bob's key
+    const bobKey = { ...apiKey, id: "cccccccc-0000-0000-0000-000000000001", userId: bob.id };
+    mockVerifyApiKey.mockResolvedValue(bobKey);
+
+    // Act
+    const res = await v1App.request(`/bookmark-lists/${list.id}/bookmarks/${bk.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: 404 (verifyListOwnership fails — list belongs to Alice)
+    expect(res.status).toBe(404);
+
+    // DB row untouched
+    const row = await db.query.bookmarks.findFirst({ where: eq(bookmarks.id, bk.id) });
+    expect(row).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE /bookmark-lists/:listId
+  // -------------------------------------------------------------------------
+
+  it("DELETE bookmark list removes list and cascade-deletes its bookmarks", async () => {
+    // Arrange
+    apiKey = { ...apiKey, scopes: ["bookmarks:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const listRes = await v1App.request("/bookmark-lists", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Cascade List" }),
+    });
+    expect(listRes.status).toBe(201);
+    const list = await listRes.json();
+
+    // Add two bookmarks
+    for (const name of ["Spot A", "Spot B"]) {
+      await v1App.request(`/bookmark-lists/${list.id}/bookmarks`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name, urls: [] }),
+      });
+    }
+
+    // Act
+    const res = await v1App.request(`/bookmark-lists/${list.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(true);
+    expect(body.id).toBe(list.id);
+    expect(body.remaining).toEqual({ count: 0, max: MAX_BOOKMARK_LISTS_PER_USER });
+
+    const db = getTestDb();
+
+    // List row gone
+    const listRow = await db.query.bookmarkLists.findFirst({
+      where: eq(bookmarkLists.id, list.id),
+    });
+    expect(listRow).toBeUndefined();
+
+    // Child bookmarks cascade-deleted
+    const bks = await db.select().from(bookmarks).where(eq(bookmarks.listId, list.id));
+    expect(bks).toHaveLength(0);
+  });
+
+  it("DELETE bookmark list is idempotent: second call returns deleted:false", async () => {
+    // Arrange
+    apiKey = { ...apiKey, scopes: ["bookmarks:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const listRes = await v1App.request("/bookmark-lists", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Idem List" }),
+    });
+    const list = await listRes.json();
+
+    const first = await v1App.request(`/bookmark-lists/${list.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+    expect((await first.json()).deleted).toBe(true);
+
+    // Act
+    const second = await v1App.request(`/bookmark-lists/${list.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(second.status).toBe(200);
+    expect((await second.json()).deleted).toBe(false);
+  });
+
+  it("DELETE bookmark list returns deleted:false when owned by another user (atomic WHERE guard)", async () => {
+    // Arrange: Alice creates a list; Bob tries to delete it
+    const db = getTestDb();
+    const bob = await createTestUser({ name: "Bob", email: "bob@list-del.test" });
+
+    apiKey = { ...apiKey, scopes: ["bookmarks:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const listRes = await v1App.request("/bookmark-lists", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Alice Private List" }),
+    });
+    const list = await listRes.json();
+
+    // Bob's key
+    const bobKey = { ...apiKey, id: "cccccccc-0000-0000-0000-000000000001", userId: bob.id };
+    mockVerifyApiKey.mockResolvedValue(bobKey);
+
+    // Act
+    const res = await v1App.request(`/bookmark-lists/${list.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: deleted:false and Alice's list still exists
+    expect(res.status).toBe(200);
+    expect((await res.json()).deleted).toBe(false);
+    const row = await db.query.bookmarkLists.findFirst({ where: eq(bookmarkLists.id, list.id) });
+    expect(row).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE /articles/:articleId
+  // -------------------------------------------------------------------------
+
+  it("DELETE article removes article and cascade-deletes articleTrips", async () => {
+    // Arrange: trips:write is needed to create the linked trip; articles:write for the article
+    apiKey = { ...apiKey, scopes: ["articles:write", "trips:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const artRes = await v1App.request("/articles", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "My Article",
+        content: "Hello",
+        tags: [],
+        visibility: "private",
+      }),
+    });
+    expect(artRes.status).toBe(201);
+    const art = await artRes.json();
+
+    // Create a trip and link it to the article directly via DB (no v1 endpoint for article-trip link)
+    const db = getTestDb();
+    const tripRes = await v1App.request("/trips", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Linked Trip",
+        startDate: "2026-07-01",
+        endDate: "2026-07-01",
+      }),
+    });
+    expect(tripRes.status).toBe(201);
+    const trip = await tripRes.json();
+    await db.insert(articleTrips).values({ articleId: art.id, tripId: trip.id });
+
+    // Act
+    const res = await v1App.request(`/articles/${art.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: HTTP response
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.deleted).toBe(true);
+    expect(body.id).toBe(art.id);
+    expect(body.remaining).toEqual({ count: 0, max: MAX_ARTICLES_PER_USER });
+
+    // Assert: article row gone
+    const artRow = await db.query.articles.findFirst({ where: eq(articles.id, art.id) });
+    expect(artRow).toBeUndefined();
+
+    // Assert: articleTrips cascade-deleted
+    const links = await db.select().from(articleTrips).where(eq(articleTrips.articleId, art.id));
+    expect(links).toHaveLength(0);
+  });
+
+  it("DELETE article is idempotent: second call returns deleted:false", async () => {
+    // Arrange
+    apiKey = { ...apiKey, scopes: ["articles:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const artRes = await v1App.request("/articles", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Idem Article", content: "", tags: [], visibility: "private" }),
+    });
+    const art = await artRes.json();
+
+    const first = await v1App.request(`/articles/${art.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+    expect((await first.json()).deleted).toBe(true);
+
+    // Act
+    const second = await v1App.request(`/articles/${art.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert
+    expect(second.status).toBe(200);
+    expect((await second.json()).deleted).toBe(false);
+  });
+
+  it("DELETE article returns deleted:false when owned by another user (atomic WHERE guard)", async () => {
+    // Arrange: Alice creates an article; Bob tries to delete it
+    const db = getTestDb();
+    const bob = await createTestUser({ name: "Bob", email: "bob@article-del.test" });
+
+    apiKey = { ...apiKey, scopes: ["articles:write"] };
+    mockVerifyApiKey.mockResolvedValue(apiKey);
+
+    const artRes = await v1App.request("/articles", {
+      method: "POST",
+      headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Alice's Article",
+        content: "Secret",
+        tags: [],
+        visibility: "private",
+      }),
+    });
+    const art = await artRes.json();
+
+    // Bob's key
+    const bobKey = { ...apiKey, id: "cccccccc-0000-0000-0000-000000000001", userId: bob.id };
+    mockVerifyApiKey.mockResolvedValue(bobKey);
+
+    // Act
+    const res = await v1App.request(`/articles/${art.id}`, {
+      method: "DELETE",
+      headers: { Authorization: "Bearer sk_test" },
+    });
+
+    // Assert: deleted:false and Alice's article still exists
+    expect(res.status).toBe(200);
+    expect((await res.json()).deleted).toBe(false);
+    const row = await db.query.articles.findFirst({ where: eq(articles.id, art.id) });
     expect(row).toBeDefined();
   });
 });
