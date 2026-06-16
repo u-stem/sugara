@@ -15,6 +15,8 @@ The external API (v1) now supports candidates and souvenirs:
 
 As before, deletion is not available through the external API — please use the app for that.
 
+※As of June 2026, deletion is now supported through the external API. See the latest news for details.
+
 ### Access scopes
 
 - Candidates use the same "trips" scopes as schedules (`trips:read` / `trips:write`). No new scope is needed

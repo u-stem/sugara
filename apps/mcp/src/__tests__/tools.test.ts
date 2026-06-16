@@ -3,12 +3,12 @@ import { z } from "zod";
 import { INPUT_SHAPES } from "../tools.js";
 
 describe("INPUT_SHAPES", () => {
-  it("defines 29 tools", () => {
+  it("defines 34 tools", () => {
     // Arrange + Act
     const toolNames = Object.keys(INPUT_SHAPES);
 
     // Assert
-    expect(toolNames).toHaveLength(29);
+    expect(toolNames).toHaveLength(34);
   });
 
   it("includes the candidate and souvenir tools including batch variants", () => {
@@ -26,6 +26,20 @@ describe("INPUT_SHAPES", () => {
         "batch_create_souvenirs",
         "delete_candidate",
         "delete_souvenir",
+      ]),
+    );
+  });
+
+  it("includes all five new delete tools", () => {
+    const toolNames = Object.keys(INPUT_SHAPES);
+
+    expect(toolNames).toEqual(
+      expect.arrayContaining([
+        "delete_schedule",
+        "delete_expense",
+        "delete_bookmark",
+        "delete_bookmark_list",
+        "delete_article",
       ]),
     );
   });
@@ -846,5 +860,85 @@ describe("batch_create_souvenirs input schema", () => {
       onConflict: "skip",
     });
     expect(result.success).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New delete tool schemas
+// ---------------------------------------------------------------------------
+
+describe("delete_schedule input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_schedule);
+
+  it("requires tripId and scheduleId", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-UUID scheduleId", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("delete_expense input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_expense);
+
+  it("requires tripId and expenseId", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), expenseId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-UUID expenseId", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), expenseId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("delete_bookmark input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_bookmark);
+
+  it("requires listId and bookmarkId", () => {
+    expect(schema.safeParse({ listId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ listId: crypto.randomUUID(), bookmarkId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-UUID bookmarkId", () => {
+    const result = schema.safeParse({ listId: crypto.randomUUID(), bookmarkId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("delete_bookmark_list input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_bookmark_list);
+
+  it("requires listId", () => {
+    expect(schema.safeParse({}).success).toBe(false);
+    expect(schema.safeParse({ listId: crypto.randomUUID() }).success).toBe(true);
+  });
+
+  it("rejects non-UUID listId", () => {
+    const result = schema.safeParse({ listId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("delete_article input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_article);
+
+  it("requires articleId", () => {
+    expect(schema.safeParse({}).success).toBe(false);
+    expect(schema.safeParse({ articleId: crypto.randomUUID() }).success).toBe(true);
+  });
+
+  it("rejects non-UUID articleId", () => {
+    const result = schema.safeParse({ articleId: "not-uuid" });
+    expect(result.success).toBe(false);
   });
 });

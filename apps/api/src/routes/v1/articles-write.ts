@@ -3,9 +3,10 @@
 // File layout:
 //   POST   /articles
 //   PATCH  /articles/:id
+//   DELETE /articles/:articleId
 
 import { MAX_ARTICLES_PER_USER } from "@sugara/shared";
-import { count, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { db } from "../../db";
@@ -19,6 +20,7 @@ import { uuidSchema } from "./shared";
 import {
   v1ArticleWriteResponseSchema,
   v1CreateArticleSchema,
+  v1DeleteResponseSchema,
   v1UpdateArticleSchema,
 } from "./write-schemas";
 
@@ -227,5 +229,88 @@ articlesWriteApp.patch(
         tripLinks.map((t) => t.tripId),
       ),
     );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// DELETE /articles/:articleId
+// ---------------------------------------------------------------------------
+
+articlesWriteApp.delete(
+  "/articles/:articleId",
+  describeRoute({
+    tags: ["Articles"],
+    summary: "Delete an article",
+    description:
+      "Physically deletes an article owned by the API key owner. " +
+      "Idempotent: returns 200 in all cases. " +
+      "deleted:true when the article was found and removed; deleted:false when the id is unknown or " +
+      "owned by another user (existence concealment — prevents id enumeration). " +
+      "Associated article trips and likes are cascade-deleted. " +
+      "remaining reflects the caller's post-operation article count. " +
+      "Requires `articles:write` scope.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "articleId",
+        in: "path",
+        required: true,
+        description: "Article UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    responses: {
+      200: {
+        description:
+          "Deletion result (deleted:true when removed, deleted:false when already gone or owned by another user)",
+        content: { "application/json": { schema: resolver(v1DeleteResponseSchema) } },
+      },
+      400: {
+        description: "Invalid article id",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("articles:write"),
+  async (c) => {
+    const key = getApiKey(c);
+    const userId = key.userId;
+
+    const rawId = c.req.param("articleId");
+    const parsedId = uuidSchema.safeParse(rawId);
+    if (!parsedId.success) {
+      throw new ApiV1Error(400, "invalid_request", "Invalid article id");
+    }
+    const articleId = parsedId.data;
+
+    // Atomic delete: ownerId guard is folded into the WHERE clause so another
+    // user's article is never deleted and its existence is not revealed —
+    // deleted:false is returned either way (existence concealment mirrors the
+    // internal DELETE /articles/:articleId route). articleTrips and
+    // articleLikes are cascade-deleted via FK onDelete constraints.
+    const deletedRows = await db
+      .delete(articles)
+      .where(and(eq(articles.id, articleId), eq(articles.ownerId, userId)))
+      .returning({ id: articles.id });
+    const didDelete = deletedRows.length > 0;
+
+    const [{ articleCount }] = await db
+      .select({ articleCount: count() })
+      .from(articles)
+      .where(eq(articles.ownerId, userId));
+
+    return c.json({
+      id: articleId,
+      deleted: didDelete,
+      remaining: { count: articleCount, max: MAX_ARTICLES_PER_USER },
+    });
   },
 );

@@ -278,7 +278,7 @@ export class ApiClient {
     return response.json();
   }
 
-  // --- Write methods (14 endpoints, 1:1 with v1 write routes) ---
+  // --- Write methods (25 endpoints, 1:1 with v1 write routes) ---
 
   async createTrip(body: unknown): Promise<unknown> {
     return this.mutate("POST", "/trips", body);
@@ -401,5 +401,31 @@ export class ApiClient {
     return this.remove(
       `/trips/${encodeURIComponent(tripId)}/souvenirs/${encodeURIComponent(itemId)}`,
     );
+  }
+
+  async deleteSchedule(tripId: string, scheduleId: string): Promise<unknown> {
+    return this.remove(
+      `/trips/${encodeURIComponent(tripId)}/schedules/${encodeURIComponent(scheduleId)}`,
+    );
+  }
+
+  async deleteExpense(tripId: string, expenseId: string): Promise<unknown> {
+    return this.remove(
+      `/trips/${encodeURIComponent(tripId)}/expenses/${encodeURIComponent(expenseId)}`,
+    );
+  }
+
+  async deleteBookmark(listId: string, bookmarkId: string): Promise<unknown> {
+    return this.remove(
+      `/bookmark-lists/${encodeURIComponent(listId)}/bookmarks/${encodeURIComponent(bookmarkId)}`,
+    );
+  }
+
+  async deleteBookmarkList(listId: string): Promise<unknown> {
+    return this.remove(`/bookmark-lists/${encodeURIComponent(listId)}`);
+  }
+
+  async deleteArticle(articleId: string): Promise<unknown> {
+    return this.remove(`/articles/${encodeURIComponent(articleId)}`);
   }
 }
