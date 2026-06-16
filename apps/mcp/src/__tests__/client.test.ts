@@ -974,4 +974,163 @@ describe("ApiClient", () => {
       );
     });
   });
+
+  describe("deleteSchedule — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const scheduleId = "550e8400-e29b-41d4-a716-446655440003";
+
+    it("uses DELETE method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: scheduleId, deleted: true, remaining: { count: 0, max: 300 } }, 200),
+      );
+
+      // Act
+      await client.deleteSchedule(tripId, scheduleId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+    });
+
+    it("sends to /api/v1/trips/:tripId/schedules/:scheduleId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: scheduleId, deleted: true, remaining: { count: 0, max: 300 } }, 200),
+      );
+
+      // Act
+      await client.deleteSchedule(tripId, scheduleId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/schedules/${scheduleId}`,
+      );
+    });
+  });
+
+  describe("deleteExpense — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const expenseId = "550e8400-e29b-41d4-a716-446655440004";
+
+    it("uses DELETE method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: expenseId, deleted: true, remaining: { count: 0, max: 200 } }, 200),
+      );
+
+      // Act
+      await client.deleteExpense(tripId, expenseId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+    });
+
+    it("sends to /api/v1/trips/:tripId/expenses/:expenseId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: expenseId, deleted: true, remaining: { count: 0, max: 200 } }, 200),
+      );
+
+      // Act
+      await client.deleteExpense(tripId, expenseId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/expenses/${expenseId}`,
+      );
+    });
+  });
+
+  describe("deleteBookmark — request assembly", () => {
+    const listId = "550e8400-e29b-41d4-a716-446655440010";
+    const bookmarkId = "550e8400-e29b-41d4-a716-446655440011";
+
+    it("uses DELETE method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: bookmarkId, deleted: true, remaining: { count: 0, max: 100 } }, 200),
+      );
+
+      // Act
+      await client.deleteBookmark(listId, bookmarkId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+    });
+
+    it("sends to /api/v1/bookmark-lists/:listId/bookmarks/:bookmarkId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: bookmarkId, deleted: true, remaining: { count: 0, max: 100 } }, 200),
+      );
+
+      // Act
+      await client.deleteBookmark(listId, bookmarkId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/bookmark-lists/${listId}/bookmarks/${bookmarkId}`,
+      );
+    });
+  });
+
+  describe("deleteBookmarkList — request assembly", () => {
+    const listId = "550e8400-e29b-41d4-a716-446655440020";
+
+    it("uses DELETE method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: listId, deleted: true, remaining: { count: 0, max: 10 } }, 200),
+      );
+
+      // Act
+      await client.deleteBookmarkList(listId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+    });
+
+    it("sends to /api/v1/bookmark-lists/:listId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: listId, deleted: true, remaining: { count: 0, max: 10 } }, 200),
+      );
+
+      // Act
+      await client.deleteBookmarkList(listId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(`/api/v1/bookmark-lists/${listId}`);
+    });
+  });
+
+  describe("deleteArticle — request assembly", () => {
+    const articleId = "550e8400-e29b-41d4-a716-446655440030";
+
+    it("uses DELETE method", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: articleId, deleted: true, remaining: { count: 0, max: 50 } }, 200),
+      );
+
+      // Act
+      await client.deleteArticle(articleId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+    });
+
+    it("sends to /api/v1/articles/:articleId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse({ id: articleId, deleted: true, remaining: { count: 0, max: 50 } }, 200),
+      );
+
+      // Act
+      await client.deleteArticle(articleId);
+
+      // Assert
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(`/api/v1/articles/${articleId}`);
+    });
+  });
 });
