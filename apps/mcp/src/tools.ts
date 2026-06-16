@@ -1125,9 +1125,10 @@ export function registerTools(server: McpServer, client: ApiClient): void {
     "delete_schedule",
     {
       description:
-        "Permanently delete a schedule from a trip's day. " +
+        "Permanently delete an assigned schedule from a trip's day. " +
         "Idempotent: always returns 200. deleted:true when the item was removed; " +
-        "deleted:false when the id is unknown or already deleted. " +
+        "deleted:false when the id is unknown, already deleted, or is an unassigned candidate " +
+        "(use delete_candidate for candidates). " +
         "remaining reflects the trip-wide schedule count after the operation. " +
         "Writing to a shared trip requires editor or owner role. " +
         "Requires trips:write scope.",
