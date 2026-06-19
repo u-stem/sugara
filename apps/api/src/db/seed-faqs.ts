@@ -388,38 +388,50 @@ const JA_FAQS = [
       "旅行先やアクティビティをランダムに決めるツールです。プロフィールページの「ツール」セクションからアクセスできます。都道府県モード（地域フィルタ付き）、カスタムモード（自分で選択肢を入力）、ブックマークモード（ブックマークリストからランダム選択）の3つのモードがあります。",
     sortOrder: 99,
   },
+  {
+    question: "天気ツールではどんな情報が見られますか？",
+    answer:
+      "プロフィールページの「ツール」セクションにある「天気」から、全国各地（都道府県・地域）の週間天気予報を確認できます。地域をタップすると、その地域の天気アイコン・最高/最低気温・降水確率を最大7日分まとめて表示します。旅行の計画には紐づかない独立したツールです。",
+    sortOrder: 100,
+  },
+  {
+    question: "天気情報はどこのデータですか？どのくらいの頻度で更新されますか？",
+    answer:
+      "気象庁が公開している週間天気予報をもとにしています。1日1回自動で取得して保存しているため、表示はすぐに開きます。最新の発表時刻は各地域の詳細画面下部に表示されます。",
+    sortOrder: 101,
+  },
   // ---- Limits ----
   {
     question: "旅行や予定に上限はありますか？",
     answer:
       "旅行は1ユーザーあたり10件（ご要望に応じて個別に引き上げ可能です）、予定は1旅行あたり300件、メンバーは1旅行あたり20人、パターンは1日あたり3つ、ブックマークリストは5件、フレンドは100人、グループは10件、お土産は1旅行あたり100件、かんたん投票は1ユーザーあたり20件までです。",
-    sortOrder: 100,
+    sortOrder: 103,
   },
   // ---- Desktop App ----
   {
     question: "デスクトップアプリはありますか？",
     answer:
       "macOS と Windows 向けのデスクトップアプリを提供しています。設定画面の「その他」タブにある「デスクトップアプリをダウンロード」からインストーラーをダウンロードできます。インストール後は自動でアップデートされます。",
-    sortOrder: 101,
+    sortOrder: 104,
   },
   {
     question: "デスクトップアプリのインストール時に警告が出ます",
     answer:
       "現在コード署名に対応していないため、macOS では「開発元を確認できません」、Windows では SmartScreen の警告が表示されることがあります。macOS の場合は右クリック（または Control キー+クリック）から「開く」を選択してください。Windows の場合は「詳細情報」→「実行」を選択してください。",
-    sortOrder: 102,
+    sortOrder: 105,
   },
   // ---- Notifications ----
   {
     question: "旅行のイベントをDiscordに通知するには？",
     answer:
       "旅行のメニューから「Discord通知」を選び、DiscordのWebhook URLを設定してください。通知するイベントの種類も選択できます。",
-    sortOrder: 105,
+    sortOrder: 106,
   },
   {
     question: "Discord通知が届かなくなった場合は？",
     answer:
       "Webhook URLが無効になると自動的に通知が停止します。旅行のメニューからDiscord通知の状態を確認し、必要に応じてURLを再設定してください。",
-    sortOrder: 106,
+    sortOrder: 107,
   },
   // ---- External API ----
   {
@@ -828,38 +840,50 @@ const EN_FAQS = [
       "A tool for randomly selecting a destination or activity. Access it from the 'Tools' section on your profile page. Three modes are available: Prefecture (with region filter), Custom (enter your own options), and Bookmark (random selection from a bookmark list).",
     sortOrder: 99,
   },
+  {
+    question: "What can I see in the Weather tool?",
+    answer:
+      "From 'Weather' in the 'Tools' section of your profile page, you can check the weekly forecast for regions across Japan. Tap a region to see up to 7 days of weather icons, high/low temperatures, and chance of rain. It is a standalone tool that is not tied to any trip.",
+    sortOrder: 100,
+  },
+  {
+    question: "Where does the weather data come from and how often is it updated?",
+    answer:
+      "It is based on the weekly forecast published by the Japan Meteorological Agency (JMA). The data is fetched and stored automatically once a day, so it loads instantly. The latest issue time is shown at the bottom of each region's detail screen.",
+    sortOrder: 101,
+  },
   // ---- Limits ----
   {
     question: "Are there limits on trips and schedules?",
     answer:
       "Trips: 10 per user (can be raised individually on request), Schedules: 300 per trip, Members: 20 per trip, Patterns: 3 per day, Bookmark lists: 5, Friends: 100, Groups: 10, Souvenirs: 100 per trip, Quick Polls: 20 per user.",
-    sortOrder: 100,
+    sortOrder: 103,
   },
   // ---- Desktop App ----
   {
     question: "Is there a desktop app?",
     answer:
       "Desktop apps for macOS and Windows are available. Download the installer from 'Download Desktop App' in the 'Other' tab of Settings. After installation, the app updates automatically.",
-    sortOrder: 101,
+    sortOrder: 104,
   },
   {
     question: "I see a warning when installing the desktop app",
     answer:
       "The app is not currently code-signed, so macOS may show 'Cannot verify developer' and Windows may show a SmartScreen warning. On macOS, right-click (or Control+click) and select 'Open.' On Windows, click 'More info' then 'Run anyway.'",
-    sortOrder: 102,
+    sortOrder: 105,
   },
   // ---- Notifications ----
   {
     question: "How do I send trip events to Discord?",
     answer:
       "Open the trip menu, select 'Discord Notifications', and configure a Discord Webhook URL. You can also select which event types to send.",
-    sortOrder: 105,
+    sortOrder: 106,
   },
   {
     question: "What if Discord notifications stop working?",
     answer:
       "If the Webhook URL becomes invalid, notifications are automatically paused. Check the Discord notification settings from the trip menu and reconfigure the URL if needed.",
-    sortOrder: 106,
+    sortOrder: 107,
   },
   // ---- External API ----
   {
@@ -912,10 +936,10 @@ function resolveCategory(sortOrder: number): string {
   if (sortOrder >= 90 && sortOrder <= 92) return "ux";
   if (sortOrder >= 93 && sortOrder <= 96) return "maps";
   if (sortOrder >= 97 && sortOrder <= 98) return "quickpoll";
-  if (sortOrder === 99) return "tools";
-  if (sortOrder === 100) return "limits";
-  if (sortOrder >= 101 && sortOrder <= 102) return "desktop";
-  if (sortOrder >= 105 && sortOrder <= 106) return "notifications";
+  if (sortOrder >= 99 && sortOrder <= 101) return "tools";
+  if (sortOrder >= 102 && sortOrder <= 103) return "limits";
+  if (sortOrder >= 104 && sortOrder <= 105) return "desktop";
+  if (sortOrder >= 106 && sortOrder <= 107) return "notifications";
   return "other";
 }
 

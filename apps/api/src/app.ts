@@ -44,6 +44,7 @@ import { souvenirRoutes } from "./routes/souvenirs";
 import { tripDayRoutes } from "./routes/trip-days";
 import { tripRoutes } from "./routes/trips";
 import { v1App } from "./routes/v1/index";
+import { weatherRoutes } from "./routes/weather";
 import type { AppEnv } from "./types";
 
 // Typed as AppEnv so that middleware context in this file is compatible with
@@ -116,6 +117,7 @@ app.route("/api", cronRoutes);
 app.route("/api", ogpRoutes);
 app.route("/api/directions", directionsRoutes);
 app.route("/api/exchange-rate", exchangeRateRoutes);
+app.route("/api/weather", weatherRoutes);
 app.route("/api/notifications", notificationRoutes);
 app.route("/api/push-subscriptions", pushSubscriptionRoutes);
 app.route("/api/notification-preferences", notificationPreferenceRoutes);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Copy, Dices, Pencil, Vote } from "lucide-react";
+import { Check, ChevronRight, CloudSun, Copy, Dices, Pencil, Vote } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
@@ -105,6 +105,14 @@ export default function SpMyPage() {
         >
           <Dices className="h-5 w-5 text-muted-foreground" />
           <span className="flex-1 font-medium">{tp("roulette")}</span>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </Link>
+        <Link
+          href="/sp/tools/weather"
+          className="flex items-center gap-3 rounded-lg border px-4 py-3 text-sm hover:bg-accent transition-colors"
+        >
+          <CloudSun className="h-5 w-5 text-muted-foreground" />
+          <span className="flex-1 font-medium">{tp("weather")}</span>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </Link>
       </div>

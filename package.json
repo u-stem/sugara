@@ -17,6 +17,7 @@
     "db:studio": "bun run --filter @sugara/api db:studio",
     "db:seed": "bun run --filter @sugara/api db:seed",
     "db:seed-faqs": "bun run --filter @sugara/api db:seed-faqs",
+    "db:seed-weather-areas": "bun run --filter @sugara/api db:seed-weather-areas",
     "db:ensure-faqs-table": "bun run --filter @sugara/api db:ensure-faqs-table",
     "db:seed-user": "bun run --filter @sugara/api db:seed-user",
     "db:cleanup-guests": "bun run --filter @sugara/api db:cleanup-guests",

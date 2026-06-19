@@ -1,0 +1,1 @@
+ALTER TABLE "weather_areas" ENABLE ROW LEVEL SECURITY;

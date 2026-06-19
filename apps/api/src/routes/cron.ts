@@ -4,8 +4,16 @@ import { Hono } from "hono";
 import { deleteExpiredGuests } from "../lib/cleanup-guests";
 import { env } from "../lib/env";
 import { logger } from "../lib/logger";
+import { getRedis } from "../lib/redis";
+import { refreshAllWeather } from "../lib/weather-refresh";
 
 export const cronRoutes = new Hono();
+
+// Best-effort distributed lock so an overlapping invocation (e.g. a Vercel
+// retry) does not start a second 58-office refresh on top of a live one. The
+// TTL sits above the route's maxDuration (60s) so a crashed run self-clears.
+const WEATHER_LOCK_KEY = "cron:refresh-weather:lock";
+const WEATHER_LOCK_TTL_SECONDS = 90;
 
 function bearerMatches(header: string | undefined, secret: string): boolean {
   const prefix = "Bearer ";
@@ -31,4 +39,55 @@ cronRoutes.get("/cron/cleanup-guests", async (c) => {
   const deleted = await deleteExpiredGuests();
   logger.info({ deleted }, "cron: expired guests cleaned up");
   return c.json({ deleted }, 200);
+});
+
+// Refresh the nationwide weekly weather forecast once a day from JMA. Always
+// returns 200 even on partial failure so Vercel Cron does not retry-storm; the
+// per-office skip is logged inside refreshAllWeather.
+cronRoutes.get("/cron/refresh-weather", async (c) => {
+  const secret = env.CRON_SECRET;
+  if (!secret) {
+    return c.json({ error: ERROR_MSG.CRON_NOT_CONFIGURED }, 503);
+  }
+  if (!bearerMatches(c.req.header("authorization"), secret)) {
+    return c.json({ error: ERROR_MSG.UNAUTHORIZED }, 401);
+  }
+
+  // Acquire the lock before doing any work. No Redis (local/dev) -> proceed
+  // unlocked. Redis errors fail open: a cache outage must not stop the daily
+  // refresh, the per-office upsert is idempotent, and the worst case is a
+  // redundant run rather than corruption.
+  const redis = getRedis();
+  let locked = false;
+  if (redis) {
+    try {
+      locked =
+        (await redis.set(WEATHER_LOCK_KEY, "1", { nx: true, ex: WEATHER_LOCK_TTL_SECONDS })) !==
+        null;
+      if (!locked) {
+        logger.info("cron: weather refresh already running; skipping");
+        return c.json({ locked: true }, 200);
+      }
+    } catch (err) {
+      logger.error({ err }, "cron: weather lock acquire failed; proceeding without lock");
+    }
+  }
+
+  // Always return 200, even on unexpected failure, so Vercel Cron does not
+  // retry-storm a transient outage into overlapping runs.
+  try {
+    const result = await refreshAllWeather();
+    return c.json(result, 200);
+  } catch (err) {
+    logger.error({ err }, "cron: weather refresh threw unexpectedly");
+    return c.json({ error: "weather refresh failed" }, 200);
+  } finally {
+    if (locked && redis) {
+      try {
+        await redis.del(WEATHER_LOCK_KEY);
+      } catch (err) {
+        logger.error({ err }, "cron: weather lock release failed (will expire via TTL)");
+      }
+    }
+  }
 });

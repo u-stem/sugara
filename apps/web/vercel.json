@@ -1,7 +1,10 @@
 {
-  "buildCommand": "sh -c 'cd ../.. && bun run db:migrate' && bun run copy-scalar && next build --webpack",
+  "buildCommand": "sh -c 'cd ../.. && bun run db:migrate && bun run db:seed-weather-areas' && bun run copy-scalar && next build --webpack",
   "framework": "nextjs",
   "fluid": true,
-  "crons": [{ "path": "/api/cron/cleanup-guests", "schedule": "0 3 * * *" }],
+  "crons": [
+    { "path": "/api/cron/cleanup-guests", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/refresh-weather", "schedule": "0 21 * * *" }
+  ],
   "ignoreCommand": "git log -1 --pretty=%B | grep -qE '\\[skip (ci|deploy)\\]' && exit 0; [[ \"$VERCEL_GIT_COMMIT_REF\" == dependabot/* ]] && exit 0; exit 1"
 }

@@ -1333,8 +1333,24 @@
     "tools": "Tools",
     "quickPoll": "Quick Poll",
     "roulette": "Roulette",
+    "weather": "Weather",
     "shortcutGeneral": "General",
     "shortcutEditProfile": "Edit Profile"
+  },
+  "weatherTool": {
+    "title": "Weather",
+    "back": "Back",
+    "subtitle": "Nationwide weekly forecast",
+    "freshness": " (Issued {datetime} · Source: Japan Meteorological Agency)",
+    "searchPlaceholder": "Search by prefecture or region",
+    "regionFilter": "Filter by region (none for all)",
+    "noResults": "No regions match \"{query}\"",
+    "colDate": "Date",
+    "colWeather": "Weather",
+    "colTemp": "High / Low",
+    "colPop": "Precip.",
+    "loadError": "Could not load the weather forecast",
+    "detailEmpty": "This area's forecast hasn't been fetched yet. Please try again later."
   },
   "tools": {
     "roulette": "Roulette",
@@ -1931,6 +1947,7 @@
     "resetPassword": "Set New Password",
     "settings": "Settings",
     "roulette": "Roulette",
+    "weather": "Weather",
     "quickPoll": "Quick Poll",
     "bookmarks": "Bookmarks",
     "articles": "Articles",

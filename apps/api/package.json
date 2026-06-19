@@ -25,6 +25,7 @@
     "db:seed-user": "bun run src/db/seed-user.ts",
     "db:cleanup-guests": "bun run src/db/cleanup-guests.ts",
     "db:seed-faqs": "bun run src/db/seed-faqs.ts",
+    "db:seed-weather-areas": "bun run src/db/seed-weather-areas.ts",
     "db:ensure-faqs-table": "bun run src/db/ensure-faqs-table.ts"
   },
   "dependencies": {
