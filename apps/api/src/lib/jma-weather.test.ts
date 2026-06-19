@@ -28,11 +28,10 @@ describe("parseForecast", () => {
     ]);
   });
 
-  it("uses the 3-day detail for today and the boundary day", () => {
+  it("uses the 3-day detail for today (omitted by the weekly feed)", () => {
     const result = parseForecast(fixture("130000"));
     if (!result) throw new Error("expected parse");
-    const today = result.days[0];
-    expect(today).toEqual({
+    expect(result.days[0]).toEqual({
       date: "2026-06-19",
       weatherCode: "111",
       pop: 30, // max of the 6h buckets
@@ -42,9 +41,12 @@ describe("parseForecast", () => {
       tempMax: 30,
       reliability: null,
     });
-    // Boundary day: weekly is empty, filled by the 3-day forecast.
-    const tomorrow = result.days[1];
-    expect(tomorrow).toEqual({
+  });
+
+  it("fills the boundary day (empty in weekly) from the 3-day forecast", () => {
+    const result = parseForecast(fixture("130000"));
+    if (!result) throw new Error("expected parse");
+    expect(result.days[1]).toEqual({
       date: "2026-06-20",
       weatherCode: "214",
       pop: 70,
@@ -98,6 +100,24 @@ describe("parseForecast", () => {
       expect(d.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(typeof d.weatherCode).toBe("string");
     }
+  });
+
+  it("drops days whose weather code is missing (empty string)", () => {
+    const raw = [
+      {}, // 3-day element absent, so only the weekly pass runs
+      {
+        reportDatetime: "2026-06-19T11:00:00+09:00",
+        timeSeries: [
+          {
+            timeDefines: ["2026-06-20T00:00:00+09:00", "2026-06-21T00:00:00+09:00"],
+            areas: [{ area: { code: "x" }, weatherCodes: ["200", ""], pops: ["10", "20"] }],
+          },
+        ],
+      },
+    ];
+    const result = parseForecast(raw);
+    if (!result) throw new Error("expected parse");
+    expect(result.days.map((d) => d.date)).toEqual(["2026-06-20"]);
   });
 
   it("returns null for structurally invalid input", () => {

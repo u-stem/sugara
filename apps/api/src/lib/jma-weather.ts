@@ -122,7 +122,8 @@ export function parseForecast(raw: unknown, areaCode?: string): ParsedForecast |
     const threeDayTemp = aggregateTempByDate(threeDay?.timeSeries?.[2]);
     for (let i = 0; i < threeDates.length; i++) {
       const date = jstDate(threeDates[i]);
-      const entry: MutableDay = byDate.get(date) ?? {
+      const existing = byDate.get(date);
+      const entry: MutableDay = existing ?? {
         weatherCode: "",
         pop: null,
         tempMin: null,
@@ -140,7 +141,9 @@ export function parseForecast(raw: unknown, areaCode?: string): ParsedForecast |
         // passed), which would otherwise surface as a misleading "30°/30°".
         if (entry.tempMin == null && temp.min !== temp.max) entry.tempMin = temp.min;
       }
-      byDate.set(date, entry);
+      // Only new dates (today, which the weekly feed omits) need inserting;
+      // existing entries were mutated in place above.
+      if (!existing) byDate.set(date, entry);
     }
   }
 
@@ -153,6 +156,9 @@ export function parseForecast(raw: unknown, areaCode?: string): ParsedForecast |
   if (reportDatetime === null) return null;
 
   const days: WeatherDay[] = [...byDate.entries()]
+    // Drop days whose weather code never got filled (a missing JMA element would
+    // otherwise persist as "" and surface downstream as a silent "不明").
+    .filter(([, d]) => d.weatherCode.length > 0)
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(0, 7)
     .map(([date, d]) => ({ date, ...d }));

@@ -71,4 +71,18 @@ describe("GET /api/cron/refresh-weather", () => {
     expect(await res.json()).toEqual({ updated: 56, skipped: 2, total: 58 });
     expect(refreshAllWeather).toHaveBeenCalledOnce();
   });
+
+  // Returning 200 even on an unexpected throw is what keeps Vercel Cron from
+  // retry-storming a transient outage into overlapping runs.
+  it("returns 200 when refresh throws unexpectedly", async () => {
+    refreshAllWeather.mockRejectedValue(new Error("db exploded"));
+    const res = await getWeather({ authorization: "Bearer test-cron-secret" });
+    expect(res.status).toBe(200);
+  });
+
+  it("returns an error body when refresh throws unexpectedly", async () => {
+    refreshAllWeather.mockRejectedValue(new Error("db exploded"));
+    const res = await getWeather({ authorization: "Bearer test-cron-secret" });
+    expect(await res.json()).toEqual({ error: "weather refresh failed" });
+  });
 });
