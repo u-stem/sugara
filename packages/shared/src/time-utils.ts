@@ -1,3 +1,11 @@
+/**
+ * Today as a JST "YYYY-MM-DD" calendar date, independent of the host timezone
+ * (servers run in UTC). Weather forecast dates are stored as JST calendar dates.
+ */
+export function jstToday(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 /** "HH:MM" or "HH:MM:SS" -> total minutes from 00:00 */
 export function timeToMinutes(time: string): number {
   const parts = time.split(":");

@@ -1,6 +1,6 @@
 "use client";
 
-import { getWeatherForCode, type WeatherDetailResponse } from "@sugara/shared";
+import { getWeatherForCode, jstToday, type WeatherDetailResponse } from "@sugara/shared";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
@@ -16,11 +16,6 @@ import { formatDate } from "@/lib/weather-format";
 import { centerNameForOffice, officeName } from "@/lib/weather-names";
 
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6", "s7"];
-
-// Today in JST (forecast dates are JST calendar dates) for highlighting.
-function jstToday(): string {
-  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
 
 export function WeatherDetail({ officeCode, basePath }: { officeCode: string; basePath: string }) {
   const t = useTranslations("weatherTool");

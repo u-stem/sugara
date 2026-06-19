@@ -1,4 +1,9 @@
-import type { WeatherDay, WeatherDetailResponse, WeatherOverviewResponse } from "@sugara/shared";
+import {
+  jstToday,
+  type WeatherDay,
+  type WeatherDetailResponse,
+  type WeatherOverviewResponse,
+} from "@sugara/shared";
 import { and, asc, eq, gte, max } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
@@ -14,12 +19,6 @@ const weatherRateLimit = rateLimitByIp(RATE_LIMIT_PUBLIC_RESOURCE);
 
 // JMA office codes are 6 digits (e.g. "130000"); reject anything else early.
 const OFFICE_CODE_RE = /^\d{6}$/;
-
-// Forecast dates are stored as JST calendar dates; compute "today" in JST so the
-// comparison holds regardless of server timezone (Vercel runs in UTC).
-function jstToday(): string {
-  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
-}
 
 type ForecastRow = typeof weatherForecasts.$inferSelect;
 
