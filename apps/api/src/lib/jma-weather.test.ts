@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { parseForecast } from "./jma-weather";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fetchOfficeForecast, parseForecast } from "./jma-weather";
+
+vi.mock("./logger", () => ({
+  logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+}));
 
 const fixture = (office: string) =>
   JSON.parse(
@@ -128,5 +132,41 @@ describe("parseForecast", () => {
     expect(
       parseForecast([{}, { timeSeries: [{ timeDefines: [], areas: [{ weatherCodes: [] }] }] }]),
     ).toBeNull(); // empty weekly dates
+  });
+});
+
+function streamedResponse(body: Uint8Array, headers: Record<string, string> = {}): Response {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(body);
+      controller.close();
+    },
+  });
+  return new Response(stream, { status: 200, headers });
+}
+
+describe("fetchOfficeForecast", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("parses a streamed forecast body", async () => {
+    const bytes = new TextEncoder().encode(JSON.stringify(fixture("130000")));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(streamedResponse(bytes)));
+    const result = await fetchOfficeForecast("130000");
+    expect(result?.days).toHaveLength(7);
+  });
+
+  it("returns null when the streamed body exceeds the size cap", async () => {
+    const huge = new Uint8Array(5_000_001);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(streamedResponse(huge)));
+    const result = await fetchOfficeForecast("130000");
+    expect(result).toBeNull();
+  });
+
+  it("returns null on a non-OK response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("nope", { status: 503 })));
+    const result = await fetchOfficeForecast("130000");
+    expect(result).toBeNull();
   });
 });

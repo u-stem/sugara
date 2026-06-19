@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp } from "../__tests__/test-helpers";
 
 vi.mock("../lib/env", () => ({
@@ -14,6 +14,23 @@ const refreshAllWeather = vi.fn();
 vi.mock("../lib/weather-refresh", () => ({
   refreshAllWeather: (...args: unknown[]) => refreshAllWeather(...args),
 }));
+
+// getRedis returns redisState.client; null (the default) exercises the
+// unlocked local/dev path. Tests opt into a Redis client to drive the lock.
+const { redisSet, redisDel, redisState } = vi.hoisted(() => {
+  const set = vi.fn();
+  const del = vi.fn();
+  return {
+    redisSet: set,
+    redisDel: del,
+    redisState: { client: null as { set: typeof set; del: typeof del } | null },
+  };
+});
+vi.mock("../lib/redis", () => ({
+  getRedis: () => redisState.client,
+}));
+
+const WEATHER_LOCK_KEY = "cron:refresh-weather:lock";
 
 import { cronRoutes } from "./cron";
 
@@ -84,5 +101,55 @@ describe("GET /api/cron/refresh-weather", () => {
     refreshAllWeather.mockRejectedValue(new Error("db exploded"));
     const res = await getWeather({ authorization: "Bearer test-cron-secret" });
     expect(await res.json()).toEqual({ error: "weather refresh failed" });
+  });
+
+  describe("with a redis lock", () => {
+    beforeEach(() => {
+      redisState.client = { set: redisSet, del: redisDel };
+      redisSet.mockReset().mockResolvedValue("OK");
+      redisDel.mockReset().mockResolvedValue(1);
+    });
+
+    afterEach(() => {
+      redisState.client = null;
+    });
+
+    it("runs the refresh when the lock is acquired", async () => {
+      refreshAllWeather.mockResolvedValue({ updated: 58, skipped: 0, total: 58 });
+      await getWeather({ authorization: "Bearer test-cron-secret" });
+      expect(refreshAllWeather).toHaveBeenCalledOnce();
+    });
+
+    it("releases the lock after running", async () => {
+      refreshAllWeather.mockResolvedValue({ updated: 58, skipped: 0, total: 58 });
+      await getWeather({ authorization: "Bearer test-cron-secret" });
+      expect(redisDel).toHaveBeenCalledWith(WEATHER_LOCK_KEY);
+    });
+
+    it("skips the refresh when the lock is already held", async () => {
+      redisSet.mockResolvedValue(null);
+      await getWeather({ authorization: "Bearer test-cron-secret" });
+      expect(refreshAllWeather).not.toHaveBeenCalled();
+    });
+
+    it("returns 200 with a locked body when the lock is held", async () => {
+      redisSet.mockResolvedValue(null);
+      const res = await getWeather({ authorization: "Bearer test-cron-secret" });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ locked: true });
+    });
+
+    it("does not release a lock it never acquired", async () => {
+      redisSet.mockResolvedValue(null);
+      await getWeather({ authorization: "Bearer test-cron-secret" });
+      expect(redisDel).not.toHaveBeenCalled();
+    });
+
+    it("proceeds without locking when redis errors on acquire", async () => {
+      redisSet.mockRejectedValue(new Error("redis down"));
+      refreshAllWeather.mockResolvedValue({ updated: 58, skipped: 0, total: 58 });
+      await getWeather({ authorization: "Bearer test-cron-secret" });
+      expect(refreshAllWeather).toHaveBeenCalledOnce();
+    });
   });
 });

@@ -236,16 +236,33 @@ export async function fetchOfficeForecast(
     }
     // Guard against an unexpectedly huge body from this unofficial endpoint.
     // A real forecast is tens of KB; anything past 5MB is treated as bogus.
+    // content-length is an early reject when present; the streaming read below is
+    // the real defense (the header can be absent or wrong), counting actual bytes
+    // and aborting the moment the cap is crossed instead of buffering it all.
     const contentLength = Number(res.headers.get("content-length"));
     if (Number.isFinite(contentLength) && contentLength > MAX_FORECAST_BYTES) {
       logger.error({ fetchCode, contentLength }, "JMA forecast body too large");
       return null;
     }
-    const text = await res.text();
-    if (text.length > MAX_FORECAST_BYTES) {
-      logger.error({ fetchCode, length: text.length }, "JMA forecast body too large");
+    const reader = res.body?.getReader();
+    if (!reader) {
+      logger.error({ fetchCode }, "JMA forecast response had no body");
       return null;
     }
+    const chunks: Uint8Array[] = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > MAX_FORECAST_BYTES) {
+        await reader.cancel();
+        logger.error({ fetchCode, received }, "JMA forecast body too large");
+        return null;
+      }
+      chunks.push(value);
+    }
+    const text = Buffer.concat(chunks).toString("utf-8");
     return parseForecast(JSON.parse(text), areaCode);
   } catch (err) {
     logger.error({ err, fetchCode }, "Failed to fetch JMA forecast");
