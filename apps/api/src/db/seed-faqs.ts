@@ -388,6 +388,18 @@ const JA_FAQS = [
       "旅行先やアクティビティをランダムに決めるツールです。プロフィールページの「ツール」セクションからアクセスできます。都道府県モード（地域フィルタ付き）、カスタムモード（自分で選択肢を入力）、ブックマークモード（ブックマークリストからランダム選択）の3つのモードがあります。",
     sortOrder: 99,
   },
+  {
+    question: "天気ツールではどんな情報が見られますか？",
+    answer:
+      "プロフィールページの「ツール」セクションにある「天気」から、全国各地（都道府県・地域）の週間天気予報を確認できます。地域をタップすると、その地域の天気アイコン・最高/最低気温・降水確率を最大7日分まとめて表示します。旅行の計画には紐づかない独立したツールです。",
+    sortOrder: 99,
+  },
+  {
+    question: "天気情報はどこのデータですか？どのくらいの頻度で更新されますか？",
+    answer:
+      "気象庁が公開している週間天気予報をもとにしています。1日2回（朝・夕）自動で取得して保存しているため、表示はすぐに開きます。最新の発表時刻は各地域の詳細画面下部に表示されます。",
+    sortOrder: 99,
+  },
   // ---- Limits ----
   {
     question: "旅行や予定に上限はありますか？",
@@ -826,6 +838,18 @@ const EN_FAQS = [
     question: "What is the Roulette feature?",
     answer:
       "A tool for randomly selecting a destination or activity. Access it from the 'Tools' section on your profile page. Three modes are available: Prefecture (with region filter), Custom (enter your own options), and Bookmark (random selection from a bookmark list).",
+    sortOrder: 99,
+  },
+  {
+    question: "What can I see in the Weather tool?",
+    answer:
+      "From 'Weather' in the 'Tools' section of your profile page, you can check the weekly forecast for regions across Japan. Tap a region to see up to 7 days of weather icons, high/low temperatures, and chance of rain. It is a standalone tool that is not tied to any trip.",
+    sortOrder: 99,
+  },
+  {
+    question: "Where does the weather data come from and how often is it updated?",
+    answer:
+      "It is based on the weekly forecast published by the Japan Meteorological Agency (JMA). The data is fetched and stored automatically twice a day (morning and evening), so it loads instantly. The latest issue time is shown at the bottom of each region's detail screen.",
     sortOrder: 99,
   },
   // ---- Limits ----

@@ -74,6 +74,11 @@ export const queryKeys = {
   publicSettings: {
     all: ["public-settings"] as const,
   },
+  weather: {
+    all: ["weather"] as const,
+    overview: () => [...queryKeys.weather.all, "overview"] as const,
+    detail: (officeCode: string) => [...queryKeys.weather.all, "detail", officeCode] as const,
+  },
   discord: {
     webhook: (tripId: string) => ["discord", "webhook", tripId] as const,
   },

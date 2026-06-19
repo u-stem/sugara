@@ -8,3 +8,4 @@ export * from "./permissions";
 export * from "./schemas/index";
 export * from "./time-utils";
 export * from "./types";
+export * from "./weather/telops";

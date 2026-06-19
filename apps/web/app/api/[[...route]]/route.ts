@@ -3,6 +3,11 @@ import { handle } from "hono/vercel";
 
 export const preferredRegion = "hnd1";
 
+// Ceiling (not a fixed runtime) so the daily weather cron, which fetches ~58 JMA
+// offices in small concurrent batches, has headroom even if several offices hit
+// their per-request timeout. Normal requests finish in well under a second.
+export const maxDuration = 120;
+
 const handler = handle(app);
 
 export const GET = handler;

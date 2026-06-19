@@ -1333,8 +1333,24 @@
     "tools": "ツール",
     "quickPoll": "かんたん投票",
     "roulette": "ルーレット",
+    "weather": "天気",
     "shortcutGeneral": "全般",
     "shortcutEditProfile": "プロフィール編集"
+  },
+  "weatherTool": {
+    "title": "天気",
+    "back": "戻る",
+    "subtitle": "全国の週間天気予報",
+    "freshness": "（{datetime} 発表・出典: 気象庁）",
+    "searchPlaceholder": "都道府県・地域名で検索",
+    "regionFilter": "地域で絞り込み（未選択で全国）",
+    "noResults": "「{query}」に一致する地域はありません",
+    "colDate": "日付",
+    "colWeather": "天気",
+    "colTemp": "最高/最低",
+    "colPop": "降水確率",
+    "loadError": "天気情報を取得できませんでした",
+    "detailEmpty": "この地域の天気はまだ取得されていません。しばらくしてから再度お試しください。"
   },
   "tools": {
     "roulette": "ルーレット",
@@ -1931,6 +1947,7 @@
     "resetPassword": "パスワードを再設定",
     "settings": "設定",
     "roulette": "ルーレット",
+    "weather": "天気",
     "quickPoll": "かんたん投票",
     "bookmarks": "ブックマーク",
     "articles": "記事",

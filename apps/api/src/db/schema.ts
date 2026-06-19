@@ -951,6 +951,45 @@ export const routeCache = pgTable("route_cache", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// JMA forecast office master (prefecture/region). Seeded from a constant table
+// (see seed-weather-areas.ts) so the daily cron depends only on the forecast
+// feed, never on the area master endpoint.
+export const weatherAreas = pgTable("weather_areas", {
+  officeCode: text("office_code").primaryKey(), // e.g. "130000"
+  name: text("name").notNull(), // e.g. "東京都"
+  centerCode: text("center_code").notNull(), // region (center) code
+  centerName: text("center_name").notNull(), // e.g. "関東甲信地方"
+  sortOrder: integer("sort_order").notNull().default(0), // north-to-south
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}).enableRLS();
+
+// One row per office x forecast date, refreshed daily by the weather cron via
+// upsert on (office_code, forecast_date). Numeric fields are nullable because
+// the JMA weekly feed omits the boundary day's pop/temperature.
+export const weatherForecasts = pgTable(
+  "weather_forecasts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    officeCode: text("office_code")
+      .notNull()
+      .references(() => weatherAreas.officeCode, { onDelete: "cascade" }),
+    forecastDate: date("forecast_date").notNull(),
+    weatherCode: text("weather_code").notNull(),
+    pop: integer("pop"), // probability of precipitation, %
+    tempMin: integer("temp_min"),
+    tempMax: integer("temp_max"),
+    reliability: text("reliability"), // weekly forecast reliability A/B/C
+    reportDatetime: timestamp("report_datetime", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("weather_forecasts_office_date_unique").on(table.officeCode, table.forecastDate),
+    index("weather_forecasts_office_idx").on(table.officeCode),
+  ],
+).enableRLS();
+
 export const faqs = pgTable("faqs", {
   id: uuid("id").primaryKey().defaultRandom(),
   question: text("question").notNull(),
