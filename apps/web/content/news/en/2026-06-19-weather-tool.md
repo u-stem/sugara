@@ -17,6 +17,6 @@ We added "Weather" to the "Tools" section of your profile page.
 ### About the data
 
 - Based on the weekly forecast published by the Japan Meteorological Agency (source: JMA)
-- Fetched and stored automatically twice a day (morning and evening), so it loads instantly. The latest issue time is shown at the bottom of each region's detail screen
+- Fetched and stored automatically once a day, so it loads instantly. The latest issue time is shown at the bottom of each region's detail screen
 
 As always, please send your feedback from the feedback form in the settings screen.

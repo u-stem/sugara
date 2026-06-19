@@ -397,7 +397,7 @@ const JA_FAQS = [
   {
     question: "天気情報はどこのデータですか？どのくらいの頻度で更新されますか？",
     answer:
-      "気象庁が公開している週間天気予報をもとにしています。1日2回（朝・夕）自動で取得して保存しているため、表示はすぐに開きます。最新の発表時刻は各地域の詳細画面下部に表示されます。",
+      "気象庁が公開している週間天気予報をもとにしています。1日1回自動で取得して保存しているため、表示はすぐに開きます。最新の発表時刻は各地域の詳細画面下部に表示されます。",
     sortOrder: 99,
   },
   // ---- Limits ----
@@ -849,7 +849,7 @@ const EN_FAQS = [
   {
     question: "Where does the weather data come from and how often is it updated?",
     answer:
-      "It is based on the weekly forecast published by the Japan Meteorological Agency (JMA). The data is fetched and stored automatically twice a day (morning and evening), so it loads instantly. The latest issue time is shown at the bottom of each region's detail screen.",
+      "It is based on the weekly forecast published by the Japan Meteorological Agency (JMA). The data is fetched and stored automatically once a day, so it loads instantly. The latest issue time is shown at the bottom of each region's detail screen.",
     sortOrder: 99,
   },
   // ---- Limits ----
