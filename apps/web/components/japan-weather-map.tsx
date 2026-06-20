@@ -163,6 +163,7 @@ export function WeatherMapCredit({ officeCode }: { officeCode: string }) {
               href={MAP_SOURCE_URL}
               target="_blank"
               rel="noopener noreferrer"
+              aria-label={t("mapCreditSourceAria")}
               className="underline-offset-2 hover:text-foreground hover:underline"
             >
               {chunks}

@@ -39,6 +39,7 @@ describe("JapanWeatherMap", () => {
   it("exposes the map as an accessible image with a label", () => {
     const { container } = renderWithIntl(<JapanWeatherMap officeCode="130000" />);
     const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
     expect(svg?.getAttribute("role")).toBe("img");
     expect(svg?.getAttribute("aria-label")?.length ?? 0).toBeGreaterThan(0);
   });
