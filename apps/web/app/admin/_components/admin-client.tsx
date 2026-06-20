@@ -1,8 +1,16 @@
 "use client";
 
-import { type AdminStatsResponse, MAX_TRIP_LIMIT } from "@sugara/shared";
+import { type AdminStatsResponse, MAX_TRIP_LIMIT, type WeatherRefreshResult } from "@sugara/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, KeyRound, Save, SlidersHorizontal, X } from "lucide-react";
+import {
+  CloudSun,
+  ExternalLink,
+  KeyRound,
+  RefreshCw,
+  Save,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -138,6 +146,59 @@ function AnnouncementSection() {
         <Button size="sm" disabled={save.isPending} onClick={() => save.mutate(draft)}>
           <Save className="h-3.5 w-3.5" />
           {save.isPending ? "保存中..." : "保存"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function WeatherRefreshSection() {
+  const [result, setResult] = useState<WeatherRefreshResult | null>(null);
+
+  const refresh = useMutation({
+    mutationFn: (force: boolean) =>
+      api<WeatherRefreshResult>("/api/admin/weather/refresh", {
+        method: "POST",
+        body: JSON.stringify({ force }),
+      }),
+    onSuccess: (r) => {
+      setResult(r);
+      toast.success(
+        r.remaining > 0
+          ? `天気を更新しました（更新 ${r.updated}件 / 残り ${r.remaining}件）`
+          : `天気を更新しました（更新 ${r.updated}件）`,
+      );
+    },
+    onError: () => toast.error("天気の更新に失敗しました"),
+  });
+
+  return (
+    <div className="rounded-lg border bg-card p-4 space-y-3">
+      <div>
+        <p className="font-medium text-sm">天気データ</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          気象庁の週間天気予報を手動で更新します（通常は1日1回自動更新）。「更新」は未更新の地域のみ、「全件再取得」は全地域を取得します。残りがある場合はもう一度実行してください。
+        </p>
+      </div>
+      {result && (
+        <p className="text-xs text-muted-foreground tabular-nums">
+          前回: 更新 {result.updated} / スキップ {result.skipped} / 残り {result.remaining} / 全{" "}
+          {result.total}
+        </p>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={refresh.isPending}
+          onClick={() => refresh.mutate(true)}
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          全件再取得
+        </Button>
+        <Button size="sm" disabled={refresh.isPending} onClick={() => refresh.mutate(false)}>
+          <CloudSun className="h-3.5 w-3.5" />
+          {refresh.isPending ? "更新中..." : "更新"}
         </Button>
       </div>
     </div>
@@ -566,6 +627,7 @@ export default function AdminPage() {
                 </>
               )}
               <AnnouncementSection />
+              <WeatherRefreshSection />
             </TabsContent>
           </Tabs>
         </main>

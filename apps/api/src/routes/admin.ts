@@ -16,6 +16,7 @@ import { getAppSettings, isValidMapsMode } from "../lib/app-settings";
 import { logger } from "../lib/logger";
 import { getParam } from "../lib/params";
 import { hashPassword } from "../lib/password";
+import { refreshAllWeather, WEATHER_REFRESH_BUDGET_MS } from "../lib/weather-refresh";
 import { requireAuth } from "../middleware/auth";
 import { requireAdmin } from "../middleware/require-admin";
 import type { AppEnv } from "../types";
@@ -316,6 +317,22 @@ adminRoutes.post("/api/admin/users/:userId/temp-password", requireAuth, requireA
   }
 
   return c.json({ tempPassword });
+});
+
+// POST /api/admin/weather/refresh — manually refresh JMA forecasts (admin only).
+// Default refreshes only offices not yet updated today (converges on the daily
+// cron's leftovers); force=true re-pulls every office. Time-budgeted like the
+// cron so it stays inside maxDuration; the response's `remaining` tells the
+// admin whether another run is needed.
+adminRoutes.post("/api/admin/weather/refresh", requireAuth, requireAdmin, async (c) => {
+  const body = await c.req.json<{ force?: unknown }>().catch(() => ({}) as { force?: unknown });
+  const force = body.force === true;
+
+  const result = await refreshAllWeather({
+    onlyStale: !force,
+    deadlineMs: Date.now() + WEATHER_REFRESH_BUDGET_MS,
+  });
+  return c.json(result);
 });
 
 adminRoutes.post("/api/admin/announcement", requireAuth, requireAdmin, async (c) => {

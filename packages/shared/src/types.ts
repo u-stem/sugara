@@ -441,3 +441,13 @@ export type AdminStatsResponse = {
     dbSizeBytes: number;
   };
 };
+
+// Result of a weather refresh run (daily cron or admin manual trigger).
+// total = all offices; remaining = stale offices left unprocessed when the run
+// stopped at its time budget. remaining === 0 means nothing stale is left today.
+export type WeatherRefreshResult = {
+  updated: number;
+  skipped: number;
+  remaining: number;
+  total: number;
+};

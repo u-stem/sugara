@@ -13,6 +13,7 @@ vi.mock("../lib/cleanup-guests", () => ({
 const refreshAllWeather = vi.fn();
 vi.mock("../lib/weather-refresh", () => ({
   refreshAllWeather: (...args: unknown[]) => refreshAllWeather(...args),
+  WEATHER_REFRESH_BUDGET_MS: 45_000,
 }));
 
 // getRedis returns redisState.client; null (the default) exercises the
