@@ -5,7 +5,11 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
-import { JapanWeatherMap, WeatherMapCredit } from "@/components/japan-weather-map";
+import {
+  JapanWeatherMap,
+  JapanWeatherMapSkeleton,
+  WeatherMapCredit,
+} from "@/components/japan-weather-map";
 import { LoadingBoundary } from "@/components/ui/loading-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WeatherIcon } from "@/components/weather-icon";
@@ -53,9 +57,7 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
             {backLink}
             <Skeleton className="h-6 w-44" />
           </div>
-          <div className="flex justify-center">
-            <Skeleton className="aspect-[4/3] w-full max-w-xs rounded-md" />
-          </div>
+          <JapanWeatherMapSkeleton officeCode={officeCode} />
           <div className="space-y-2">
             {SKELETON_ROWS.map((row) => (
               <Skeleton key={row} className="h-12 w-full rounded-lg" />

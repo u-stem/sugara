@@ -12,9 +12,8 @@
 // app officeCode (Hokkaido 6 offices, Kagoshima, Okinawa are aggregated; the
 // codeless Okinawa reclaimed-land polygon -> 471000), then run mapshaper:
 //   mapshaper in.geojson -dissolve office -proj webmercator -simplify 12% keep-shapes -o out.json precision=1
-// and rescale to the viewBox below (flip Y, round to 0.1).
-
-export const WEATHER_MAP_VIEWBOX = "0 0 1000 1043";
+// and rescale to a viewBox of "0 0 1000 1043" (flip Y, round to 0.1). The map
+// component frames its own per-region viewBox from these paths at render time.
 
 export const WEATHER_MAP_PATHS: Record<string, string> = {
   "011000":

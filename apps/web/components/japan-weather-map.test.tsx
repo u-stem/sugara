@@ -1,4 +1,4 @@
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderWithIntl } from "@/lib/test-utils";
 import { JapanWeatherMap } from "./japan-weather-map";
@@ -9,6 +9,7 @@ describe("JapanWeatherMap", () => {
   it("highlights the active region path", () => {
     const { container } = renderWithIntl(<JapanWeatherMap officeCode="130000" />);
     const active = container.querySelector('path[data-office="130000"]');
+    expect(active).not.toBeNull();
     expect(active?.getAttribute("class")).toContain("fill-chart-1");
   });
 
@@ -16,6 +17,7 @@ describe("JapanWeatherMap", () => {
     // 080000 (Ibaraki) shares the Kanto-Koshin center region with 130000 (Tokyo).
     const { container } = renderWithIntl(<JapanWeatherMap officeCode="130000" />);
     const sibling = container.querySelector('path[data-office="080000"]');
+    expect(sibling).not.toBeNull();
     expect(sibling?.getAttribute("class")).not.toContain("fill-chart-1");
   });
 
@@ -29,12 +31,16 @@ describe("JapanWeatherMap", () => {
     const { container } = renderWithIntl(<JapanWeatherMap officeCode="014030" />);
     const tokachi = container.querySelector('path[data-office="014030"]');
     const kushiro = container.querySelector('path[data-office="014100"]');
+    expect(tokachi).not.toBeNull();
+    expect(kushiro).not.toBeNull();
     expect(tokachi).not.toBe(kushiro);
   });
 
-  it("exposes the map as an accessible image", () => {
-    renderWithIntl(<JapanWeatherMap officeCode="130000" />);
-    expect(screen.getByRole("img")).toBeDefined();
+  it("exposes the map as an accessible image with a label", () => {
+    const { container } = renderWithIntl(<JapanWeatherMap officeCode="130000" />);
+    const svg = container.querySelector("svg");
+    expect(svg?.getAttribute("role")).toBe("img");
+    expect(svg?.getAttribute("aria-label")?.length ?? 0).toBeGreaterThan(0);
   });
 
   it("renders nothing for an unknown officeCode", () => {

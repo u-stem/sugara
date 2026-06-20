@@ -7,7 +7,7 @@ import { WEATHER_MAP_PATHS } from "./weather-map-paths";
 describe("weather-map-paths", () => {
   it("has a path for every forecast region in WEATHER_GROUPS", () => {
     const missing = WEATHER_GROUPS.flatMap((g) => g.officeCodes).filter(
-      (code) => !WEATHER_MAP_PATHS[code],
+      (code) => !Object.hasOwn(WEATHER_MAP_PATHS, code),
     );
     expect(missing).toEqual([]);
   });
