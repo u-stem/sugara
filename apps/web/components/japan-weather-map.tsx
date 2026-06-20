@@ -148,35 +148,36 @@ export function JapanWeatherMapSkeleton({ officeCode }: { officeCode: string }) 
   );
 }
 
-// Attribution for the map data. Kept separate from JapanWeatherMap so the credit
-// can sit at the bottom of the page (under the table) rather than directly below
-// the map. Renders nothing when there is no map to credit.
+// Attribution for the map data, rendered right after the map. A separate
+// component so it can be placed independently and renders nothing when there is
+// no map to credit. One flowing paragraph keeps the license trailing the source
+// inline (wrapping naturally on narrow screens) instead of orphaning it on its
+// own line.
 export function WeatherMapCredit({ officeCode }: { officeCode: string }) {
   const t = useTranslations("weatherTool");
   if (!Object.hasOwn(WEATHER_MAP_PATHS, officeCode)) return null;
   return (
     <p className="text-center text-[0.6875rem] leading-relaxed text-muted-foreground/80">
-      <span className="block">
-        {t.rich("mapCredit", {
-          source: (chunks) => (
-            <a
-              href={MAP_SOURCE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label={t("mapCreditSourceAria")}
-              className="underline-offset-2 hover:text-foreground hover:underline"
-            >
-              {chunks}
-            </a>
-          ),
-        })}
-      </span>
+      {t.rich("mapCredit", {
+        source: (chunks) => (
+          <a
+            href={MAP_SOURCE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={t("mapCreditSourceAria")}
+            className="underline-offset-2 hover:text-foreground hover:underline"
+          >
+            {chunks}
+          </a>
+        ),
+      })}
+      <span aria-hidden="true"> · </span>
       <a
         href={CC_BY_URL}
         target="_blank"
         rel="noopener noreferrer"
         aria-label={t("mapCreditLicenseAria")}
-        className="inline-block underline-offset-2 hover:text-foreground hover:underline"
+        className="whitespace-nowrap underline-offset-2 hover:text-foreground hover:underline"
       >
         {t("mapCreditLicense")}
       </a>
