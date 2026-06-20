@@ -5,6 +5,11 @@ on:
     branches:
       - main
   pull_request:
+  # E2E is heavy (full prod build + Supabase + serial Playwright) and no longer
+  # runs on PRs; it runs post-merge on main, nightly, and on demand instead.
+  schedule:
+    - cron: "0 17 * * *" # 02:00 JST
+  workflow_dispatch:
 
 # Least privilege for GITHUB_TOKEN; jobs that need more declare it themselves.
 permissions:
@@ -157,9 +162,9 @@ jobs:
           TEST_DATABASE_URL: postgresql://sugara:sugara@127.0.0.1:54322/sugara_test
         run: bun run --filter @sugara/api test:integration
 
-  # Detects whether the diff touches anything the e2e suite exercises, so
-  # desktop-only / docs-only changes skip the heaviest job entirely (same idea
-  # as Vercel's native skipping).
+  # Detects docs-only (Markdown-only) PRs so the check / test / test-integration
+  # jobs skip them, while a skipped required check still reports success to
+  # Branch Protection (same idea as Vercel's native skipping).
   changes:
     runs-on: ubuntu-latest
     # Job-level permissions replace the workflow-level block entirely, so
@@ -168,30 +173,15 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      web: ${{ steps.filter.outputs.web }}
       code: ${{ steps.codefilter.outputs.code }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
-        id: filter
-        with:
-          filters: |
-            web:
-              - 'apps/web/**'
-              - 'apps/api/**'
-              - 'packages/shared/**'
-              - 'supabase/**'
-              - 'bun.lock'
-              - 'package.json'
-              - 'turbo.json'
-              - '.github/workflows/ci.yml'
       # `code` is true for any change that is NOT purely Markdown, so docs-only PRs
-      # skip check/test/test-integration. Kept in its own step with
-      # predicate-quantifier: 'every' because the default 'some' (OR) mode makes a
-      # lone '!**/*.md' match nearly every file, which would break the negation. A
-      # single positive '**' avoids the 'every' + multi-positive AND pitfall — so
-      # the multi-positive 'web' filter above must stay on its own default-quantifier
-      # step. Negation defaults to true (run CI) for any new non-Markdown path.
+      # skip check/test/test-integration. predicate-quantifier: 'every' is required
+      # because the default 'some' (OR) mode makes a lone '!**/*.md' match nearly
+      # every file, which would break the negation; a single positive '**' avoids
+      # the 'every' + multi-positive AND pitfall. Negation defaults to true (run
+      # CI) for any new non-Markdown path.
       - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
         id: codefilter
         with:
@@ -203,14 +193,14 @@ jobs:
 
   # Playwright suite against a production build backed by the same local Supabase
   # stack developers use (Postgres 55322 / Realtime / Storage), so CI mirrors
-  # `bun run test:e2e`. Not a Branch Protection required check yet — duration and
-  # flakiness are being measured first (#149).
+  # `bun run test:e2e`. Heavy and serial (workers: 1), so it is kept off PRs: it
+  # runs post-merge on main, nightly (schedule), and on demand (workflow_dispatch).
+  # Run it locally with `bun run test:e2e` before pushing risky UI changes.
   test-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: changes
-    # Run unconditionally on pushes to main; gate only PR runs on the path filter.
-    if: github.event_name != 'pull_request' || needs.changes.outputs.web == 'true'
+    # Never on PRs; runs on push to main, the nightly schedule, and manual dispatch.
+    if: github.event_name != 'pull_request'
     env:
       # Throwaway secret for the job-local ephemeral database; not a real credential.
       BETTER_AUTH_SECRET: e2e-ci-only-secret
