@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
+import { JapanWeatherMap, WeatherMapCredit } from "@/components/japan-weather-map";
 import { LoadingBoundary } from "@/components/ui/loading-boundary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WeatherIcon } from "@/components/weather-icon";
@@ -20,7 +21,7 @@ const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6", "s7"];
 export function WeatherDetail({ officeCode, basePath }: { officeCode: string; basePath: string }) {
   const t = useTranslations("weatherTool");
   const locale = useLocale();
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, isFetching } = useQuery({
     queryKey: queryKeys.weather.detail(officeCode),
     queryFn: () => api<WeatherDetailResponse>(`/api/weather/${officeCode}`),
   });
@@ -52,6 +53,9 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
             {backLink}
             <Skeleton className="h-6 w-44" />
           </div>
+          <div className="flex justify-center">
+            <Skeleton className="aspect-[4/3] w-full max-w-xs rounded-md" />
+          </div>
           <div className="space-y-2">
             {SKELETON_ROWS.map((row) => (
               <Skeleton key={row} className="h-12 w-full rounded-lg" />
@@ -74,8 +78,14 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
             </h1>
           </div>
 
+          <JapanWeatherMap officeCode={officeCode} />
+
           {data.days.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t("detailEmpty")}</p>
+            // Suppress the empty notice while a (background) refetch is in flight
+            // so it doesn't flash before the forecast arrives.
+            isFetching ? null : (
+              <p className="text-sm text-muted-foreground">{t("detailEmpty")}</p>
+            )
           ) : (
             <div className="overflow-hidden rounded-lg border">
               <table className="w-full text-sm">
@@ -127,6 +137,8 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
               </table>
             </div>
           )}
+
+          <WeatherMapCredit officeCode={officeCode} />
         </div>
       )}
     </LoadingBoundary>

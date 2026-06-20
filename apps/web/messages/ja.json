@@ -1350,7 +1350,10 @@
     "colTemp": "最高/最低",
     "colPop": "降水確率",
     "loadError": "天気情報を取得できませんでした",
-    "detailEmpty": "この地域の天気はまだ取得されていません。しばらくしてから再度お試しください。"
+    "detailEmpty": "この地域の天気はまだ取得されていません。しばらくしてから再度お試しください。",
+    "mapLabel": "日本地図。{name} の位置を示しています",
+    "mapCredit": "地図データ: <source>『気象庁防災情報発表区域データセット』（NII作成）</source>「GISデータ」（気象庁）を加工",
+    "mapCreditLicense": "CC BY 4.0"
   },
   "tools": {
     "roulette": "ルーレット",

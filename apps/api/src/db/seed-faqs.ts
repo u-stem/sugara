@@ -400,6 +400,12 @@ const JA_FAQS = [
       "気象庁が公開している週間天気予報をもとにしています。1日1回自動で取得して保存しているため、表示はすぐに開きます。最新の発表時刻は各地域の詳細画面下部に表示されます。",
     sortOrder: 101,
   },
+  {
+    question: "天気の地域が日本のどこにあるか地図で確認できますか？",
+    answer:
+      "はい。地域の詳細画面の上部に日本地図を表示し、その地域の場所を色付きでハイライトします。北海道や沖縄など細かく分かれている地域も、それぞれの区分が分かるように表示されます。",
+    sortOrder: 102,
+  },
   // ---- Limits ----
   {
     question: "旅行や予定に上限はありますか？",
@@ -851,6 +857,12 @@ const EN_FAQS = [
     answer:
       "It is based on the weekly forecast published by the Japan Meteorological Agency (JMA). The data is fetched and stored automatically once a day, so it loads instantly. The latest issue time is shown at the bottom of each region's detail screen.",
     sortOrder: 101,
+  },
+  {
+    question: "Can I see where a weather region is on a map of Japan?",
+    answer:
+      "Yes. A map of Japan appears at the top of each region's detail screen, highlighting where that region is. Areas that are subdivided, such as Hokkaido and Okinawa, are shown so you can tell their individual sections apart.",
+    sortOrder: 102,
   },
   // ---- Limits ----
   {
