@@ -57,12 +57,12 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
             {backLink}
             <Skeleton className="h-6 w-44" />
           </div>
-          <JapanWeatherMapSkeleton officeCode={officeCode} />
           <div className="space-y-2">
             {SKELETON_ROWS.map((row) => (
               <Skeleton key={row} className="h-12 w-full rounded-lg" />
             ))}
           </div>
+          <JapanWeatherMapSkeleton officeCode={officeCode} />
         </div>
       }
     >
@@ -79,8 +79,6 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
               </span>
             </h1>
           </div>
-
-          <JapanWeatherMap officeCode={officeCode} />
 
           {data.days.length === 0 ? (
             // Suppress the empty notice while a (background) refetch is in flight
@@ -140,6 +138,7 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
             </div>
           )}
 
+          <JapanWeatherMap officeCode={officeCode} />
           <WeatherMapCredit officeCode={officeCode} />
         </div>
       )}
