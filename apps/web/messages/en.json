@@ -1350,7 +1350,12 @@
     "colTemp": "High / Low",
     "colPop": "Precip.",
     "loadError": "Could not load the weather forecast",
-    "detailEmpty": "This area's forecast hasn't been fetched yet. Please try again later."
+    "detailEmpty": "This area's forecast hasn't been fetched yet. Please try again later.",
+    "mapLabel": "Map of Japan showing the location of {name}",
+    "mapCredit": "Map data: <source>\"JMA Disaster Prevention Information Area Dataset\" (created by NII)</source>, processed from JMA GIS Data",
+    "mapCreditLicense": "CC BY 4.0",
+    "mapCreditLicenseAria": "License: CC BY 4.0 (opens in a new tab)",
+    "mapCreditSourceAria": "Map data source (opens in a new tab)"
   },
   "tools": {
     "roulette": "Roulette",
