@@ -5,7 +5,7 @@ import { deleteExpiredGuests } from "../lib/cleanup-guests";
 import { env } from "../lib/env";
 import { logger } from "../lib/logger";
 import { getRedis } from "../lib/redis";
-import { refreshAllWeather } from "../lib/weather-refresh";
+import { refreshAllWeather, WEATHER_REFRESH_BUDGET_MS } from "../lib/weather-refresh";
 
 export const cronRoutes = new Hono();
 
@@ -76,7 +76,13 @@ cronRoutes.get("/cron/refresh-weather", async (c) => {
   // Always return 200, even on unexpected failure, so Vercel Cron does not
   // retry-storm a transient outage into overlapping runs.
   try {
-    const result = await refreshAllWeather();
+    // onlyStale so a re-run (or the admin button) converges on the leftovers;
+    // deadline keeps the run inside the route's maxDuration (60s), leaving any
+    // unprocessed offices stale for the next run.
+    const result = await refreshAllWeather({
+      onlyStale: true,
+      deadlineMs: Date.now() + WEATHER_REFRESH_BUDGET_MS,
+    });
     return c.json(result, 200);
   } catch (err) {
     logger.error({ err }, "cron: weather refresh threw unexpectedly");
