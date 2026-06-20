@@ -31,6 +31,12 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
   });
   const today = jstToday();
 
+  // Until the forecast rows are actually present, keep the whole content behind
+  // the skeleton. Otherwise the static map (which needs no network) would paint
+  // alone during a background refetch while data.days is still empty, so the map
+  // appears first and the table pops in afterward.
+  const showLoading = isLoading || (isFetching && (!data || data.days.length === 0));
+
   const backLink = (
     <Link
       href={basePath}
@@ -43,7 +49,7 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
 
   return (
     <LoadingBoundary
-      isLoading={isLoading}
+      isLoading={showLoading}
       error={isError ? new Error("weather detail") : null}
       errorFallback={
         <div className="space-y-3">
@@ -81,11 +87,9 @@ export function WeatherDetail({ officeCode, basePath }: { officeCode: string; ba
           </div>
 
           {data.days.length === 0 ? (
-            // Suppress the empty notice while a (background) refetch is in flight
-            // so it doesn't flash before the forecast arrives.
-            isFetching ? null : (
-              <p className="text-sm text-muted-foreground">{t("detailEmpty")}</p>
-            )
+            // A refetch over empty days is treated as loading (see showLoading),
+            // so reaching here means the fetch settled on a genuinely empty result.
+            <p className="text-sm text-muted-foreground">{t("detailEmpty")}</p>
           ) : (
             <div className="overflow-hidden rounded-lg border">
               <table className="w-full text-sm">
