@@ -1,10 +1,11 @@
 "use client";
 
-import type { TripResponse } from "@sugara/shared";
+import type { ScheduleResponse, TripResponse } from "@sugara/shared";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { queryKeys } from "@/lib/query-keys";
 import {
+  assignCandidateToPattern,
   reorderCandidates,
   reorderSchedulesInPattern,
   type ScheduleAnchorUpdate,
@@ -101,5 +102,49 @@ export function useTripMutationCallbacks({
     [queryClient, tripId, invalidateTrip, broadcastChange],
   );
 
-  return { onMutate, onCacheWritten, onSchedulesReordered, onCandidatesReordered };
+  // Candidate→timeline assign (drag-drop): same #166 cache-write principle as
+  // the reorder callbacks. The assign+reorder PATCHes are confirmed, so the
+  // resulting order is written into the cache directly. Refetching here can
+  // return a stale read that leaves the just-assigned schedule at assign's
+  // nextOrder (= end of list), reverting the drop position.
+  const onCandidateAssigned = useCallback(
+    async (args: {
+      candidateId: string;
+      dayId: string;
+      patternId: string;
+      scheduleIds: string[];
+      anchors: ScheduleAnchorUpdate[];
+      serverData?: ScheduleResponse;
+    }) => {
+      const cacheKey = queryKeys.trips.detail(tripId);
+      await queryClient.cancelQueries({ queryKey: cacheKey });
+      const prev = queryClient.getQueryData<TripResponse>(cacheKey);
+      if (prev) {
+        queryClient.setQueryData(
+          cacheKey,
+          assignCandidateToPattern(
+            prev,
+            args.candidateId,
+            args.dayId,
+            args.patternId,
+            args.scheduleIds,
+            args.anchors,
+            args.serverData,
+          ),
+        );
+      } else {
+        await invalidateTrip();
+      }
+      broadcastChange();
+    },
+    [queryClient, tripId, invalidateTrip, broadcastChange],
+  );
+
+  return {
+    onMutate,
+    onCacheWritten,
+    onSchedulesReordered,
+    onCandidatesReordered,
+    onCandidateAssigned,
+  };
 }

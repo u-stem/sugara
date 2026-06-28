@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   addCandidate,
   addScheduleToPattern,
+  assignCandidateToPattern,
   moveCandidateToSchedule,
   moveScheduleToCandidate,
   removeCandidate,
@@ -410,6 +411,60 @@ describe("moveCandidateToSchedule", () => {
 
     expect(result.days[0].patterns[0].schedules[0].sortOrder).toBe(42);
     expect(result.days[0].patterns[0].schedules[0].updatedAt).toBe("new");
+  });
+});
+
+describe("assignCandidateToPattern", () => {
+  it("inserts the candidate as a schedule at the drop index, not the end", () => {
+    const candidate = makeCandidate({ id: "c1", name: "Assign me" });
+    const trip = makeTrip({
+      days: [
+        makeDay({
+          patterns: [
+            makePattern({
+              schedules: [
+                makeSchedule({ id: "s1", sortOrder: 0 }),
+                makeSchedule({ id: "s2", sortOrder: 1 }),
+              ],
+            }),
+          ],
+        }),
+      ],
+      candidates: [candidate],
+    });
+
+    // scheduleIds places the candidate between s1 and s2 (its drop position).
+    const result = assignCandidateToPattern(trip, "c1", "d1", "p1", ["s1", "c1", "s2"]);
+
+    expect(result.candidates).toEqual([]);
+    expect(result.days[0].patterns[0].schedules.map((s) => [s.id, s.sortOrder])).toEqual([
+      ["s1", 0],
+      ["c1", 1],
+      ["s2", 2],
+    ]);
+  });
+
+  it("applies the anchor update to the assigned candidate", () => {
+    const candidate = makeCandidate({ id: "c1" });
+    const trip = makeTrip({
+      days: [makeDay({ patterns: [makePattern({ schedules: [makeSchedule({ id: "s1" })] })] })],
+      candidates: [candidate],
+    });
+
+    const result = assignCandidateToPattern(
+      trip,
+      "c1",
+      "d1",
+      "p1",
+      ["c1", "s1"],
+      [{ scheduleId: "c1", anchor: "before", anchorSourceId: "hotel-1" }],
+    );
+
+    const assigned = result.days[0].patterns[0].schedules.find((s) => s.id === "c1");
+    expect(assigned).toMatchObject({
+      crossDayAnchor: "before",
+      crossDayAnchorSourceId: "hotel-1",
+    });
   });
 });
 
