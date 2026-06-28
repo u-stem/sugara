@@ -532,12 +532,17 @@ export default function TripDetailPage() {
 
   // Mutation callbacks: refetch + broadcast to other clients (see hook for
   // why schedule adds and reorders skip the refetch, #123 / #166)
-  const { onMutate, onCacheWritten, onSchedulesReordered, onCandidatesReordered } =
-    useTripMutationCallbacks({
-      tripId,
-      invalidateTrip,
-      broadcastChange,
-    });
+  const {
+    onMutate,
+    onCacheWritten,
+    onSchedulesReordered,
+    onCandidatesReordered,
+    onCandidateAssigned,
+  } = useTripMutationCallbacks({
+    tripId,
+    invalidateTrip,
+    broadcastChange,
+  });
 
   const handleSaveToBookmark = useCallback((scheduleIds: string[]) => {
     setSaveToBookmarkIds(scheduleIds);
@@ -621,6 +626,7 @@ export default function TripDetailPage() {
     onDone: onMutate,
     onSchedulesReordered,
     onCandidatesReordered,
+    onCandidateAssigned,
   });
 
   const patternOps = usePatternOperations({
