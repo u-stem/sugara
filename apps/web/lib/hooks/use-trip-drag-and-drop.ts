@@ -67,6 +67,18 @@ type UseTripDragAndDropArgs = {
     anchors: ScheduleAnchorUpdate[];
   }) => void | Promise<void>;
   onCandidatesReordered: (scheduleIds: string[]) => void | Promise<void>;
+  // Candidate→timeline assign success: writes the confirmed assign + order
+  // into the trip cache directly instead of refetching (#166). Refetching
+  // immediately after assign/reorder can return a stale read that leaves the
+  // new schedule at assign's nextOrder (= end of list), reverting the drop.
+  onCandidateAssigned: (args: {
+    candidateId: string;
+    dayId: string;
+    patternId: string;
+    scheduleIds: string[];
+    anchors: ScheduleAnchorUpdate[];
+    serverData?: ScheduleResponse;
+  }) => void | Promise<void>;
 };
 
 // MouseSensor (not PointerSensor) so that touch input is handled exclusively
@@ -134,6 +146,7 @@ export function useTripDragAndDrop({
   onDone,
   onSchedulesReordered,
   onCandidatesReordered,
+  onCandidateAssigned,
 }: UseTripDragAndDropArgs) {
   const tm = useTranslations("messages");
   const [activeDragItem, setActiveDragItem] = useState<ActiveDragItem | null>(null);
@@ -481,11 +494,15 @@ export function useTripDragAndDrop({
         setLocalSchedules(applyOptimisticReorder(insertedSchedules, String(active.id), anchor));
         toast.success(tm("candidateAssigned"));
 
+        let assigned: ScheduleResponse | undefined;
         try {
-          await api(`/api/trips/${tripId}/candidates/${active.id}/assign`, {
-            method: "POST",
-            body: JSON.stringify({ dayPatternId: currentPatternId }),
-          });
+          assigned = await api<ScheduleResponse>(
+            `/api/trips/${tripId}/candidates/${active.id}/assign`,
+            {
+              method: "POST",
+              body: JSON.stringify({ dayPatternId: currentPatternId }),
+            },
+          );
         } catch (err) {
           if (err instanceof ApiError && (err.status === 400 || err.status === 404)) {
             toast.error(tm("conflictStale"));
@@ -504,22 +521,32 @@ export function useTripDragAndDrop({
           // but would drop the anchor silently.
           const scheduleIds = [...currentSchedules.map((s) => s.id)];
           scheduleIds.splice(insertIdx, 0, String(active.id));
+          const anchors = [
+            {
+              scheduleId: String(active.id),
+              anchor: anchor.anchor,
+              anchorSourceId: anchor.anchorSourceId,
+            },
+          ];
           await api(
             `/api/trips/${tripId}/days/${currentDayId}/patterns/${currentPatternId}/schedules/reorder`,
             {
               method: "PATCH",
-              body: JSON.stringify({
-                scheduleIds,
-                anchors: [
-                  {
-                    scheduleId: String(active.id),
-                    anchor: anchor.anchor,
-                    anchorSourceId: anchor.anchorSourceId,
-                  },
-                ],
-              }),
+              body: JSON.stringify({ scheduleIds, anchors }),
             },
           );
+          // Write the confirmed assign + order into the cache instead of
+          // refetching: an immediate GET can return a stale read that leaves
+          // the new schedule at assign's nextOrder (= end of list), reverting
+          // the drop position (#166).
+          await onCandidateAssigned({
+            candidateId: String(active.id),
+            dayId: currentDayId,
+            patternId: currentPatternId,
+            scheduleIds,
+            anchors,
+            serverData: assigned,
+          });
         } catch (err) {
           // Previously this was a silent catch — which meant a 400 from
           // validateAnchors or pattern check would leave the candidate at
@@ -536,7 +563,6 @@ export function useTripDragAndDrop({
           await onDone();
           return;
         }
-        await onDone();
       } else if (sourceType === "candidate" && isOverCandidates) {
         if (over && active.id === over.id) return;
         const oldIndex = currentCandidates.findIndex((c) => c.id === active.id);
