@@ -355,3 +355,30 @@ export function moveCandidateToSchedule(
     ),
   };
 }
+
+/**
+ * Apply a confirmed candidate→pattern assign (POST .../assign + PATCH
+ * .../reorder) to the cached trip in one step: move the candidate into the
+ * pattern as a schedule, then reorder the pattern by the confirmed order.
+ *
+ * Written into the cache directly instead of refetching: an immediate GET
+ * after the assign/reorder PATCHes can return a stale read that places the
+ * just-assigned schedule at the end (assign's nextOrder), visually reverting
+ * the drop position (#166). Composes the already-tested `moveCandidateToSchedule`
+ * and `reorderSchedulesInPattern`; `scheduleIds` must include `candidateId` at
+ * its intended insert index. Note `serverData.sortOrder` (assign's nextOrder
+ * = end of list) is discarded: `reorderSchedulesInPattern` rewrites every
+ * sortOrder from the `scheduleIds` index, so the final order is correct.
+ */
+export function assignCandidateToPattern(
+  trip: TripResponse,
+  candidateId: string,
+  dayId: string,
+  patternId: string,
+  scheduleIds: string[],
+  anchors?: ScheduleAnchorUpdate[],
+  serverData?: ScheduleResponse,
+): TripResponse {
+  const moved = moveCandidateToSchedule(trip, candidateId, dayId, patternId, serverData);
+  return reorderSchedulesInPattern(moved, dayId, patternId, scheduleIds, anchors);
+}
