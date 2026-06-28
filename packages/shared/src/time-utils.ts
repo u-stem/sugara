@@ -63,17 +63,19 @@ export function computeTimeDelta(original: TimeFields, updated: TimeFields): Tim
     oldEndOffset === newEndOffset &&
     original.endTime !== updated.endTime
   ) {
-    return {
-      delta: timeToMinutes(updated.endTime) - timeToMinutes(original.endTime),
-      source: "end",
-    };
+    // The string differs but the minute value can be identical (e.g. "12:00:00"
+    // vs "12:00"). A zero delta is not a meaningful change, so fall through.
+    const delta = timeToMinutes(updated.endTime) - timeToMinutes(original.endTime);
+    if (delta !== 0) {
+      return { delta, source: "end" };
+    }
   }
   // Start time changed
   if (original.startTime && updated.startTime && original.startTime !== updated.startTime) {
-    return {
-      delta: timeToMinutes(updated.startTime) - timeToMinutes(original.startTime),
-      source: "start",
-    };
+    const delta = timeToMinutes(updated.startTime) - timeToMinutes(original.startTime);
+    if (delta !== 0) {
+      return { delta, source: "start" };
+    }
   }
   return null;
 }
