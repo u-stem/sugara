@@ -124,4 +124,32 @@ describe("computeTimeDelta", () => {
     );
     expect(result).toEqual({ delta: -15, source: "start" });
   });
+
+  test("returns null when end time string differs but delta is zero", () => {
+    // DB stores "HH:MM:SS" while the form produces "HH:MM": string comparison
+    // sees a change, but the actual minute value is identical.
+    const result = computeTimeDelta(
+      { startTime: "10:00:00", endTime: "12:00:00" },
+      { startTime: "10:00:00", endTime: "12:00" },
+    );
+    expect(result).toBeNull();
+  });
+
+  test("returns null when only start time string differs but delta is zero (end branch not entered)", () => {
+    const result = computeTimeDelta(
+      { startTime: "10:00:00", endTime: "12:00" },
+      { startTime: "10:00", endTime: "12:00" },
+    );
+    expect(result).toBeNull();
+  });
+
+  test("falls through to start branch when end delta is zero but start changed", () => {
+    // End is only a string difference (delta 0), so it must defer to the real
+    // start change rather than returning a zero-delta end result.
+    const result = computeTimeDelta(
+      { startTime: "10:00", endTime: "12:00:00" },
+      { startTime: "10:30", endTime: "12:00" },
+    );
+    expect(result).toEqual({ delta: 30, source: "start" });
+  });
 });
