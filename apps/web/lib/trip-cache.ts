@@ -382,3 +382,24 @@ export function assignCandidateToPattern(
   const moved = moveCandidateToSchedule(trip, candidateId, dayId, patternId, serverData);
   return reorderSchedulesInPattern(moved, dayId, patternId, scheduleIds, anchors);
 }
+
+/**
+ * Apply a confirmed schedule→candidates unassign (POST .../unassign, plus an
+ * optional PATCH /candidates/reorder) to the cached trip in one step.
+ * `candidateIds` (when the drop targeted a specific candidate) must include
+ * `scheduleId` at its intended insert index; omitted (empty-zone drop) the
+ * candidate stays appended at the end — matching the server's nextOrder.
+ * serverData.sortOrder is discarded when candidateIds is given (reorderCandidates
+ * rewrites every sortOrder from the index), mirroring assignCandidateToPattern.
+ */
+export function unassignScheduleFromPattern(
+  trip: TripResponse,
+  dayId: string,
+  patternId: string,
+  scheduleId: string,
+  candidateIds?: string[],
+  serverData?: ScheduleResponse,
+): TripResponse {
+  const moved = moveScheduleToCandidate(trip, dayId, patternId, scheduleId, serverData);
+  return candidateIds ? reorderCandidates(moved, candidateIds) : moved;
+}
