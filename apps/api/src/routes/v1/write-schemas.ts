@@ -15,6 +15,7 @@ import {
   createArticleSchema,
   createBookmarkListSchema,
   createBookmarkSchema,
+  createDayPatternSchema,
   createScheduleSchema,
   createSouvenirSchema,
   createTripBaseSchema,
@@ -23,6 +24,7 @@ import {
   expenseCategorySchema,
   expenseSplitTypeSchema,
   MAX_LINE_ITEMS_PER_EXPENSE,
+  overwriteDayPatternSchema,
   splitsTotalMatchesAmount,
   tripStatusSchema,
   updateArticleSchema,
@@ -34,7 +36,7 @@ import {
 import { z } from "zod";
 
 // ---------------------------------------------------------------------------
-// Re-exports: bookmark and article schemas are used as-is in v1
+// Re-exports: bookmark, article, and pattern schemas are used as-is in v1
 // ---------------------------------------------------------------------------
 
 export {
@@ -42,6 +44,10 @@ export {
   createBookmarkSchema as v1CreateBookmarkSchema,
   createArticleSchema as v1CreateArticleSchema,
   createSouvenirSchema as v1CreateSouvenirSchema,
+  // Rename shares the create shape ({ label }) — sortOrder stays internal-only.
+  createDayPatternSchema as v1CreatePatternSchema,
+  createDayPatternSchema as v1UpdatePatternSchema,
+  overwriteDayPatternSchema as v1OverwritePatternSchema,
   updateBookmarkListSchema as v1UpdateBookmarkListSchema,
   updateBookmarkSchema as v1UpdateBookmarkSchema,
   updateArticleSchema as v1UpdateArticleSchema,
@@ -101,6 +107,31 @@ export type V1CreateScheduleInput = z.infer<typeof v1CreateScheduleSchema>;
 export const v1UpdateScheduleSchema = v1CreateScheduleSchema.partial();
 
 export type V1UpdateScheduleInput = z.infer<typeof v1UpdateScheduleSchema>;
+
+// POST .../days/:dayNumber/schedules body: an optional patternId lets callers
+// target a non-default pattern. Omitted → falls back to the day's isDefault
+// pattern (unchanged behavior for existing callers).
+export const v1CreateScheduleBodySchema = v1CreateScheduleSchema.extend({
+  patternId: z.string().check(z.guid()).optional(),
+});
+
+export type V1CreateScheduleBodyInput = z.infer<typeof v1CreateScheduleBodySchema>;
+
+// ---------------------------------------------------------------------------
+// Candidate assignment / schedule move request schemas
+// ---------------------------------------------------------------------------
+
+export const v1AssignCandidateSchema = z.object({
+  patternId: z.string().check(z.guid()),
+});
+
+export type V1AssignCandidateInput = z.infer<typeof v1AssignCandidateSchema>;
+
+export const v1MoveScheduleSchema = z.object({
+  patternId: z.string().check(z.guid()),
+});
+
+export type V1MoveScheduleInput = z.infer<typeof v1MoveScheduleSchema>;
 
 // ---------------------------------------------------------------------------
 // Expense request schemas (memberNo-based)
@@ -433,4 +464,25 @@ export const v1DeleteResponseSchema = z.object({
   id: z.string(),
   deleted: z.boolean(),
   remaining: v1WriteMetaSchema,
+});
+
+// ---------------------------------------------------------------------------
+// Pattern write response schemas
+// ---------------------------------------------------------------------------
+
+// Pattern DTO: tripDayId is never exposed — v1 identifies a pattern by
+// tripId + patternId alone (day scoping is an internal detail).
+export const v1PatternWriteResponseSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  isDefault: z.boolean(),
+  sortOrder: z.number().int(),
+  createdAt: z.string(),
+});
+
+// Pattern delete has no cap-context to report (patterns are capped per-day, not
+// per-trip), so unlike v1DeleteResponseSchema this has no `remaining` field.
+export const v1PatternDeleteResponseSchema = z.object({
+  id: z.string(),
+  deleted: z.boolean(),
 });

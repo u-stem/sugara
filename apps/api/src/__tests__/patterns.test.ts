@@ -367,6 +367,54 @@ describe("Pattern routes", () => {
 
       expect(res.status).toBe(409);
     });
+
+    it("returns 409 when duplicating would exceed the per-trip schedule limit", async () => {
+      // Source pattern carries enough schedules that cloning them would push the
+      // trip over MAX_SCHEDULES_PER_TRIP, even though the per-day pattern count
+      // is still under MAX_PATTERNS_PER_DAY.
+      const sourceSchedules = Array.from({ length: 5 }, (_, i) => ({
+        name: `Spot ${i}`,
+        category: "sightseeing",
+        address: null,
+        startTime: null,
+        endTime: null,
+        sortOrder: i,
+        memo: null,
+        urls: null,
+        departurePlace: null,
+        arrivalPlace: null,
+        transportMethod: null,
+        color: null,
+        endDayOffset: 0,
+      }));
+      mockDbQuery.dayPatterns.findFirst.mockResolvedValue({
+        id: patternId,
+        tripDayId: dayId,
+        label: "Sunny",
+        schedules: sourceSchedules,
+      });
+      // Pattern-count select returns under the per-day cap; schedule-count select
+      // (via getScheduleCount) returns MAX_SCHEDULES_PER_TRIP - 3, so + 5 clones
+      // exceeds the per-trip cap.
+      mockDbSelect
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ count: 1 }]),
+          }),
+        })
+        .mockReturnValueOnce({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue([{ count: MAX_SCHEDULES_PER_TRIP - 3 }]),
+          }),
+        });
+
+      const app = createTestApp(patternRoutes, "/api/trips");
+      const res = await app.request(`${basePath}/${patternId}/duplicate`, {
+        method: "POST",
+      });
+
+      expect(res.status).toBe(409);
+    });
   });
 
   describe(`POST ${basePath}/${patternId}/overwrite`, () => {

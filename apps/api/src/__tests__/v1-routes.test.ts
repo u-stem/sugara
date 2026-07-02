@@ -312,6 +312,8 @@ describe("GET /trips/:id", () => {
         patterns: [
           {
             id: "pat-1",
+            label: "デフォルト",
+            isDefault: true,
             schedules: [
               {
                 id: "sched-1",
@@ -369,8 +371,14 @@ describe("GET /trips/:id", () => {
     expect(body.role).toBe("owner");
     expect(body.members).toHaveLength(2);
     expect(body.days).toHaveLength(1);
-    expect(body.days[0].schedules).toHaveLength(1);
-    expect(body.days[0].schedules[0].name).toBe("Hotel checkin");
+    // Flat days[].schedules was removed in favor of per-pattern nesting.
+    expect(body.days[0]).not.toHaveProperty("schedules");
+    expect(body.days[0].patterns).toHaveLength(1);
+    expect(body.days[0].patterns[0].id).toBe("pat-1");
+    expect(body.days[0].patterns[0].label).toBe("デフォルト");
+    expect(body.days[0].patterns[0].isDefault).toBe(true);
+    expect(body.days[0].patterns[0].schedules).toHaveLength(1);
+    expect(body.days[0].patterns[0].schedules[0].name).toBe("Hotel checkin");
   });
 
   it("assigns memberNos in stable userId-ascending order", async () => {

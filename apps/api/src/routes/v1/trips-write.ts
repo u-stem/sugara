@@ -6,16 +6,22 @@
 //   POST   /trips/:tripId/days/:dayNumber/schedules
 //   PATCH  /trips/:tripId/schedules/:scheduleId
 //   DELETE /trips/:tripId/schedules/:scheduleId
+//   POST   /trips/:tripId/schedules/:scheduleId/unassign
+//   POST   /trips/:tripId/schedules/:scheduleId/move
 
 import { MAX_SCHEDULES_PER_TRIP } from "@sugara/shared";
 import { and, count, eq, isNotNull } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { db } from "../../db";
-import { dayPatterns, schedules, tripDays, tripMembers, trips } from "../../db/schema";
+import { schedules, tripDays, tripMembers, trips } from "../../db/schema";
 import { logActivity } from "../../lib/activity-logger";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { notifyTripMembersExcluding } from "../../lib/notifications";
+import {
+  assignScheduleToPattern,
+  unassignScheduleToCandidates,
+} from "../../lib/schedule-assignment";
 import { getScheduleCount } from "../../lib/schedule-count";
 import { getNextSortOrder } from "../../lib/sort-order";
 import { createInitialTripDays } from "../../lib/trip-days";
@@ -24,11 +30,12 @@ import { updateTripCore } from "../../lib/trip-service";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
 import { serializeScheduleDto, serializeTripDto } from "./serializers";
-import { getActorName, uuidSchema, withTripAccess } from "./shared";
+import { getActorName, getPatternInTrip, uuidSchema, withTripAccess } from "./shared";
 import {
-  v1CreateScheduleSchema,
+  v1CreateScheduleBodySchema,
   v1CreateTripSchema,
   v1DeleteResponseSchema,
+  v1MoveScheduleSchema,
   v1ScheduleWriteResponseSchema,
   v1TripWriteResponseSchema,
   v1UpdateScheduleSchema,
@@ -264,7 +271,11 @@ tripsWriteApp.post(
     tags: ["Trips"],
     summary: "Add a schedule to a trip day",
     description:
-      "Appends a schedule to the default pattern of the specified day (1-indexed). Returns 409 when the trip has no days (scheduling/poll mode) or when the per-trip schedule limit is reached. Returns 404 when dayNumber is out of range. Requires `trips:write` scope.",
+      "Appends a schedule to a pattern of the specified day (1-indexed). Body may include an optional " +
+      "patternId to target a non-default pattern (404 when it doesn't exist on that day); omitted " +
+      "defaults to the day's isDefault pattern. Returns 409 when the trip has no days (scheduling/poll " +
+      "mode) or when the per-trip schedule limit is reached. Returns 404 when dayNumber is out of range. " +
+      "Requires `trips:write` scope.",
     security: [{ bearerAuth: [] }],
     parameters: [
       {
@@ -334,14 +345,15 @@ tripsWriteApp.post(
         throw new ApiV1Error(400, "invalid_request", "dayNumber must be a positive integer");
       }
 
-      // Fetch all days to detect scheduling mode and validate dayNumber range.
+      // Fetch all days (with all patterns, not just isDefault) to detect
+      // scheduling mode, validate dayNumber range, and resolve an optional
+      // patternId against the day's actual patterns.
       const allDays = await db.query.tripDays.findMany({
         where: eq(tripDays.tripId, tripId),
         columns: { id: true, dayNumber: true },
         with: {
           patterns: {
-            where: eq(dayPatterns.isDefault, true),
-            columns: { id: true },
+            columns: { id: true, isDefault: true },
           },
         },
         orderBy: (d, { asc }) => [asc(d.dayNumber)],
@@ -362,18 +374,31 @@ tripsWriteApp.post(
         throw new ApiV1Error(404, "not_found", `Day ${dayNumberInt} not found in this trip`);
       }
 
-      // Every day always has exactly one isDefault pattern (created in createInitialTripDays).
-      const defaultPattern = targetDay.patterns[0];
-      if (!defaultPattern) {
-        throw new ApiV1Error(500, "internal_error", "Default pattern not found for this day");
-      }
-      const patternId = defaultPattern.id;
-
       const body = await c.req.json();
-      const parsed = v1CreateScheduleSchema.safeParse(body);
+      const parsed = v1CreateScheduleBodySchema.safeParse(body);
       if (!parsed.success) {
         throw new ApiV1Error(400, "invalid_request", "Invalid request body");
       }
+
+      let patternId: string;
+      if (parsed.data.patternId !== undefined) {
+        // Existence concealment: a patternId outside this day 404s the same as
+        // one that doesn't exist at all — callers can't probe other days' ids.
+        const found = targetDay.patterns.find((p) => p.id === parsed.data.patternId);
+        if (!found) {
+          throw new ApiV1Error(404, "not_found", "Pattern not found on this day");
+        }
+        patternId = found.id;
+      } else {
+        // Every day always has exactly one isDefault pattern (created in createInitialTripDays).
+        const defaultPattern = targetDay.patterns.find((p) => p.isDefault);
+        if (!defaultPattern) {
+          throw new ApiV1Error(500, "internal_error", "Default pattern not found for this day");
+        }
+        patternId = defaultPattern.id;
+      }
+
+      const { patternId: _patternId, ...createData } = parsed.data;
 
       // Anchors are never set on create (same rule as the internal route).
       const schedule = await db.transaction(async (tx) => {
@@ -395,7 +420,7 @@ tripsWriteApp.post(
           .values({
             tripId,
             dayPatternId: patternId,
-            ...parsed.data,
+            ...createData,
             sortOrder: nextOrder,
           })
           .returning();
@@ -674,6 +699,208 @@ tripsWriteApp.delete(
         deleted: false,
         remaining: { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP },
       });
+    },
+    { minRole: "editor" },
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// POST /trips/:tripId/schedules/:scheduleId/unassign
+// ---------------------------------------------------------------------------
+
+tripsWriteApp.post(
+  "/trips/:tripId/schedules/:scheduleId/unassign",
+  describeRoute({
+    tags: ["Trips"],
+    summary: "Unassign a schedule to the candidate pool",
+    description:
+      "Moves an assigned schedule out of its pattern into the trip's unassigned candidate pool, " +
+      "appending it to the end of the candidate order. Returns 404 when the schedule is not an " +
+      "assigned schedule in this trip (already a candidate, or unknown/foreign id). " +
+      "Requires `trips:write` scope.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "scheduleId",
+        in: "path",
+        required: true,
+        description: "Schedule UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    responses: {
+      200: {
+        description: "Schedule moved to the candidate pool",
+        content: { "application/json": { schema: resolver(v1ScheduleWriteResponseSchema) } },
+      },
+      400: {
+        description: "Invalid schedule id",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Schedule not found in this trip, or already a candidate",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("trips:write"),
+  withTripAccess(
+    "tripId",
+    async (c, tripId) => {
+      const key = getApiKey(c);
+
+      const parsedId = uuidSchema.safeParse(c.req.param("scheduleId"));
+      if (!parsedId.success) {
+        throw new ApiV1Error(400, "invalid_request", "Invalid schedule id");
+      }
+      const scheduleId = parsedId.data;
+
+      const existing = await db.query.schedules.findFirst({
+        where: eq(schedules.id, scheduleId),
+      });
+      if (!existing || existing.tripId !== tripId || existing.dayPatternId === null) {
+        throw new ApiV1Error(404, "not_found", "Schedule not found in this trip");
+      }
+
+      const updated = await unassignScheduleToCandidates(tripId, scheduleId);
+
+      logActivity({
+        tripId,
+        userId: key.userId,
+        action: "unassigned",
+        entityType: "schedule",
+        entityName: updated.name,
+      });
+
+      return c.json(serializeScheduleDto(updated));
+    },
+    { minRole: "editor" },
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// POST /trips/:tripId/schedules/:scheduleId/move
+// ---------------------------------------------------------------------------
+
+tripsWriteApp.post(
+  "/trips/:tripId/schedules/:scheduleId/move",
+  describeRoute({
+    tags: ["Trips"],
+    summary: "Move a schedule to another pattern",
+    description:
+      "Moves an already-assigned schedule to a different pattern, appending it to the end of the " +
+      "target pattern's order. Returns 404 when the schedule is a candidate (use assign instead) or " +
+      "not in this trip, or when the target pattern is not in this trip. Moving to the schedule's " +
+      "current pattern is a no-op that still returns 200. Requires `trips:write` scope.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "scheduleId",
+        in: "path",
+        required: true,
+        description: "Schedule UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    requestBody: {
+      required: true,
+      content: { "application/json": { schema: { type: "object" } } },
+    },
+    responses: {
+      200: {
+        description: "Schedule moved (or already in the target pattern — no-op)",
+        content: { "application/json": { schema: resolver(v1ScheduleWriteResponseSchema) } },
+      },
+      400: {
+        description: "Invalid request body or schedule id",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description:
+          "Schedule is a candidate or not in this trip, or target pattern not in this trip",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("trips:write"),
+  withTripAccess(
+    "tripId",
+    async (c, tripId) => {
+      const key = getApiKey(c);
+
+      const parsedId = uuidSchema.safeParse(c.req.param("scheduleId"));
+      if (!parsedId.success) {
+        throw new ApiV1Error(400, "invalid_request", "Invalid schedule id");
+      }
+      const scheduleId = parsedId.data;
+
+      const body = await c.req.json();
+      const parsed = v1MoveScheduleSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new ApiV1Error(400, "invalid_request", "Invalid request body");
+      }
+
+      const existing = await db.query.schedules.findFirst({
+        where: eq(schedules.id, scheduleId),
+      });
+      if (!existing || existing.tripId !== tripId || existing.dayPatternId === null) {
+        throw new ApiV1Error(
+          404,
+          "not_found",
+          "Schedule not found in this trip (candidates must use assign)",
+        );
+      }
+
+      const pattern = await getPatternInTrip(tripId, parsed.data.patternId);
+      if (!pattern) {
+        throw new ApiV1Error(404, "not_found", "Pattern not found in this trip");
+      }
+
+      if (existing.dayPatternId === pattern.id) {
+        return c.json(serializeScheduleDto(existing));
+      }
+
+      const updated = await assignScheduleToPattern(scheduleId, pattern.id);
+
+      logActivity({
+        tripId,
+        userId: key.userId,
+        action: "moved",
+        entityType: "schedule",
+        entityName: updated.name,
+      });
+
+      return c.json(serializeScheduleDto(updated));
     },
     { minRole: "editor" },
   ),

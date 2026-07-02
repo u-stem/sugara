@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { z } from "zod";
 import { db } from "../../db";
-import { users } from "../../db/schema";
+import { dayPatterns, users } from "../../db/schema";
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { checkTripAccess } from "../../lib/permissions";
 
@@ -16,6 +16,21 @@ export async function getActorName(userId: string): Promise<string> {
     columns: { name: true },
   });
   return row?.name ?? "Unknown";
+}
+
+// Looks up a pattern and verifies it belongs to tripId (patterns are scoped by
+// tripDayId, not tripId directly, so the trip is confirmed via the joined day).
+// Returns null when the pattern doesn't exist or belongs to a different trip —
+// callers use this single null case to 404 without leaking which reason applied.
+export async function getPatternInTrip(tripId: string, patternId: string) {
+  const pattern = await db.query.dayPatterns.findFirst({
+    where: eq(dayPatterns.id, patternId),
+    with: { tripDay: { columns: { id: true, tripId: true } } },
+  });
+  if (!pattern || pattern.tripDay.tripId !== tripId) {
+    return null;
+  }
+  return pattern;
 }
 
 // Shared UUID schema used across all v1 routes.
