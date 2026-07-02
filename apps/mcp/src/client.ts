@@ -25,10 +25,12 @@ const LIMIT_REASON_MESSAGES: Record<string, (max: number) => string> = {
   bookmark_limit_reached: (max) => `ブックマークの上限（1リストあたり${max}件）に達しました`,
   article_limit_reached: (max) => `記事の作成上限（${max}件）に達しました`,
   souvenir_limit_reached: (max) => `お土産の上限（1旅行あたり${max}件）に達しました`,
+  pattern_limit_reached: (max) => `パターンの上限（1日あたり${max}件）に達しました`,
 };
 
 const REASON_MESSAGES: Record<string, string> = {
   trip_has_no_days: "この旅行にはまだ日程がありません。先に日程を作成してください",
+  cannot_delete_default_pattern: "デフォルトパターンは削除できません",
 };
 
 type V1ErrorCode =
@@ -171,9 +173,10 @@ export class ApiClient {
     return response.json();
   }
 
-  // Sends a mutating request (POST or PATCH) with a JSON body.
-  // Content-Type is always application/json; the API rejects requests without it.
-  private async mutate(method: "POST" | "PATCH", path: string, body: unknown): Promise<unknown> {
+  // Sends a mutating request (POST or PATCH). When body is provided it is sent
+  // as JSON with Content-Type: application/json; when omitted (body-less POST
+  // endpoints such as duplicate/unassign), no body or Content-Type is sent.
+  private async mutate(method: "POST" | "PATCH", path: string, body?: unknown): Promise<unknown> {
     const url = new URL(`${this.baseUrl}/api/v1${path}`);
 
     let response: Response;
@@ -183,9 +186,9 @@ export class ApiClient {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
           Accept: "application/json",
-          "Content-Type": "application/json",
+          ...(body !== undefined && { "Content-Type": "application/json" }),
         },
-        body: JSON.stringify(body),
+        ...(body !== undefined && { body: JSON.stringify(body) }),
       });
     } catch {
       throw new Error("SUGARA_API_URL に接続できません");
@@ -278,7 +281,7 @@ export class ApiClient {
     return response.json();
   }
 
-  // --- Write methods (25 endpoints, 1:1 with v1 write routes) ---
+  // --- Write methods (33 endpoints, 1:1 with v1 write routes) ---
 
   async createTrip(body: unknown): Promise<unknown> {
     return this.mutate("POST", "/trips", body);
@@ -427,5 +430,69 @@ export class ApiClient {
 
   async deleteArticle(articleId: string): Promise<unknown> {
     return this.remove(`/articles/${encodeURIComponent(articleId)}`);
+  }
+
+  // --- Pattern methods (day_patterns: alternative schedule plans within a day) ---
+
+  async createPattern(tripId: string, dayNumber: number, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "POST",
+      `/trips/${encodeURIComponent(tripId)}/days/${encodeURIComponent(String(dayNumber))}/patterns`,
+      body,
+    );
+  }
+
+  async updatePattern(tripId: string, patternId: string, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "PATCH",
+      `/trips/${encodeURIComponent(tripId)}/patterns/${encodeURIComponent(patternId)}`,
+      body,
+    );
+  }
+
+  async deletePattern(tripId: string, patternId: string): Promise<unknown> {
+    return this.remove(
+      `/trips/${encodeURIComponent(tripId)}/patterns/${encodeURIComponent(patternId)}`,
+    );
+  }
+
+  async duplicatePattern(tripId: string, patternId: string): Promise<unknown> {
+    return this.mutate(
+      "POST",
+      `/trips/${encodeURIComponent(tripId)}/patterns/${encodeURIComponent(patternId)}/duplicate`,
+    );
+  }
+
+  async overwritePattern(tripId: string, patternId: string, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "POST",
+      `/trips/${encodeURIComponent(tripId)}/patterns/${encodeURIComponent(patternId)}/overwrite`,
+      body,
+    );
+  }
+
+  // --- Candidate assignment / schedule move methods ---
+
+  async assignCandidate(tripId: string, scheduleId: string, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "POST",
+      `/trips/${encodeURIComponent(tripId)}/candidates/${encodeURIComponent(scheduleId)}/assign`,
+      body,
+    );
+  }
+
+  async unassignSchedule(tripId: string, scheduleId: string): Promise<unknown> {
+    return this.mutate(
+      "POST",
+      `/trips/${encodeURIComponent(tripId)}/schedules/${encodeURIComponent(scheduleId)}/unassign`,
+    );
+  }
+
+  async moveSchedule(tripId: string, scheduleId: string, body: unknown): Promise<unknown> {
+    return this.mutate(
+      "POST",
+      `/trips/${encodeURIComponent(tripId)}/schedules/${encodeURIComponent(scheduleId)}/move`,
+      body,
+    );
   }
 }

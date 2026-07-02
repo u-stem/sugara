@@ -357,6 +357,62 @@ describe("ApiClient", () => {
       expect(errorMessage).toContain("記事");
     });
 
+    it("includes the pattern limit value when reason is pattern_limit_reached", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          {
+            error: {
+              code: "conflict",
+              reason: "pattern_limit_reached",
+              message: "Per-day pattern limit reached",
+              details: { max: 3 },
+            },
+          },
+          409,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.createPattern("trip-1", 1, { label: "Rainy plan" });
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("3");
+      expect(errorMessage).toContain("パターン");
+    });
+
+    it("maps the cannot_delete_default_pattern reason to a Japanese message", async () => {
+      // Arrange — non-limit reason, no details
+      mockFetch.mockResolvedValue(
+        makeResponse(
+          {
+            error: {
+              code: "invalid_request",
+              reason: "cannot_delete_default_pattern",
+              message: "Cannot delete the default pattern",
+            },
+          },
+          400,
+        ),
+      );
+
+      // Act
+      let errorMessage = "";
+      try {
+        await client.deletePattern("trip-1", "pattern-1");
+      } catch (err) {
+        errorMessage = err instanceof Error ? err.message : "";
+      }
+
+      // Assert
+      expect(errorMessage).toContain("デフォルト");
+    });
+
     it("maps the trip_has_no_days reason to a Japanese message", async () => {
       // Arrange — non-limit reason, no details
       mockFetch.mockResolvedValue(
@@ -1131,6 +1187,150 @@ describe("ApiClient", () => {
 
       // Assert
       expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(`/api/v1/articles/${articleId}`);
+    });
+  });
+
+  describe("pattern methods — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const patternId = "660e8400-e29b-41d4-a716-446655440000";
+    const sourcePatternId = "660e8400-e29b-41d4-a716-446655440001";
+    const patternResponse = {
+      id: patternId,
+      label: "Rainy plan",
+      isDefault: false,
+      sortOrder: 1,
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+
+    it("createPattern POSTs to /trips/:tripId/days/:dayNumber/patterns with the label body", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(patternResponse, 201));
+
+      // Act
+      await client.createPattern(tripId, 2, { label: "Rainy plan" });
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/days/2/patterns`,
+      );
+      expect(getFirstCallBody(mockFetch.mock.calls)).toEqual({ label: "Rainy plan" });
+    });
+
+    it("updatePattern PATCHes /trips/:tripId/patterns/:patternId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(patternResponse, 200));
+
+      // Act
+      await client.updatePattern(tripId, patternId, { label: "Updated plan" });
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("PATCH");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/patterns/${patternId}`,
+      );
+    });
+
+    it("deletePattern DELETEs /trips/:tripId/patterns/:patternId", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse({ id: patternId, deleted: true }, 200));
+
+      // Act
+      await client.deletePattern(tripId, patternId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("DELETE");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/patterns/${patternId}`,
+      );
+    });
+
+    it("duplicatePattern POSTs to /trips/:tripId/patterns/:patternId/duplicate with no body", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(patternResponse, 201));
+
+      // Act
+      await client.duplicatePattern(tripId, patternId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/patterns/${patternId}/duplicate`,
+      );
+      const headers = getFirstCallHeaders(mockFetch.mock.calls);
+      expect(headers["Content-Type"]).toBeUndefined();
+      const [, initArg] = mockFetch.mock.calls[0];
+      expect(initArg?.body).toBeUndefined();
+    });
+
+    it("overwritePattern POSTs to /trips/:tripId/patterns/:patternId/overwrite with sourcePatternId body", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(patternResponse, 200));
+
+      // Act
+      await client.overwritePattern(tripId, patternId, { sourcePatternId });
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/patterns/${patternId}/overwrite`,
+      );
+      expect(getFirstCallBody(mockFetch.mock.calls)).toEqual({ sourcePatternId });
+    });
+  });
+
+  describe("schedule-assignment methods — request assembly", () => {
+    const tripId = "550e8400-e29b-41d4-a716-446655440000";
+    const scheduleId = "660e8400-e29b-41d4-a716-446655440000";
+    const patternId = "660e8400-e29b-41d4-a716-446655440001";
+    const scheduleResponse = { id: scheduleId, name: "Test schedule" };
+
+    it("assignCandidate POSTs to /trips/:tripId/candidates/:scheduleId/assign with patternId body", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(scheduleResponse, 200));
+
+      // Act
+      await client.assignCandidate(tripId, scheduleId, { patternId });
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/candidates/${scheduleId}/assign`,
+      );
+      expect(getFirstCallBody(mockFetch.mock.calls)).toEqual({ patternId });
+    });
+
+    it("unassignSchedule POSTs to /trips/:tripId/schedules/:scheduleId/unassign with no body", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(scheduleResponse, 200));
+
+      // Act
+      await client.unassignSchedule(tripId, scheduleId);
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/schedules/${scheduleId}/unassign`,
+      );
+      const headers = getFirstCallHeaders(mockFetch.mock.calls);
+      expect(headers["Content-Type"]).toBeUndefined();
+      const [, initArg] = mockFetch.mock.calls[0];
+      expect(initArg?.body).toBeUndefined();
+    });
+
+    it("moveSchedule POSTs to /trips/:tripId/schedules/:scheduleId/move with patternId body", async () => {
+      // Arrange
+      mockFetch.mockResolvedValue(makeResponse(scheduleResponse, 200));
+
+      // Act
+      await client.moveSchedule(tripId, scheduleId, { patternId });
+
+      // Assert
+      expect(getFirstCallMethod(mockFetch.mock.calls)).toBe("POST");
+      expect(getFirstCallUrl(mockFetch.mock.calls)).toContain(
+        `/api/v1/trips/${tripId}/schedules/${scheduleId}/move`,
+      );
+      expect(getFirstCallBody(mockFetch.mock.calls)).toEqual({ patternId });
     });
   });
 });

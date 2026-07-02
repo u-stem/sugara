@@ -2,6 +2,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   currencyCodeSchema,
   expenseCategorySchema,
+  PATTERN_LABEL_MAX_LENGTH,
   scheduleCategorySchema,
   scheduleColorSchema,
   transportMethodSchema,
@@ -81,7 +82,7 @@ export const INPUT_SHAPES = {
     q: z.string().optional(),
   },
 
-  // --- Write tools (25) ---
+  // --- Write tools (33) ---
 
   // POST /trips — caller becomes the owner member.
   create_trip: {
@@ -104,7 +105,7 @@ export const INPUT_SHAPES = {
     currency: currencyCodeSchema.optional(),
   },
 
-  // POST /trips/:tripId/days/:dayNumber/schedules — appends to the default day pattern.
+  // POST /trips/:tripId/days/:dayNumber/schedules — appends to a pattern of the day.
   create_schedule: {
     tripId: z.string().uuid(),
     // 1-indexed day number within the trip; check get_trip for the total day count
@@ -125,6 +126,9 @@ export const INPUT_SHAPES = {
     color: scheduleColorSchema.optional(),
     // how many extra days the schedule spans (1 = next day)
     endDayOffset: z.number().int().min(1).max(30).optional(),
+    // target a non-default pattern on this day (get_trip's days[].patterns[].id).
+    // omitted → falls back to the day's isDefault pattern.
+    patternId: z.string().uuid().optional(),
   },
 
   // PATCH /trips/:tripId/schedules/:scheduleId — partial update.
@@ -398,6 +402,74 @@ export const INPUT_SHAPES = {
   delete_article: {
     articleId: z.string().uuid(),
   },
+
+  // --- Pattern and schedule-assignment tools (8) ---
+
+  // POST /trips/:tripId/days/:dayNumber/patterns — each day holds up to
+  // MAX_PATTERNS_PER_DAY (3) alternative schedule plans (e.g. "sunny" vs "rainy").
+  create_pattern: {
+    tripId: z.string().uuid(),
+    // 1-indexed day number within the trip; check get_trip for the total day count
+    dayNumber: z.number().int().min(1),
+    label: z.string().min(1).max(PATTERN_LABEL_MAX_LENGTH),
+  },
+
+  // PATCH /trips/:tripId/patterns/:patternId — renames a pattern (label only).
+  update_pattern: {
+    tripId: z.string().uuid(),
+    // obtain patternId from get_trip's days[].patterns[].id
+    patternId: z.string().uuid(),
+    label: z.string().min(1).max(PATTERN_LABEL_MAX_LENGTH),
+  },
+
+  // DELETE /trips/:tripId/patterns/:patternId — idempotent; cascades to the
+  // pattern's schedules. The isDefault pattern on a day cannot be deleted.
+  delete_pattern: {
+    tripId: z.string().uuid(),
+    patternId: z.string().uuid(),
+  },
+
+  // POST /trips/:tripId/patterns/:patternId/duplicate — clones a pattern and its
+  // schedules into the same day. Returns 409 when the per-day pattern limit or
+  // the per-trip schedule limit would be exceeded.
+  duplicate_pattern: {
+    tripId: z.string().uuid(),
+    patternId: z.string().uuid(),
+  },
+
+  // POST /trips/:tripId/patterns/:patternId/overwrite — replaces all of the
+  // target pattern's schedules with clones of sourcePatternId's schedules.
+  // sourcePatternId must belong to the same day as patternId.
+  overwrite_pattern: {
+    tripId: z.string().uuid(),
+    patternId: z.string().uuid(),
+    sourcePatternId: z.string().uuid(),
+  },
+
+  // POST /trips/:tripId/candidates/:scheduleId/assign — moves a candidate
+  // (unassigned spot) into the given pattern. Only usable on candidates
+  // (use move_schedule for schedules already assigned to a pattern).
+  assign_candidate: {
+    tripId: z.string().uuid(),
+    scheduleId: z.string().uuid(),
+    patternId: z.string().uuid(),
+  },
+
+  // POST /trips/:tripId/schedules/:scheduleId/unassign — moves an assigned
+  // schedule back to the trip's unassigned candidate pool.
+  unassign_schedule: {
+    tripId: z.string().uuid(),
+    scheduleId: z.string().uuid(),
+  },
+
+  // POST /trips/:tripId/schedules/:scheduleId/move — moves an already-assigned
+  // schedule to a different pattern. Only usable on assigned schedules (use
+  // assign_candidate for unassigned candidates).
+  move_schedule: {
+    tripId: z.string().uuid(),
+    scheduleId: z.string().uuid(),
+    patternId: z.string().uuid(),
+  },
 } as const;
 
 function toolError(message: string) {
@@ -438,7 +510,7 @@ const DELETE_ANNOTATIONS = {
 } as const;
 
 /**
- * Registers all 34 sugara v1 tools with the MCP server.
+ * Registers all 42 sugara v1 tools with the MCP server.
  * Each tool maps 1:1 to a v1 endpoint and returns the raw JSON response.
  * On client errors, returns an isError result with a human-readable message.
  *
@@ -482,8 +554,11 @@ export function registerTools(server: McpServer, client: ApiClient): void {
       description:
         "Get full details of a trip by its UUID. " +
         "Returns members with memberNo (a sequential number within the trip, not a database ID) " +
-        "and days with scheduled spots. " +
-        "Call this first to obtain memberNo values before creating expenses.",
+        "and days[], each nested as { dayNumber, date, patterns: [{ id, label, isDefault, schedules }] } — " +
+        'a day can have up to 3 alternative schedule plans (e.g. "sunny" vs "rainy"), and each ' +
+        "always has exactly one isDefault pattern. Use patterns[].id as patternId for create_schedule, " +
+        "the pattern management tools, and assign_candidate/unassign_schedule/move_schedule. " +
+        "Call this first to obtain memberNo and patternId values before creating expenses or schedules.",
       inputSchema: INPUT_SHAPES.get_trip,
       annotations: READ_ANNOTATIONS,
     },
@@ -655,7 +730,7 @@ export function registerTools(server: McpServer, client: ApiClient): void {
   );
 
   // ---------------------------------------------------------------------------
-  // Write tools (20)
+  // Write tools (33)
   // ---------------------------------------------------------------------------
 
   server.registerTool(
@@ -708,6 +783,8 @@ export function registerTools(server: McpServer, client: ApiClient): void {
         "Add a schedule to a specific day of a trip. " +
         "dayNumber is 1-indexed (day 1 = first day of the trip). " +
         "Use get_trip to find the total number of days before calling this tool. " +
+        "patternId targets a non-default pattern on that day (get_trip's days[].patterns[].id); " +
+        "omit it to use the day's default pattern. " +
         "Writing to a shared trip requires editor or owner role. " +
         "Returns 409 when the trip is in scheduling/poll mode (no days) " +
         "or when the per-trip schedule limit is reached. " +
@@ -1228,6 +1305,196 @@ export function registerTools(server: McpServer, client: ApiClient): void {
     async (args) => {
       try {
         const result = await client.deleteArticle(args.articleId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Pattern and schedule-assignment tools (8)
+  // ---------------------------------------------------------------------------
+
+  server.registerTool(
+    "create_pattern",
+    {
+      description:
+        "Add an alternative schedule plan (pattern) to a specific day of a trip, " +
+        'e.g. a "rainy day" plan alongside the default. ' +
+        "dayNumber is 1-indexed. Each day holds up to 3 patterns. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Returns 409 when the day already has 3 patterns. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.create_pattern,
+      annotations: CREATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, dayNumber, ...body } = args;
+      try {
+        const result = await client.createPattern(tripId, dayNumber, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "update_pattern",
+    {
+      description:
+        "Rename a pattern (label only — sortOrder is not exposed). " +
+        "patternId is obtained from get_trip's days[].patterns[].id. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.update_pattern,
+      annotations: UPDATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, patternId, ...body } = args;
+      try {
+        const result = await client.updatePattern(tripId, patternId, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "delete_pattern",
+    {
+      description:
+        "Permanently delete a pattern and cascade-delete its schedules. " +
+        "Idempotent: always returns 200. deleted:true when the pattern was removed; " +
+        "deleted:false when the id is unknown or belongs to another trip. " +
+        "The day's isDefault pattern cannot be deleted (returns an error instead). " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.delete_pattern,
+      annotations: DELETE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.deletePattern(args.tripId, args.patternId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "duplicate_pattern",
+    {
+      description:
+        'Clone a pattern (label becomes "{source} (copy)") along with its schedules, ' +
+        "into the same day. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Returns 409 when the per-day pattern limit or the per-trip schedule limit would be exceeded. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.duplicate_pattern,
+      annotations: CREATE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.duplicatePattern(args.tripId, args.patternId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "overwrite_pattern",
+    {
+      description:
+        "Replace all of a pattern's schedules with clones of another pattern's schedules " +
+        "from the same day (sourcePatternId). This permanently deletes the target pattern's " +
+        "existing schedules before cloning — there is no undo. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Returns 409 when the per-trip schedule limit would be exceeded. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.overwrite_pattern,
+      annotations: { ...UPDATE_ANNOTATIONS, destructiveHint: true },
+    },
+    async (args) => {
+      const { tripId, patternId, ...body } = args;
+      try {
+        const result = await client.overwritePattern(tripId, patternId, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "assign_candidate",
+    {
+      description:
+        "Move a candidate (unassigned spot from the planning pool) into a pattern, " +
+        "appending it to the end of that pattern's schedule order. " +
+        "Only usable on candidates — use move_schedule for schedules already assigned to a pattern. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Returns 404 when the schedule is not an unassigned candidate, or the pattern is not in this trip. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.assign_candidate,
+      annotations: UPDATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, scheduleId, ...body } = args;
+      try {
+        const result = await client.assignCandidate(tripId, scheduleId, body);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "unassign_schedule",
+    {
+      description:
+        "Move an assigned schedule out of its pattern into the trip's unassigned candidate pool, " +
+        "appending it to the end of the candidate order. " +
+        "Only usable on assigned schedules — use delete_candidate/list_candidates for candidates. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Returns 404 when the schedule is not an assigned schedule in this trip (already a candidate). " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.unassign_schedule,
+      annotations: UPDATE_ANNOTATIONS,
+    },
+    async (args) => {
+      try {
+        const result = await client.unassignSchedule(args.tripId, args.scheduleId);
+        return toolResult(result);
+      } catch (err) {
+        return toolError(err instanceof Error ? err.message : "Unexpected error");
+      }
+    },
+  );
+
+  server.registerTool(
+    "move_schedule",
+    {
+      description:
+        "Move an already-assigned schedule to a different pattern, appending it to the end of the " +
+        "target pattern's order. Only usable on assigned schedules — use assign_candidate for " +
+        "unassigned candidates. Moving to the schedule's current pattern is a no-op that still returns 200. " +
+        "Writing to a shared trip requires editor or owner role. " +
+        "Returns 404 when the schedule is a candidate or not in this trip, or the target pattern is not in this trip. " +
+        "Requires trips:write scope.",
+      inputSchema: INPUT_SHAPES.move_schedule,
+      annotations: UPDATE_ANNOTATIONS,
+    },
+    async (args) => {
+      const { tripId, scheduleId, ...body } = args;
+      try {
+        const result = await client.moveSchedule(tripId, scheduleId, body);
         return toolResult(result);
       } catch (err) {
         return toolError(err instanceof Error ? err.message : "Unexpected error");
