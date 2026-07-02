@@ -297,4 +297,77 @@ describe("useTripMutationCallbacks", () => {
       expect(mockSetQueryData).not.toHaveBeenCalled();
     });
   });
+
+  // Schedule→candidates unassign (drag-drop): mirror of onCandidateAssigned's
+  // #166 cache-write principle. Refetching after unassign(+reorder) can
+  // return a stale read that leaves the unassigned schedule in the pattern.
+  describe("onScheduleUnassigned", () => {
+    const cachedTrip = {
+      id: "t1",
+      candidates: [{ id: "c1", sortOrder: 0, likeCount: 0, hmmCount: 0, myReaction: null }],
+      days: [
+        {
+          id: "d1",
+          patterns: [
+            {
+              id: "p1",
+              schedules: [{ id: "s1", sortOrder: 0 }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const args = {
+      scheduleId: "s1",
+      dayId: "d1",
+      patternId: "p1",
+      candidateIds: ["s1", "c1"],
+    };
+
+    it("writes the unassigned schedule at the drop index into candidates", async () => {
+      mockGetQueryData.mockReturnValue(cachedTrip);
+      const { result } = setup();
+
+      await act(() => result.current.onScheduleUnassigned(args));
+
+      const written = mockSetQueryData.mock.calls[0];
+      expect(written[0]).toEqual(["trips", "t1"]);
+      expect(written[1].days[0].patterns[0].schedules).toEqual([]);
+      expect(
+        written[1].candidates.map((c: { id: string; sortOrder: number }) => [c.id, c.sortOrder]),
+      ).toEqual([
+        ["s1", 0],
+        ["c1", 1],
+      ]);
+    });
+
+    it("does not refetch the trip detail when the cache holds the trip", async () => {
+      mockGetQueryData.mockReturnValue(cachedTrip);
+      const { result } = setup();
+
+      await act(() => result.current.onScheduleUnassigned(args));
+
+      expect(invalidateTrip).not.toHaveBeenCalled();
+    });
+
+    it("falls back to a refetch when the cache has no trip", async () => {
+      mockGetQueryData.mockReturnValue(undefined);
+      const { result } = setup();
+
+      await act(() => result.current.onScheduleUnassigned(args));
+
+      expect(invalidateTrip).toHaveBeenCalledTimes(1);
+      expect(mockSetQueryData).not.toHaveBeenCalled();
+    });
+
+    it("broadcasts the change to other clients", async () => {
+      mockGetQueryData.mockReturnValue(cachedTrip);
+      const { result } = setup();
+
+      await act(() => result.current.onScheduleUnassigned(args));
+
+      expect(broadcastChange).toHaveBeenCalledTimes(1);
+    });
+  });
 });
