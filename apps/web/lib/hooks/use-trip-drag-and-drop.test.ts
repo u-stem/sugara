@@ -1723,3 +1723,103 @@ describe("useTripDragAndDrop — drag snapshot protection and cancel", () => {
     expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
   });
 });
+
+describe("useTripDragAndDrop — stale-closure snapshot integrity", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("does not resurrect an optimistically moved item when dragStart runs from a stale render closure", async () => {
+    // dnd-kit dispatches drag callbacks from native event listeners, so a
+    // rapid second drag can invoke handleDragStart through a render closure
+    // that predates the previous drop's optimistic setState. Snapshotting
+    // from that closure's state used to write the pre-drop lists back into
+    // local state, resurrecting the just-assigned candidate — the next
+    // candidates/reorder then sent an id the server had already assigned and
+    // was rejected with a 400 (observed in browser verification).
+    let resolveAssign!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveAssign = () => res(undefined);
+        }),
+    );
+
+    const c1 = makeCandidate("c1");
+    const c2 = makeCandidate("c2");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1],
+        candidates: [c1, c2],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    // Handler reference from the CURRENT render. After op1's setState below
+    // this becomes a stale closure — exactly what a native-event dispatch
+    // racing ahead of the React commit would call.
+    const staleDragStart = result.current.handleDragStart;
+
+    // op1: drag c1 into the timeline zone (assign POST hangs in-flight).
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "c1",
+          data: { current: { type: "candidate" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    act(() => {
+      result.current.handleDragEnd({
+        active: {
+          id: "c1",
+          data: { current: { type: "candidate" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "timeline",
+          data: { current: { type: "timeline" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]);
+    });
+    expect(result.current.localCandidates.map((c) => c.id)).toEqual(["c2"]);
+    // Flush one microtask so the queued task fires the (hanging) assign POST.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // op2's dragStart arrives through the stale closure.
+    act(() => {
+      staleDragStart({
+        active: {
+          id: "c2",
+          data: { current: { type: "candidate" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+
+    // The snapshot must reflect the CURRENT optimistic state (c1 assigned,
+    // gone from candidates) — not the stale closure's pre-op1 lists.
+    expect(result.current.localCandidates.map((c) => c.id)).toEqual(["c2"]);
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s1", "c1"]);
+
+    resolveAssign();
+    await act(async () => {
+      await Promise.resolve();
+    });
+  });
+});

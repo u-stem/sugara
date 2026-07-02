@@ -172,6 +172,27 @@ export function useTripDragAndDrop({
   // null = no drag in progress; use server props directly
   const [localSchedules, setLocalSchedules] = useState<ScheduleResponse[] | null>(null);
   const [localCandidates, setLocalCandidates] = useState<CandidateResponse[] | null>(null);
+  // Write-through mirrors of the local optimistic state. dnd-kit dispatches
+  // drag callbacks from NATIVE event listeners, so a rapid second drag can
+  // run handleDragStart through a render closure that predates the previous
+  // drop's setState — reading the state variables there resurrects the
+  // pre-drop lists (e.g. a just-assigned candidate back into the candidates),
+  // and the next reorder then sends an id the server has already moved and
+  // gets rejected with a 400. Handlers therefore read these refs (always
+  // current) and write via applyLocalSchedules/applyLocalCandidates so ref
+  // and state never diverge; the state remains the render source.
+  const localSchedulesRef = useRef<ScheduleResponse[] | null>(null);
+  const localCandidatesRef = useRef<CandidateResponse[] | null>(null);
+
+  function applyLocalSchedules(next: ScheduleResponse[] | null) {
+    localSchedulesRef.current = next;
+    setLocalSchedules(next);
+  }
+
+  function applyLocalCandidates(next: CandidateResponse[] | null) {
+    localCandidatesRef.current = next;
+    setLocalCandidates(next);
+  }
   // Track last known drop zone so we can handle drops in empty space below the last item
   const [lastOverZone, setLastOverZone] = useState<"timeline" | "candidates" | null>(null);
   // Monotonic id assigned at the start of every reorder / drag-end. The
@@ -232,8 +253,8 @@ export function useTripDragAndDrop({
     opIdRef.current += 1;
 
     const source = type === "candidate" ? "candidate" : "schedule";
-    const currentSchedules = localSchedules ?? schedules;
-    const currentCandidates = localCandidates ?? candidates;
+    const currentSchedules = localSchedulesRef.current ?? schedules;
+    const currentCandidates = localCandidatesRef.current ?? candidates;
     const item =
       source === "schedule"
         ? currentSchedules.find((s) => s.id === active.id)
@@ -252,14 +273,14 @@ export function useTripDragAndDrop({
     // drag. Base it on the current optimistic state, not the raw props: while
     // a previous op is still awaiting its refetch, props hold the pre-mutation
     // order, and snapshotting them would compute this drag against stale data.
-    setLocalSchedules([...currentSchedules]);
-    setLocalCandidates([...currentCandidates]);
+    applyLocalSchedules([...currentSchedules]);
+    applyLocalCandidates([...currentCandidates]);
   }
 
   // First sortable id of the merged timeline (crossDay entries included) —
   // the target the "drag above the list" head case resolves to.
   function firstTimelineSortableId(): string | null {
-    const merged = buildMergedTimeline(localSchedules ?? schedules, crossDayEntries);
+    const merged = buildMergedTimeline(localSchedulesRef.current ?? schedules, crossDayEntries);
     const ids = timelineSortableIds(merged);
     return ids.length > 0 ? ids[0] : null;
   }
@@ -339,8 +360,8 @@ export function useTripDragAndDrop({
     // guarantees props already contain the pending op's cache write.
     return enqueue(async () => {
       if (opIdRef.current === myOpId) {
-        setLocalSchedules(null);
-        setLocalCandidates(null);
+        applyLocalSchedules(null);
+        applyLocalCandidates(null);
       }
     });
   }
@@ -409,7 +430,7 @@ export function useTripDragAndDrop({
         activeId,
         anchor,
       );
-      setLocalSchedules(reordered);
+      applyLocalSchedules(reordered);
 
       const scheduleIds = reordered.map((s) => s.id);
       const anchors = [
@@ -459,10 +480,10 @@ export function useTripDragAndDrop({
         hmmCount: 0,
         myReaction: null,
       };
-      setLocalSchedules(currentSchedules.filter((s) => s.id !== active.id));
+      applyLocalSchedules(currentSchedules.filter((s) => s.id !== active.id));
       const insertedCandidates = [...currentCandidates];
       insertedCandidates.splice(insertIdx, 0, newCandidate);
-      setLocalCandidates(insertedCandidates);
+      applyLocalCandidates(insertedCandidates);
       toast.success(tm("scheduleMovedToCandidate"));
       const candidateIds = insertedCandidates.map((c) => c.id);
       const activeId = String(active.id);
@@ -525,7 +546,7 @@ export function useTripDragAndDrop({
       const candidate = currentCandidates.find((c) => c.id === active.id);
       if (!candidate) return null;
 
-      setLocalCandidates(currentCandidates.filter((c) => c.id !== active.id));
+      applyLocalCandidates(currentCandidates.filter((c) => c.id !== active.id));
 
       const target = buildDropTarget(event, savedLastOverZone, firstTimelineSortableId());
       const { insertIndex: insertIdx, anchor } = computeCandidateDropResult(
@@ -560,7 +581,7 @@ export function useTripDragAndDrop({
 
       const insertedSchedules = [...currentSchedules];
       insertedSchedules.splice(insertIdx, 0, newSchedule);
-      setLocalSchedules(applyOptimisticReorder(insertedSchedules, activeId, anchor));
+      applyLocalSchedules(applyOptimisticReorder(insertedSchedules, activeId, anchor));
       toast.success(tm("candidateAssigned"));
 
       return async () => {
@@ -643,7 +664,7 @@ export function useTripDragAndDrop({
       if (oldIndex === overIndex) return null;
 
       const reordered = arrayMove(currentCandidates, oldIndex, overIndex);
-      setLocalCandidates(reordered);
+      applyLocalCandidates(reordered);
 
       const scheduleIds = reordered.map((c) => c.id);
       return async () => {
@@ -676,8 +697,8 @@ export function useTripDragAndDrop({
     setLastOverZone(null);
 
     // Resolve current lists once; handleDragStart captured a snapshot into state
-    const currentSchedules = localSchedules ?? schedules;
-    const currentCandidates = localCandidates ?? candidates;
+    const currentSchedules = localSchedulesRef.current ?? schedules;
+    const currentCandidates = localCandidatesRef.current ?? candidates;
 
     const apiTask = planDrop(event, savedLastOverZone, currentSchedules, currentCandidates);
 
@@ -695,8 +716,8 @@ export function useTripDragAndDrop({
         // the reset when a newer op has started — letting it stand would
         // clobber the next op's optimistic snapshot.
         if (opIdRef.current === myOpId) {
-          setLocalSchedules(null);
-          setLocalCandidates(null);
+          applyLocalSchedules(null);
+          applyLocalCandidates(null);
         }
       }
     });
@@ -706,7 +727,7 @@ export function useTripDragAndDrop({
     if (!currentDayId || !currentPatternId) return Promise.resolve();
     const dayId = currentDayId;
     const patternId = currentPatternId;
-    const current = localSchedules ?? schedules;
+    const current = localSchedulesRef.current ?? schedules;
     // Reorder by merged timeline position (what the user sees), not raw
     // sortOrder. Without this the step may skip across a crossDay entry and
     // land the schedule far from the user's "one step up/down" intent.
@@ -759,7 +780,7 @@ export function useTripDragAndDrop({
     // previously had no optimistic update at all — the anchor flip only
     // became visible after the refetch.
     reordered = applyOptimisticReorder(reordered, id, anchor);
-    setLocalSchedules(reordered);
+    applyLocalSchedules(reordered);
 
     const scheduleIds = reordered.map((s) => s.id);
     const anchors = [{ scheduleId: id, ...anchor }];
@@ -779,14 +800,14 @@ export function useTripDragAndDrop({
         await onDone();
       } finally {
         if (opIdRef.current === myOpId) {
-          setLocalSchedules(null);
+          applyLocalSchedules(null);
         }
       }
     });
   }
 
   function reorderCandidate(id: string, direction: "up" | "down"): Promise<void> {
-    const current = localCandidates ?? candidates;
+    const current = localCandidatesRef.current ?? candidates;
     const idx = current.findIndex((c) => c.id === id);
     if (idx === -1) return Promise.resolve();
     const newIdx = direction === "up" ? idx - 1 : idx + 1;
@@ -797,7 +818,7 @@ export function useTripDragAndDrop({
     const myOpId = ++opIdRef.current;
 
     const reordered = arrayMove(current, idx, newIdx);
-    setLocalCandidates(reordered);
+    applyLocalCandidates(reordered);
 
     const scheduleIds = reordered.map((c) => c.id);
     return enqueue(async () => {
@@ -816,7 +837,7 @@ export function useTripDragAndDrop({
         await onDone();
       } finally {
         if (opIdRef.current === myOpId) {
-          setLocalCandidates(null);
+          applyLocalCandidates(null);
         }
       }
     });
