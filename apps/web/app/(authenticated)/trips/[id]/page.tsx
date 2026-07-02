@@ -538,6 +538,7 @@ export default function TripDetailPage() {
     onSchedulesReordered,
     onCandidatesReordered,
     onCandidateAssigned,
+    onScheduleUnassigned,
   } = useTripMutationCallbacks({
     tripId,
     invalidateTrip,
@@ -627,6 +628,7 @@ export default function TripDetailPage() {
     onSchedulesReordered,
     onCandidatesReordered,
     onCandidateAssigned,
+    onScheduleUnassigned,
   });
 
   const patternOps = usePatternOperations({
@@ -914,6 +916,7 @@ export default function TripDetailPage() {
                 onDragOver={dnd.handleDragOver}
                 onDragMove={dnd.handleDragMove}
                 onDragEnd={dnd.handleDragEnd}
+                onDragCancel={dnd.handleDragCancel}
                 accessibility={{ announcements: dndAnnouncements }}
               >
                 {/* Mobile layout */}

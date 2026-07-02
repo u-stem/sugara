@@ -9,6 +9,7 @@ import {
   reorderCandidates,
   reorderSchedulesInPattern,
   type ScheduleAnchorUpdate,
+  unassignScheduleFromPattern,
 } from "@/lib/trip-cache";
 
 /**
@@ -140,11 +141,48 @@ export function useTripMutationCallbacks({
     [queryClient, tripId, invalidateTrip, broadcastChange],
   );
 
+  // Schedule→candidates unassign (drag-drop): same #166 cache-write principle
+  // as onCandidateAssigned. The unassign(+reorder) PATCHes are confirmed, so
+  // the resulting order is written into the cache directly. Refetching here
+  // can return a stale read that leaves the unassigned schedule in the
+  // pattern, reverting the drop.
+  const onScheduleUnassigned = useCallback(
+    async (args: {
+      scheduleId: string;
+      dayId: string;
+      patternId: string;
+      candidateIds?: string[]; // undefined = dropped into the empty candidates zone (no reorder PATCH)
+      serverData?: ScheduleResponse;
+    }) => {
+      const cacheKey = queryKeys.trips.detail(tripId);
+      await queryClient.cancelQueries({ queryKey: cacheKey });
+      const prev = queryClient.getQueryData<TripResponse>(cacheKey);
+      if (prev) {
+        queryClient.setQueryData(
+          cacheKey,
+          unassignScheduleFromPattern(
+            prev,
+            args.dayId,
+            args.patternId,
+            args.scheduleId,
+            args.candidateIds,
+            args.serverData,
+          ),
+        );
+      } else {
+        await invalidateTrip();
+      }
+      broadcastChange();
+    },
+    [queryClient, tripId, invalidateTrip, broadcastChange],
+  );
+
   return {
     onMutate,
     onCacheWritten,
     onSchedulesReordered,
     onCandidatesReordered,
     onCandidateAssigned,
+    onScheduleUnassigned,
   };
 }

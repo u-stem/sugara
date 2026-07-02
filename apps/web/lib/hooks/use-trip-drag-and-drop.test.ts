@@ -7,7 +7,7 @@ vi.mock("@/lib/api", () => ({
   api: vi.fn().mockResolvedValue(undefined),
   ApiError: class ApiError extends Error {
     status: number;
-    constructor(status: number, message: string) {
+    constructor(message: string, status: number) {
       super(message);
       this.status = status;
     }
@@ -95,6 +95,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
           onSchedulesReordered: vi.fn(),
           onCandidatesReordered: vi.fn(),
           onCandidateAssigned: vi.fn(),
+          onScheduleUnassigned: vi.fn(),
         }),
       { initialProps: { schedules: [s1, s2] } },
     );
@@ -119,6 +120,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
           onSchedulesReordered: vi.fn(),
           onCandidatesReordered: vi.fn(),
           onCandidateAssigned: vi.fn(),
+          onScheduleUnassigned: vi.fn(),
         }),
       { initialProps: { schedules: [s1, s2] } },
     );
@@ -176,6 +178,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -227,6 +230,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -299,6 +303,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -352,6 +357,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -420,6 +426,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -490,6 +497,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -567,6 +575,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -618,6 +627,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -661,6 +671,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -695,6 +706,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -787,6 +799,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -816,6 +829,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -839,6 +853,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -873,6 +888,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -902,6 +918,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered,
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -965,6 +982,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned,
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -997,6 +1015,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned,
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -1028,6 +1047,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned,
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -1035,5 +1055,771 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
 
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(onCandidateAssigned).not.toHaveBeenCalled();
+  });
+
+  // Drops schedule "s1" onto candidate "c1": unassign succeeds, then the
+  // reorder PATCH (triggered because overType === "candidate") fails.
+  function dragScheduleOverCandidate(result: {
+    current: ReturnType<typeof useTripDragAndDrop>;
+  }): Promise<void> {
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    return act(() =>
+      result.current.handleDragEnd({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "c1",
+          data: { current: { type: "candidate" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]),
+    );
+  }
+
+  it("shows conflictStale when the post-unassign candidate reorder fails with a 400", async () => {
+    const { ApiError } = await import("@/lib/api");
+    const { toast } = await import("sonner");
+    vi.mocked(api)
+      .mockResolvedValueOnce(undefined) // unassign POST
+      .mockRejectedValueOnce(new ApiError("INVALID_CANDIDATE_REORDER", 400)); // reorder PATCH
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(toast.error).toHaveBeenCalledWith("conflictStale");
+  });
+
+  it("still shows scheduleReorderFailed for a non-ApiError post-unassign reorder failure", async () => {
+    const { toast } = await import("sonner");
+    vi.mocked(api)
+      .mockResolvedValueOnce(undefined) // unassign POST
+      .mockRejectedValueOnce(new Error("network")); // reorder PATCH
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(toast.error).toHaveBeenCalledWith("scheduleReorderFailed");
+  });
+
+  // Drops schedule "s1" into the empty candidates zone (over type
+  // "candidates", not a specific candidate card) — no reorder PATCH.
+  function dragScheduleOverCandidatesZone(result: {
+    current: ReturnType<typeof useTripDragAndDrop>;
+  }): Promise<void> {
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    return act(() =>
+      result.current.handleDragEnd({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "candidates",
+          data: { current: { type: "candidates" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]),
+    );
+  }
+
+  it("routes a successful schedule→candidate drop to onScheduleUnassigned, not onDone", async () => {
+    const onDone = vi.fn();
+    const onScheduleUnassigned = vi.fn();
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone,
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned,
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(onScheduleUnassigned).toHaveBeenCalledWith({
+      scheduleId: "s1",
+      dayId: "day1",
+      patternId: "pattern1",
+      candidateIds: ["s1", "c1"],
+      serverData: undefined,
+    });
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("drops into the empty candidates zone with candidateIds undefined and no reorder PATCH", async () => {
+    const onDone = vi.fn();
+    const onScheduleUnassigned = vi.fn();
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone,
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned,
+      }),
+    );
+
+    await dragScheduleOverCandidatesZone(result);
+
+    expect(onScheduleUnassigned).toHaveBeenCalledWith({
+      scheduleId: "s1",
+      dayId: "day1",
+      patternId: "pattern1",
+      candidateIds: undefined,
+      serverData: undefined,
+    });
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1); // unassign POST only, no reorder PATCH
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("falls back to onDone when the unassign POST fails", async () => {
+    vi.mocked(api).mockRejectedValueOnce(new Error("network"));
+    const onDone = vi.fn();
+    const onScheduleUnassigned = vi.fn();
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone,
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned,
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onScheduleUnassigned).not.toHaveBeenCalled();
+  });
+
+  it("falls back to onDone when the post-unassign reorder PATCH fails, without routing to onScheduleUnassigned", async () => {
+    vi.mocked(api)
+      .mockResolvedValueOnce(undefined) // unassign POST
+      .mockRejectedValueOnce(new Error("network")); // reorder PATCH
+    const onDone = vi.fn();
+    const onScheduleUnassigned = vi.fn();
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone,
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned,
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onScheduleUnassigned).not.toHaveBeenCalled();
+  });
+});
+
+describe("useTripDragAndDrop — operation serialization (bug #2)", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  function dragScheduleOntoCandidate(
+    result: { current: ReturnType<typeof useTripDragAndDrop> },
+    activeId: string,
+    overId: string,
+  ) {
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: activeId,
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    act(() => {
+      result.current.handleDragEnd({
+        active: {
+          id: activeId,
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: overId,
+          data: { current: { type: "candidate" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]);
+    });
+  }
+
+  it("holds the second drop's API call until the first drop's API call settles, then runs both in order", async () => {
+    // Bug #2 repro: without the queue, op2's unassign POST used to fire
+    // immediately after op2's drop even though op1's unassign hadn't
+    // committed yet — the server could then see op2's scheduleIds computed
+    // against a pre-op1 snapshot and reject the reorder with a 400.
+    let resolveUnassignS1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveUnassignS1 = () => res(undefined);
+        }),
+    );
+
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    // op1: drag s1 onto c1 — the unassign POST hangs. The API call itself
+    // fires from the queued task, one microtask after the synchronous drop.
+    dragScheduleOntoCandidate(result, "s1", "c1");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1);
+
+    // op2: drag s2 onto c1 before op1 has settled. op2's task is chained
+    // behind op1's still-pending task, so it can't even start yet.
+    dragScheduleOntoCandidate(result, "s2", "c1");
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1);
+
+    // op2's optimistic update is visible immediately regardless of op1's
+    // in-flight API call.
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual([]);
+    expect(result.current.localCandidates.map((c) => c.id)).toEqual(["s1", "s2", "c1"]);
+
+    resolveUnassignS1();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(4);
+    const urls = vi.mocked(api).mock.calls.map((call) => call[0]);
+    expect(urls).toEqual([
+      "/api/trips/trip1/schedules/s1/unassign", // op1 unassign
+      "/api/trips/trip1/candidates/reorder", // op1 reorder
+      "/api/trips/trip1/schedules/s2/unassign", // op2 unassign
+      "/api/trips/trip1/candidates/reorder", // op2 reorder
+    ]);
+  });
+
+  it("queues a no-op drop's snapshot reset behind an in-flight operation instead of resetting immediately", async () => {
+    let resolveUnassignS1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveUnassignS1 = () => res(undefined);
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    // op1: drag s1 into the empty candidates zone — unassign POST hangs.
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    act(() => {
+      result.current.handleDragEnd({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "candidates",
+          data: { current: { type: "candidates" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]);
+    });
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2"]);
+
+    // Let op1's queued task start and call the (hung) unassign POST, so
+    // `resolveUnassignS1` gets assigned before we need it below.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // op2: a drop that resolves to no-op (released outside all droppables
+    // with no last hovered zone).
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    act(() => {
+      result.current.handleDragEnd({
+        active: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: null,
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]);
+    });
+
+    // op2's no-op reset must not run while op1's API is still in-flight —
+    // resetting now would fall back to props ([s1, s2]) that don't yet
+    // reflect op1's unassign (a visible snap-back).
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2"]);
+
+    resolveUnassignS1();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // After op1 settles and op2's queued no-op reset runs, local state falls
+    // back to props.
+    expect(result.current.localSchedules).toStrictEqual([s1, s2]);
+  });
+});
+
+describe("useTripDragAndDrop — drag snapshot protection and cancel", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  function startDrag(result: { current: ReturnType<typeof useTripDragAndDrop> }, id: string) {
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id,
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+  }
+
+  it("keeps the drag snapshot intact when a preceding operation's finally runs mid-drag", async () => {
+    // Amplification-factor repro (bug #1): without the opId bump in
+    // handleDragStart, op1's finally (queued behind nothing here, but
+    // conceptually any in-flight op) would see opIdRef unchanged and reset
+    // localSchedules to null, falling back to the pre-mutation props while
+    // this drag is in progress.
+    let resolveOp1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveOp1 = () => res(undefined);
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.reorderSchedule("s2", "up");
+    });
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    // Let op1's queued task start and call the (hung) API, so `resolveOp1`
+    // gets assigned before we need it below.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // A new drag starts while op1's API call is still in-flight — this must
+    // claim a fresh op id so op1's eventual finally can't clobber the
+    // snapshot this drag captures.
+    startDrag(result, "s1");
+
+    resolveOp1();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+  });
+
+  it("clears activeDragItem and releases the snapshot on cancel", async () => {
+    const { result, rerender } = renderHook(
+      ({ schedules }) =>
+        useTripDragAndDrop({
+          tripId: "trip1",
+          currentDayId: "day1",
+          currentPatternId: "pattern1",
+          schedules,
+          candidates: [],
+          onDone: vi.fn(),
+          onSchedulesReordered: vi.fn(),
+          onCandidatesReordered: vi.fn(),
+          onCandidateAssigned: vi.fn(),
+          onScheduleUnassigned: vi.fn(),
+        }),
+      { initialProps: { schedules: [s1, s2] } },
+    );
+
+    startDrag(result, "s1");
+    expect(result.current.activeDragItem).not.toBeNull();
+
+    await act(async () => {
+      await result.current.handleDragCancel();
+    });
+
+    expect(result.current.activeDragItem).toBeNull();
+
+    // Local snapshot released — prop changes are reflected again.
+    rerender({ schedules: [s1, s2, s3] });
+    expect(result.current.localSchedules).toHaveLength(3);
+  });
+
+  it("defers the cancel's snapshot reset until an in-flight operation completes", async () => {
+    let resolveOp1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveOp1 = () => res(undefined);
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.reorderSchedule("s2", "up");
+    });
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    // Let op1's queued task start and call the (hung) API, so `resolveOp1`
+    // gets assigned before we need it below.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    startDrag(result, "s1");
+
+    let cancelPromise!: Promise<void>;
+    act(() => {
+      cancelPromise = result.current.handleDragCancel();
+    });
+
+    // The cancel's reset is queued behind op1's still-pending task — the
+    // snapshot must not be cleared yet.
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    resolveOp1();
+    await act(async () => {
+      await cancelPromise;
+    });
+
+    // op1 settles, its own finally is skipped (opId moved on), and the
+    // queued cancel reset runs — falling back to props.
+    expect(result.current.localSchedules).toStrictEqual([s1, s2]);
+  });
+
+  it("skips the cancel's reset when a new drag has already started", async () => {
+    let resolveOp1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveOp1 = () => res(undefined);
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.reorderSchedule("s2", "up");
+    });
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    // Let op1's queued task start and call the (hung) API, so `resolveOp1`
+    // gets assigned before we need it below.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    startDrag(result, "s1");
+
+    let cancelPromise!: Promise<void>;
+    act(() => {
+      cancelPromise = result.current.handleDragCancel();
+    });
+
+    // A new drag starts before the cancel's queued reset has run — it must
+    // capture its own snapshot and be protected from the stale cancel reset.
+    startDrag(result, "s2");
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    resolveOp1();
+    await act(async () => {
+      await cancelPromise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The cancel's reset was for a now-stale op id and must have skipped —
+    // the newer drag's snapshot is still intact, not reset to null.
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+  });
+});
+
+describe("useTripDragAndDrop — stale-closure snapshot integrity", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  it("does not resurrect an optimistically moved item when dragStart runs from a stale render closure", async () => {
+    // dnd-kit dispatches drag callbacks from native event listeners, so a
+    // rapid second drag can invoke handleDragStart through a render closure
+    // that predates the previous drop's optimistic setState. Snapshotting
+    // from that closure's state used to write the pre-drop lists back into
+    // local state, resurrecting the just-assigned candidate — the next
+    // candidates/reorder then sent an id the server had already assigned and
+    // was rejected with a 400 (observed in browser verification).
+    let resolveAssign!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveAssign = () => res(undefined);
+        }),
+    );
+
+    const c1 = makeCandidate("c1");
+    const c2 = makeCandidate("c2");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1],
+        candidates: [c1, c2],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    // Handler reference from the CURRENT render. After op1's setState below
+    // this becomes a stale closure — exactly what a native-event dispatch
+    // racing ahead of the React commit would call.
+    const staleDragStart = result.current.handleDragStart;
+
+    // op1: drag c1 into the timeline zone (assign POST hangs in-flight).
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "c1",
+          data: { current: { type: "candidate" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    act(() => {
+      result.current.handleDragEnd({
+        active: {
+          id: "c1",
+          data: { current: { type: "candidate" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "timeline",
+          data: { current: { type: "timeline" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]);
+    });
+    expect(result.current.localCandidates.map((c) => c.id)).toEqual(["c2"]);
+    // Flush one microtask so the queued task fires the (hanging) assign POST.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // op2's dragStart arrives through the stale closure.
+    act(() => {
+      staleDragStart({
+        active: {
+          id: "c2",
+          data: { current: { type: "candidate" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+
+    // The snapshot must reflect the CURRENT optimistic state (c1 assigned,
+    // gone from candidates) — not the stale closure's pre-op1 lists.
+    expect(result.current.localCandidates.map((c) => c.id)).toEqual(["c2"]);
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s1", "c1"]);
+
+    resolveAssign();
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 });

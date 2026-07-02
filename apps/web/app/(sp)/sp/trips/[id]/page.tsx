@@ -169,6 +169,7 @@ export default function SpTripDetailPage() {
     onSchedulesReordered,
     onCandidatesReordered,
     onCandidateAssigned,
+    onScheduleUnassigned,
   } = useTripMutationCallbacks({
     tripId: tripId ?? "",
     invalidateTrip,
@@ -256,6 +257,7 @@ export default function SpTripDetailPage() {
     onSchedulesReordered,
     onCandidatesReordered,
     onCandidateAssigned,
+    onScheduleUnassigned,
   });
 
   const patternOps = usePatternOperations({
@@ -603,6 +605,7 @@ export default function SpTripDetailPage() {
                   onDragOver={dnd.handleDragOver}
                   onDragMove={dnd.handleDragMove}
                   onDragEnd={dnd.handleDragEnd}
+                  onDragCancel={dnd.handleDragCancel}
                   accessibility={{ announcements: undefined }}
                 >
                   {/* SP mobile layout — always visible, no lg:hidden */}

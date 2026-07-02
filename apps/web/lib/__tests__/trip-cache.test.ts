@@ -19,6 +19,7 @@ import {
   setCandidateReaction,
   toCandidateResponse,
   toScheduleResponse,
+  unassignScheduleFromPattern,
   updateCandidate,
   updateScheduleInPattern,
 } from "../trip-cache";
@@ -465,6 +466,53 @@ describe("assignCandidateToPattern", () => {
       crossDayAnchor: "before",
       crossDayAnchorSourceId: "hotel-1",
     });
+  });
+});
+
+describe("unassignScheduleFromPattern", () => {
+  it("removes the schedule from the pattern and inserts it into candidates at the drop index", () => {
+    const schedule = makeSchedule({ id: "s1", name: "Unassign me" });
+    const existingCandidate = makeCandidate({ id: "c1" });
+    const trip = makeTrip({
+      days: [makeDay({ patterns: [makePattern({ schedules: [schedule] })] })],
+      candidates: [existingCandidate],
+    });
+
+    // candidateIds places the unassigned schedule before the existing candidate.
+    const result = unassignScheduleFromPattern(trip, "d1", "p1", "s1", ["s1", "c1"]);
+
+    expect(result.days[0].patterns[0].schedules).toEqual([]);
+    expect(result.candidates.map((c) => [c.id, c.sortOrder])).toEqual([
+      ["s1", 0],
+      ["c1", 1],
+    ]);
+  });
+
+  it("appends the schedule to the end of candidates when candidateIds is omitted", () => {
+    const schedule = makeSchedule({ id: "s1", name: "Unassign me" });
+    const existingCandidate = makeCandidate({ id: "c1" });
+    const trip = makeTrip({
+      days: [makeDay({ patterns: [makePattern({ schedules: [schedule] })] })],
+      candidates: [existingCandidate],
+    });
+
+    const result = unassignScheduleFromPattern(trip, "d1", "p1", "s1");
+
+    expect(result.candidates.map((c) => c.id)).toEqual(["c1", "s1"]);
+  });
+
+  it("passes serverData through to the resulting candidate", () => {
+    const schedule = makeSchedule({ id: "s1", sortOrder: 0, updatedAt: "old" });
+    const serverData = makeSchedule({ id: "s1", sortOrder: 5, updatedAt: "new" });
+    const trip = makeTrip({
+      days: [makeDay({ patterns: [makePattern({ schedules: [schedule] })] })],
+      candidates: [],
+    });
+
+    const result = unassignScheduleFromPattern(trip, "d1", "p1", "s1", undefined, serverData);
+
+    expect(result.candidates[0].sortOrder).toBe(5);
+    expect(result.candidates[0].updatedAt).toBe("new");
   });
 });
 
