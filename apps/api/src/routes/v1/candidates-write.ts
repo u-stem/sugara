@@ -27,17 +27,20 @@ import { batchCreateCandidatesCore, createCandidateCore } from "../../lib/candid
 import { ApiV1Error, getApiKey, type V1Env } from "../../lib/external-api/errors";
 import { hasChanges } from "../../lib/has-changes";
 import { notifyTripMembersExcluding } from "../../lib/notifications";
+import { assignScheduleToPattern } from "../../lib/schedule-assignment";
 import { getScheduleCount } from "../../lib/schedule-count";
 import { requireApiKey } from "../../middleware/require-api-key";
 import { errorResponseSchema } from "./openapi-schemas";
 import { serializeScheduleDto } from "./serializers";
-import { getActorName, uuidSchema, withTripAccess } from "./shared";
+import { getActorName, getPatternInTrip, uuidSchema, withTripAccess } from "./shared";
 import {
+  v1AssignCandidateSchema,
   v1BatchCreateCandidateSchema,
   v1CandidateBatchWriteResponseSchema,
   v1CandidateWriteResponseSchema,
   v1CreateScheduleSchema,
   v1DeleteResponseSchema,
+  v1ScheduleWriteResponseSchema,
   v1UpdateScheduleSchema,
 } from "./write-schemas";
 
@@ -469,6 +472,113 @@ candidatesWriteApp.delete(
         deleted: false,
         remaining: { count: scheduleCount, max: MAX_SCHEDULES_PER_TRIP },
       });
+    },
+    { minRole: "editor" },
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// POST /trips/:tripId/candidates/:scheduleId/assign
+// ---------------------------------------------------------------------------
+
+candidatesWriteApp.post(
+  "/trips/:tripId/candidates/:scheduleId/assign",
+  describeRoute({
+    tags: ["Candidates"],
+    summary: "Assign a candidate to a pattern",
+    description:
+      "Moves a candidate (unassigned spot) into the given pattern, appending it to the end of that " +
+      "pattern's schedule order. Returns 404 when the schedule is not an unassigned candidate in this " +
+      "trip, or when the pattern does not belong to this trip. Requires `trips:write` scope.",
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "tripId",
+        in: "path",
+        required: true,
+        description: "Trip UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+      {
+        name: "scheduleId",
+        in: "path",
+        required: true,
+        description: "Candidate (schedule) UUID.",
+        schema: { type: "string", format: "uuid" },
+      },
+    ],
+    requestBody: {
+      required: true,
+      content: { "application/json": { schema: { type: "object" } } },
+    },
+    responses: {
+      200: {
+        description: "Candidate assigned to the pattern",
+        content: { "application/json": { schema: resolver(v1ScheduleWriteResponseSchema) } },
+      },
+      400: {
+        description: "Invalid request body or candidate id",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      401: {
+        description: "Missing or invalid API key",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      403: {
+        description: "Insufficient scope",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+      404: {
+        description: "Candidate not found in this trip, or pattern not in this trip",
+        content: { "application/json": { schema: resolver(errorResponseSchema) } },
+      },
+    },
+  }),
+  requireApiKey("trips:write"),
+  withTripAccess(
+    "tripId",
+    async (c, tripId) => {
+      const key = getApiKey(c);
+
+      const parsedId = uuidSchema.safeParse(c.req.param("scheduleId"));
+      if (!parsedId.success) {
+        throw new ApiV1Error(400, "invalid_request", "Invalid candidate id");
+      }
+      const scheduleId = parsedId.data;
+
+      const body = await c.req.json();
+      const parsed = v1AssignCandidateSchema.safeParse(body);
+      if (!parsed.success) {
+        throw new ApiV1Error(400, "invalid_request", "Invalid request body");
+      }
+
+      const existing = await db.query.schedules.findFirst({
+        where: and(
+          eq(schedules.id, scheduleId),
+          eq(schedules.tripId, tripId),
+          isNull(schedules.dayPatternId),
+        ),
+      });
+      if (!existing) {
+        throw new ApiV1Error(404, "not_found", "Candidate not found in this trip");
+      }
+
+      const pattern = await getPatternInTrip(tripId, parsed.data.patternId);
+      if (!pattern) {
+        throw new ApiV1Error(404, "not_found", "Pattern not found in this trip");
+      }
+
+      const updated = await assignScheduleToPattern(scheduleId, pattern.id);
+
+      logActivity({
+        tripId,
+        userId: key.userId,
+        action: "assigned",
+        entityType: "candidate",
+        entityName: updated.name,
+      });
+
+      return c.json(serializeScheduleDto(updated));
     },
     { minRole: "editor" },
   ),

@@ -15,6 +15,7 @@ import {
   MAX_BOOKMARK_LISTS_PER_USER,
   MAX_BOOKMARKS_PER_LIST,
   MAX_EXPENSES_PER_TRIP,
+  MAX_PATTERNS_PER_DAY,
   MAX_SCHEDULES_PER_TRIP,
   MAX_SOUVENIRS_PER_USER_PER_TRIP,
 } from "@sugara/shared";
@@ -39,6 +40,11 @@ const {
   mockBatchCreateCandidatesCore,
   mockBatchCreateSouvenirsCore,
   mockDbDelete,
+  mockCreateDayPatternCore,
+  mockDuplicateDayPatternCore,
+  mockOverwriteDayPatternCore,
+  mockAssignScheduleToPattern,
+  mockUnassignScheduleToCandidates,
 } = vi.hoisted(() => ({
   mockVerifyApiKey: vi.fn(),
   mockCheckTripAccess: vi.fn(),
@@ -51,7 +57,8 @@ const {
     bookmarks: { findFirst: vi.fn(), findMany: vi.fn() },
     articles: { findFirst: vi.fn(), findMany: vi.fn() },
     articleTrips: { findMany: vi.fn() },
-    tripDays: { findMany: vi.fn() },
+    tripDays: { findMany: vi.fn(), findFirst: vi.fn() },
+    dayPatterns: { findFirst: vi.fn() },
     users: { findFirst: vi.fn() },
     schedules: { findFirst: vi.fn() },
     souvenirItems: { findFirst: vi.fn() },
@@ -71,6 +78,11 @@ const {
   mockBatchCreateCandidatesCore: vi.fn(),
   mockBatchCreateSouvenirsCore: vi.fn(),
   mockDbDelete: vi.fn(),
+  mockCreateDayPatternCore: vi.fn(),
+  mockDuplicateDayPatternCore: vi.fn(),
+  mockOverwriteDayPatternCore: vi.fn(),
+  mockAssignScheduleToPattern: vi.fn(),
+  mockUnassignScheduleToCandidates: vi.fn(),
 }));
 
 vi.mock("../lib/external-api/api-key", () => ({
@@ -118,6 +130,17 @@ vi.mock("../lib/trip-service", () => ({
 vi.mock("../lib/expense-service", () => ({
   createExpenseCore: (...args: unknown[]) => mockCreateExpenseCore(...args),
   updateExpenseCore: (...args: unknown[]) => mockUpdateExpenseCore(...args),
+}));
+
+vi.mock("../lib/pattern-service", () => ({
+  createDayPatternCore: (...args: unknown[]) => mockCreateDayPatternCore(...args),
+  duplicateDayPatternCore: (...args: unknown[]) => mockDuplicateDayPatternCore(...args),
+  overwriteDayPatternCore: (...args: unknown[]) => mockOverwriteDayPatternCore(...args),
+}));
+
+vi.mock("../lib/schedule-assignment", () => ({
+  assignScheduleToPattern: (...args: unknown[]) => mockAssignScheduleToPattern(...args),
+  unassignScheduleToCandidates: (...args: unknown[]) => mockUnassignScheduleToCandidates(...args),
 }));
 
 vi.mock("../lib/bookmark-ownership", () => ({
@@ -458,7 +481,7 @@ describe("POST /trips/:tripId/days/:dayNumber/schedules", () => {
     mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
     mockCheckTripAccess.mockResolvedValue("editor");
     mockDbQuery.tripDays.findMany.mockResolvedValue([
-      { id: "day-1", dayNumber: 1, patterns: [{ id: "pattern-1" }] },
+      { id: "day-1", dayNumber: 1, patterns: [{ id: "pattern-1", isDefault: true }] },
     ]);
     mockGetScheduleCount.mockResolvedValue(MAX_SCHEDULES_PER_TRIP);
 
@@ -482,7 +505,7 @@ describe("POST /trips/:tripId/days/:dayNumber/schedules", () => {
     mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
     mockCheckTripAccess.mockResolvedValue("editor");
     mockDbQuery.tripDays.findMany.mockResolvedValue([
-      { id: "day-1", dayNumber: 1, patterns: [{ id: "pattern-1" }] },
+      { id: "day-1", dayNumber: 1, patterns: [{ id: "pattern-1", isDefault: true }] },
     ]);
     mockGetScheduleCount.mockResolvedValueOnce(0);
     mockGetNextSortOrder.mockResolvedValueOnce(0);
@@ -2144,5 +2167,540 @@ describe("DELETE /trips/:tripId/souvenirs/:itemId", () => {
     expect(res.status).toBe(200);
     expect(body.deleted).toBe(true);
     expect(body.remaining).toEqual({ count: 2, max: MAX_SOUVENIRS_PER_USER_PER_TRIP });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Patterns
+// ---------------------------------------------------------------------------
+
+const PATTERN_ID = "55555555-0000-0000-0000-000000000001";
+const OTHER_PATTERN_ID = "55555555-0000-0000-0000-000000000002";
+const DAY_ID = "66666666-0000-0000-0000-000000000001";
+const ASSIGNED_SCHEDULE_ID = "77777777-0000-0000-0000-000000000001";
+
+function patternRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: PATTERN_ID,
+    tripDayId: DAY_ID,
+    label: "Sunny",
+    isDefault: false,
+    sortOrder: 1,
+    createdAt: new Date("2026-06-01T00:00:00Z"),
+    ...overrides,
+  };
+}
+
+function patternWithTripDay(overrides: Record<string, unknown> = {}) {
+  return {
+    ...patternRow(),
+    tripDay: { id: DAY_ID, tripId: TRIP_ID },
+    ...overrides,
+  };
+}
+
+describe("POST /trips/:tripId/days/:dayNumber/patterns", () => {
+  it("returns 403 when key has only trips:read", async () => {
+    mockVerifyApiKey.mockResolvedValue({ ...WRITE_KEY, scopes: ["trips:read"] });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/1/patterns`, { label: "Rainy" });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 when caller has viewer role", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("viewer");
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/1/patterns`, { label: "Rainy" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when dayNumber is out of range", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripDays.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/99/patterns`, { label: "Rainy" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 201 with the created pattern DTO on success", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripDays.findFirst.mockResolvedValue({ id: DAY_ID });
+    mockCreateDayPatternCore.mockResolvedValue({
+      ok: true,
+      pattern: patternRow({ label: "Rainy" }),
+    });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/1/patterns`, { label: "Rainy" });
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.label).toBe("Rainy");
+    expect(body.isDefault).toBe(false);
+    expect(body).not.toHaveProperty("tripDayId");
+  });
+
+  it("includes pattern_limit_reached reason and details.max at the per-day ceiling", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripDays.findFirst.mockResolvedValue({ id: DAY_ID });
+    mockCreateDayPatternCore.mockResolvedValue({ ok: false, error: "pattern_limit_reached" });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/1/patterns`, { label: "Rainy" });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error.code).toBe("conflict");
+    expect(body.error.reason).toBe("pattern_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_PATTERNS_PER_DAY });
+  });
+
+  it("returns 400 when the body is missing the label", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripDays.findFirst.mockResolvedValue({ id: DAY_ID });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/1/patterns`, {});
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH /trips/:tripId/patterns/:patternId", () => {
+  it("returns 404 when the pattern does not belong to this trip", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonPatch(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}`, { label: "New" });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.error.code).toBe("not_found");
+  });
+
+  it("returns 200 with the renamed pattern on success", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(patternWithTripDay({ label: "Old" }));
+    mockDbUpdate.mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([patternRow({ label: "New" })]),
+        }),
+      }),
+    });
+
+    const res = await jsonPatch(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}`, { label: "New" });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.label).toBe("New");
+  });
+
+  it("returns 400 for a non-UUID pattern id", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+
+    const res = await jsonPatch(`/trips/${TRIP_ID}/patterns/not-a-uuid`, { label: "New" });
+
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("DELETE /trips/:tripId/patterns/:patternId", () => {
+  it("returns 200 with deleted:false when the pattern is unknown (idempotent)", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonDelete(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}`);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ id: PATTERN_ID, deleted: false });
+  });
+
+  it("returns 400 with cannot_delete_default_pattern when the pattern is the default", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(patternWithTripDay({ isDefault: true }));
+
+    const res = await jsonDelete(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}`);
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error.reason).toBe("cannot_delete_default_pattern");
+  });
+
+  it("returns 200 with deleted:true when a non-default pattern is removed", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(patternWithTripDay({ isDefault: false }));
+    mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+
+    const res = await jsonDelete(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}`);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ id: PATTERN_ID, deleted: true });
+  });
+});
+
+describe("POST /trips/:tripId/patterns/:patternId/duplicate", () => {
+  it("returns 404 when the pattern does not belong to this trip", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}/duplicate`, {});
+
+    expect(res.status).toBe(404);
+  });
+
+  it("includes schedule_limit_reached reason and details.max when duplicating would exceed the cap", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(
+      patternWithTripDay({ schedules: [{ id: "s1" }] }),
+    );
+    mockDuplicateDayPatternCore.mockResolvedValue({ ok: false, error: "schedule_limit_reached" });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}/duplicate`, {});
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error.reason).toBe("schedule_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  it("returns 201 with the duplicated pattern on success", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(patternWithTripDay({ schedules: [] }));
+    mockDuplicateDayPatternCore.mockResolvedValue({
+      ok: true,
+      pattern: patternRow({ label: "Sunny (copy)" }),
+    });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}/duplicate`, {});
+    const body = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(body.label).toBe("Sunny (copy)");
+  });
+});
+
+describe("POST /trips/:tripId/patterns/:patternId/overwrite", () => {
+  it("returns 404 when the target pattern does not belong to this trip", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}/overwrite`, {
+      sourcePatternId: OTHER_PATTERN_ID,
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when the source pattern is on a different day", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst
+      .mockResolvedValueOnce(patternWithTripDay())
+      .mockResolvedValueOnce(
+        patternWithTripDay({
+          id: OTHER_PATTERN_ID,
+          tripDay: { id: "99999999-0000-0000-0000-000000000001", tripId: TRIP_ID },
+        }),
+      );
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}/overwrite`, {
+      sourcePatternId: OTHER_PATTERN_ID,
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("includes schedule_limit_reached reason and details.max when overwrite would exceed the cap", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst
+      .mockResolvedValueOnce(patternWithTripDay())
+      .mockResolvedValueOnce(
+        patternWithTripDay({ id: OTHER_PATTERN_ID, schedules: [{ id: "s1" }] }),
+      );
+    mockOverwriteDayPatternCore.mockResolvedValue({ ok: false, error: "schedule_limit_reached" });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}/overwrite`, {
+      sourcePatternId: OTHER_PATTERN_ID,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(body.error.reason).toBe("schedule_limit_reached");
+    expect(body.error.details).toEqual({ max: MAX_SCHEDULES_PER_TRIP });
+  });
+
+  it("returns 200 with the target pattern on success", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.dayPatterns.findFirst
+      .mockResolvedValueOnce(patternWithTripDay())
+      .mockResolvedValueOnce(patternWithTripDay({ id: OTHER_PATTERN_ID, schedules: [] }));
+    mockOverwriteDayPatternCore.mockResolvedValue({ ok: true });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/patterns/${PATTERN_ID}/overwrite`, {
+      sourcePatternId: OTHER_PATTERN_ID,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.id).toBe(PATTERN_ID);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Candidate assign / schedule unassign / schedule move
+// ---------------------------------------------------------------------------
+
+describe("POST /trips/:tripId/candidates/:scheduleId/assign", () => {
+  it("returns 404 when the schedule is not an unassigned candidate in this trip", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ROW.id}/assign`, {
+      patternId: PATTERN_ID,
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when the pattern does not belong to this trip", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue(CANDIDATE_ROW);
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ROW.id}/assign`, {
+      patternId: PATTERN_ID,
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 with the assigned schedule on success", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue(CANDIDATE_ROW);
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(patternWithTripDay());
+    mockAssignScheduleToPattern.mockResolvedValue({
+      ...CANDIDATE_ROW,
+      dayPatternId: PATTERN_ID,
+      sortOrder: 0,
+    });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/candidates/${CANDIDATE_ROW.id}/assign`, {
+      patternId: PATTERN_ID,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.id).toBe(CANDIDATE_ROW.id);
+    expect(mockAssignScheduleToPattern).toHaveBeenCalledWith(CANDIDATE_ROW.id, PATTERN_ID);
+  });
+});
+
+describe("POST /trips/:tripId/schedules/:scheduleId/unassign", () => {
+  it("returns 404 when the schedule is already a candidate", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue({ ...CANDIDATE_ROW, dayPatternId: null });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/schedules/${ASSIGNED_SCHEDULE_ID}/unassign`, {});
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when the schedule belongs to another trip", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue({
+      ...CANDIDATE_ROW,
+      tripId: "ffffffff-0000-0000-0000-000000000099",
+      dayPatternId: PATTERN_ID,
+    });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/schedules/${ASSIGNED_SCHEDULE_ID}/unassign`, {});
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 200 with the unassigned schedule on success", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue({
+      ...CANDIDATE_ROW,
+      id: ASSIGNED_SCHEDULE_ID,
+      dayPatternId: PATTERN_ID,
+    });
+    mockUnassignScheduleToCandidates.mockResolvedValue({
+      ...CANDIDATE_ROW,
+      id: ASSIGNED_SCHEDULE_ID,
+      dayPatternId: null,
+    });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/schedules/${ASSIGNED_SCHEDULE_ID}/unassign`, {});
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.id).toBe(ASSIGNED_SCHEDULE_ID);
+    expect(mockUnassignScheduleToCandidates).toHaveBeenCalledWith(TRIP_ID, ASSIGNED_SCHEDULE_ID);
+  });
+});
+
+describe("POST /trips/:tripId/schedules/:scheduleId/move", () => {
+  it("returns 404 when the schedule is an unassigned candidate (must use assign)", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue({ ...CANDIDATE_ROW, dayPatternId: null });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/schedules/${ASSIGNED_SCHEDULE_ID}/move`, {
+      patternId: OTHER_PATTERN_ID,
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 when the target pattern does not belong to this trip", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue({
+      ...CANDIDATE_ROW,
+      id: ASSIGNED_SCHEDULE_ID,
+      dayPatternId: PATTERN_ID,
+    });
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(undefined);
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/schedules/${ASSIGNED_SCHEDULE_ID}/move`, {
+      patternId: OTHER_PATTERN_ID,
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("is a no-op that returns 200 without calling assignScheduleToPattern when the target is the current pattern", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue({
+      ...CANDIDATE_ROW,
+      id: ASSIGNED_SCHEDULE_ID,
+      dayPatternId: PATTERN_ID,
+    });
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(patternWithTripDay({ id: PATTERN_ID }));
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/schedules/${ASSIGNED_SCHEDULE_ID}/move`, {
+      patternId: PATTERN_ID,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.id).toBe(ASSIGNED_SCHEDULE_ID);
+    expect(mockAssignScheduleToPattern).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 with the moved schedule on success", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.schedules.findFirst.mockResolvedValue({
+      ...CANDIDATE_ROW,
+      id: ASSIGNED_SCHEDULE_ID,
+      dayPatternId: PATTERN_ID,
+    });
+    mockDbQuery.dayPatterns.findFirst.mockResolvedValue(
+      patternWithTripDay({ id: OTHER_PATTERN_ID }),
+    );
+    mockAssignScheduleToPattern.mockResolvedValue({
+      ...CANDIDATE_ROW,
+      id: ASSIGNED_SCHEDULE_ID,
+      dayPatternId: OTHER_PATTERN_ID,
+    });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/schedules/${ASSIGNED_SCHEDULE_ID}/move`, {
+      patternId: OTHER_PATTERN_ID,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.id).toBe(ASSIGNED_SCHEDULE_ID);
+    expect(mockAssignScheduleToPattern).toHaveBeenCalledWith(
+      ASSIGNED_SCHEDULE_ID,
+      OTHER_PATTERN_ID,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /trips/:tripId/days/:dayNumber/schedules — patternId targeting
+// ---------------------------------------------------------------------------
+
+describe("POST /trips/:tripId/days/:dayNumber/schedules with patternId", () => {
+  it("returns 404 when patternId is not a pattern of the target day", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripDays.findMany.mockResolvedValue([
+      { id: "day-1", dayNumber: 1, patterns: [{ id: "pattern-1", isDefault: true }] },
+    ]);
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/1/schedules`, {
+      name: "Tokyo Tower",
+      category: "sightseeing",
+      patternId: OTHER_PATTERN_ID,
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(404);
+    expect(body.error.code).toBe("not_found");
+  });
+
+  it("inserts into the specified non-default pattern when patternId matches a day pattern", async () => {
+    mockVerifyApiKey.mockResolvedValue(WRITE_KEY);
+    mockCheckTripAccess.mockResolvedValue("editor");
+    mockDbQuery.tripDays.findMany.mockResolvedValue([
+      {
+        id: "day-1",
+        dayNumber: 1,
+        patterns: [
+          { id: "pattern-1", isDefault: true },
+          { id: PATTERN_ID, isDefault: false },
+        ],
+      },
+    ]);
+    mockGetScheduleCount.mockResolvedValueOnce(0);
+    mockGetNextSortOrder.mockResolvedValueOnce(0);
+    const valuesSpy = vi.fn().mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ ...CANDIDATE_ROW, dayPatternId: PATTERN_ID }]),
+    });
+    mockDbInsert.mockReturnValue({ values: valuesSpy });
+
+    const res = await jsonPost(`/trips/${TRIP_ID}/days/1/schedules`, {
+      name: "Tokyo Tower",
+      category: "sightseeing",
+      patternId: PATTERN_ID,
+    });
+
+    expect(res.status).toBe(201);
+    expect(valuesSpy).toHaveBeenCalledWith(expect.objectContaining({ dayPatternId: PATTERN_ID }));
+    // patternId must not leak into the stored row as its own column
+    expect(valuesSpy).toHaveBeenCalledWith(
+      expect.not.objectContaining({ patternId: expect.anything() }),
+    );
   });
 });

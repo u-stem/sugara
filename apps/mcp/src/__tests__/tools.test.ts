@@ -3,12 +3,12 @@ import { z } from "zod";
 import { INPUT_SHAPES } from "../tools.js";
 
 describe("INPUT_SHAPES", () => {
-  it("defines 34 tools", () => {
+  it("defines 42 tools", () => {
     // Arrange + Act
     const toolNames = Object.keys(INPUT_SHAPES);
 
     // Assert
-    expect(toolNames).toHaveLength(34);
+    expect(toolNames).toHaveLength(42);
   });
 
   it("includes the candidate and souvenir tools including batch variants", () => {
@@ -354,6 +354,25 @@ describe("create_schedule input schema", () => {
 
     // Assert
     expect(result.success).toBe(true);
+  });
+
+  it("accepts an optional patternId", () => {
+    // Arrange + Act
+    const result = schema.safeParse({
+      ...validBase,
+      patternId: "550e8400-e29b-41d4-a716-446655440002",
+    });
+
+    // Assert
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a non-UUID patternId", () => {
+    // Arrange + Act
+    const result = schema.safeParse({ ...validBase, patternId: "not-a-uuid" });
+
+    // Assert
+    expect(result.success).toBe(false);
   });
 });
 
@@ -939,6 +958,172 @@ describe("delete_article input schema", () => {
 
   it("rejects non-UUID articleId", () => {
     const result = schema.safeParse({ articleId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pattern and schedule-assignment tool schemas
+// ---------------------------------------------------------------------------
+
+describe("create_pattern input schema", () => {
+  const schema = z.object(INPUT_SHAPES.create_pattern);
+  const validBase = { tripId: crypto.randomUUID(), dayNumber: 1, label: "Rainy plan" };
+
+  it("requires tripId, dayNumber, and label", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID(), dayNumber: 1 }).success).toBe(false);
+    expect(schema.safeParse(validBase).success).toBe(true);
+  });
+
+  it("rejects dayNumber less than 1", () => {
+    const result = schema.safeParse({ ...validBase, dayNumber: 0 });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects an empty label", () => {
+    const result = schema.safeParse({ ...validBase, label: "" });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a label longer than 50 characters", () => {
+    const result = schema.safeParse({ ...validBase, label: "a".repeat(51) });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a label of exactly 50 characters", () => {
+    const result = schema.safeParse({ ...validBase, label: "a".repeat(50) });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("update_pattern input schema", () => {
+  const schema = z.object(INPUT_SHAPES.update_pattern);
+  const validBase = {
+    tripId: crypto.randomUUID(),
+    patternId: crypto.randomUUID(),
+    label: "Sunny plan",
+  };
+
+  it("requires tripId, patternId, and label", () => {
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), patternId: crypto.randomUUID() }).success,
+    ).toBe(false);
+    expect(schema.safeParse(validBase).success).toBe(true);
+  });
+
+  it("rejects a label longer than 50 characters", () => {
+    const result = schema.safeParse({ ...validBase, label: "a".repeat(51) });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a non-UUID patternId", () => {
+    const result = schema.safeParse({ ...validBase, patternId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("delete_pattern input schema", () => {
+  const schema = z.object(INPUT_SHAPES.delete_pattern);
+
+  it("requires tripId and patternId", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), patternId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-UUID patternId", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), patternId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("duplicate_pattern input schema", () => {
+  const schema = z.object(INPUT_SHAPES.duplicate_pattern);
+
+  it("requires tripId and patternId", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), patternId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+});
+
+describe("overwrite_pattern input schema", () => {
+  const schema = z.object(INPUT_SHAPES.overwrite_pattern);
+  const validBase = {
+    tripId: crypto.randomUUID(),
+    patternId: crypto.randomUUID(),
+    sourcePatternId: crypto.randomUUID(),
+  };
+
+  it("requires tripId, patternId, and sourcePatternId", () => {
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), patternId: crypto.randomUUID() }).success,
+    ).toBe(false);
+    expect(schema.safeParse(validBase).success).toBe(true);
+  });
+
+  it("rejects a non-UUID sourcePatternId", () => {
+    const result = schema.safeParse({ ...validBase, sourcePatternId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("assign_candidate input schema", () => {
+  const schema = z.object(INPUT_SHAPES.assign_candidate);
+  const validBase = {
+    tripId: crypto.randomUUID(),
+    scheduleId: crypto.randomUUID(),
+    patternId: crypto.randomUUID(),
+  };
+
+  it("requires tripId, scheduleId, and patternId", () => {
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: crypto.randomUUID() }).success,
+    ).toBe(false);
+    expect(schema.safeParse(validBase).success).toBe(true);
+  });
+
+  it("rejects a non-UUID patternId", () => {
+    const result = schema.safeParse({ ...validBase, patternId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("unassign_schedule input schema", () => {
+  const schema = z.object(INPUT_SHAPES.unassign_schedule);
+
+  it("requires tripId and scheduleId", () => {
+    expect(schema.safeParse({ tripId: crypto.randomUUID() }).success).toBe(false);
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: crypto.randomUUID() }).success,
+    ).toBe(true);
+  });
+
+  it("rejects non-UUID scheduleId", () => {
+    const result = schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: "not-uuid" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("move_schedule input schema", () => {
+  const schema = z.object(INPUT_SHAPES.move_schedule);
+  const validBase = {
+    tripId: crypto.randomUUID(),
+    scheduleId: crypto.randomUUID(),
+    patternId: crypto.randomUUID(),
+  };
+
+  it("requires tripId, scheduleId, and patternId", () => {
+    expect(
+      schema.safeParse({ tripId: crypto.randomUUID(), scheduleId: crypto.randomUUID() }).success,
+    ).toBe(false);
+    expect(schema.safeParse(validBase).success).toBe(true);
+  });
+
+  it("rejects a non-UUID patternId", () => {
+    const result = schema.safeParse({ ...validBase, patternId: "not-uuid" });
     expect(result.success).toBe(false);
   });
 });

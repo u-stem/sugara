@@ -36,6 +36,7 @@ import {
   tripDetailResponseSchema,
   tripListResponseSchema,
 } from "./openapi-schemas";
+import { patternsWriteApp } from "./patterns-write";
 import {
   serializeArticleDto,
   serializeBookmarkDto,
@@ -279,7 +280,7 @@ v1App.get(
           with: {
             patterns: {
               orderBy: (patterns, { asc }) => [asc(patterns.sortOrder)],
-              columns: { id: true },
+              columns: { id: true, label: true, isDefault: true },
               with: {
                 schedules: {
                   orderBy: (scheds, { asc }) => [asc(scheds.sortOrder)],
@@ -315,13 +316,16 @@ v1App.get(
 
     const memberNoMap = buildMemberNoMap(memberRows);
 
-    // Flatten schedules: collect all schedules from all patterns across all days
-    const days = tripRow.days.map((day) => {
-      const allSchedules = day.patterns.flatMap((p) => p.schedules);
-      return {
-        dayNumber: day.dayNumber,
-        date: day.date,
-        schedules: allSchedules.map((s) => ({
+    // Nest schedules under their owning pattern so callers can distinguish the
+    // day's alternative plans (e.g. "sunny" vs "rainy") instead of a flattened list.
+    const days = tripRow.days.map((day) => ({
+      dayNumber: day.dayNumber,
+      date: day.date,
+      patterns: day.patterns.map((p) => ({
+        id: p.id,
+        label: p.label,
+        isDefault: p.isDefault,
+        schedules: p.schedules.map((s) => ({
           id: s.id,
           name: s.name,
           category: s.category,
@@ -330,8 +334,8 @@ v1App.get(
           address: s.address ?? null,
           memo: s.memo ?? null,
         })),
-      };
-    });
+      })),
+    }));
 
     const members = memberRows.map((m) => {
       const memberNo = memberNoMap.get(m.userId);
@@ -1129,6 +1133,7 @@ v1App.route("/", bookmarksWriteApp);
 v1App.route("/", articlesWriteApp);
 v1App.route("/", candidatesWriteApp);
 v1App.route("/", souvenirsWriteApp);
+v1App.route("/", patternsWriteApp);
 
 // ---------- Catch-all ----------
 //

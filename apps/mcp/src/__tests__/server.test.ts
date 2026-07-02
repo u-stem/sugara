@@ -51,7 +51,7 @@ const FAKE_CREATED_TRIP = {
   updatedAt: "2025-01-01T00:00:00.000Z",
 };
 
-// The 34 tool names that registerTools must expose.
+// The 42 tool names that registerTools must expose.
 const EXPECTED_TOOL_NAMES = [
   "list_trips",
   "get_trip",
@@ -87,6 +87,14 @@ const EXPECTED_TOOL_NAMES = [
   "delete_bookmark",
   "delete_bookmark_list",
   "delete_article",
+  "create_pattern",
+  "update_pattern",
+  "delete_pattern",
+  "duplicate_pattern",
+  "overwrite_pattern",
+  "assign_candidate",
+  "unassign_schedule",
+  "move_schedule",
 ] as const;
 
 /**
@@ -218,6 +226,82 @@ class FakeApiClient extends ApiClient {
   override async deleteArticle(_articleId: string): Promise<unknown> {
     return { id: _articleId, deleted: true, remaining: { count: 0, max: 20 } };
   }
+
+  override async createPattern(
+    _tripId: string,
+    _dayNumber: number,
+    _body: unknown,
+  ): Promise<unknown> {
+    return {
+      id: "00000000-0000-0000-0000-000000000060",
+      label: "Rainy plan",
+      isDefault: false,
+      sortOrder: 1,
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+  }
+
+  override async updatePattern(
+    _tripId: string,
+    _patternId: string,
+    _body: unknown,
+  ): Promise<unknown> {
+    return {
+      id: "00000000-0000-0000-0000-000000000060",
+      label: "Updated plan",
+      isDefault: false,
+      sortOrder: 1,
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+  }
+
+  override async deletePattern(_tripId: string, patternId: string): Promise<unknown> {
+    return { id: patternId, deleted: true };
+  }
+
+  override async duplicatePattern(_tripId: string, _patternId: string): Promise<unknown> {
+    return {
+      id: "00000000-0000-0000-0000-000000000061",
+      label: "Rainy plan (copy)",
+      isDefault: false,
+      sortOrder: 2,
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+  }
+
+  override async overwritePattern(
+    _tripId: string,
+    patternId: string,
+    _body: unknown,
+  ): Promise<unknown> {
+    return {
+      id: patternId,
+      label: "Rainy plan",
+      isDefault: false,
+      sortOrder: 1,
+      createdAt: "2025-01-01T00:00:00.000Z",
+    };
+  }
+
+  override async assignCandidate(
+    _tripId: string,
+    scheduleId: string,
+    _body: unknown,
+  ): Promise<unknown> {
+    return { id: scheduleId, name: "Assigned schedule" };
+  }
+
+  override async unassignSchedule(_tripId: string, scheduleId: string): Promise<unknown> {
+    return { id: scheduleId, name: "Unassigned schedule" };
+  }
+
+  override async moveSchedule(
+    _tripId: string,
+    scheduleId: string,
+    _body: unknown,
+  ): Promise<unknown> {
+    return { id: scheduleId, name: "Moved schedule" };
+  }
 }
 
 /**
@@ -280,15 +364,15 @@ describe("MCP server — tools/list", () => {
     await mcpServer.close();
   });
 
-  it("returns exactly 34 tools", async () => {
+  it("returns exactly 42 tools", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
 
     // Assert
-    expect(result.tools).toHaveLength(34);
+    expect(result.tools).toHaveLength(42);
   });
 
-  it("includes all 34 expected tool names", async () => {
+  it("includes all 42 expected tool names", async () => {
     // Arrange + Act
     const result = await mcpClient.listTools();
     const names = result.tools.map((t) => t.name);
@@ -400,6 +484,105 @@ describe("MCP server — tools/call create_trip (error path)", () => {
     const result = await mcpClient.callTool({
       name: "create_trip",
       arguments: { title: "Japan Trip", startDate: "2025-01-01", endDate: "2025-01-05" },
+    });
+
+    // Assert
+    if (!isContentCallResult(result)) throw new Error("expected content-bearing result");
+    expect(result.isError).toBe(true);
+  });
+});
+
+describe("MCP server — tools/call create_pattern (success path)", () => {
+  let mcpServer!: McpServer;
+  let mcpClient!: Client;
+
+  beforeEach(async () => {
+    const pair = await setupPair(new FakeApiClient());
+    mcpServer = pair.server;
+    mcpClient = pair.client;
+  });
+
+  afterEach(async () => {
+    await mcpClient.close();
+    await mcpServer.close();
+  });
+
+  it("returns created pattern data as JSON string in content[0].text", async () => {
+    // Arrange + Act
+    const result = await mcpClient.callTool({
+      name: "create_pattern",
+      arguments: { tripId: crypto.randomUUID(), dayNumber: 1, label: "Rainy plan" },
+    });
+
+    // Assert
+    if (!isContentCallResult(result)) throw new Error("expected content-bearing result");
+    const first = result.content[0];
+    if (!isTextContentItem(first)) throw new Error("expected text content item");
+    expect(JSON.parse(first.text)).toMatchObject({ label: "Rainy plan" });
+  });
+});
+
+describe("MCP server — tools/call move_schedule (success path)", () => {
+  let mcpServer!: McpServer;
+  let mcpClient!: Client;
+
+  beforeEach(async () => {
+    const pair = await setupPair(new FakeApiClient());
+    mcpServer = pair.server;
+    mcpClient = pair.client;
+  });
+
+  afterEach(async () => {
+    await mcpClient.close();
+    await mcpServer.close();
+  });
+
+  it("returns moved schedule data as JSON string in content[0].text", async () => {
+    // Arrange + Act
+    const scheduleId = crypto.randomUUID();
+    const result = await mcpClient.callTool({
+      name: "move_schedule",
+      arguments: { tripId: crypto.randomUUID(), scheduleId, patternId: crypto.randomUUID() },
+    });
+
+    // Assert
+    if (!isContentCallResult(result)) throw new Error("expected content-bearing result");
+    const first = result.content[0];
+    if (!isTextContentItem(first)) throw new Error("expected text content item");
+    expect(JSON.parse(first.text)).toEqual({ id: scheduleId, name: "Moved schedule" });
+  });
+});
+
+describe("MCP server — tools/call delete_pattern (error path)", () => {
+  let mcpServer!: McpServer;
+  let mcpClient!: Client;
+
+  class ThrowingDeletePatternApiClient extends ApiClient {
+    constructor() {
+      super("http://localhost", "test_key");
+    }
+
+    override async deletePattern(_tripId: string, _patternId: string): Promise<unknown> {
+      throw new Error("デフォルトパターンは削除できません");
+    }
+  }
+
+  beforeEach(async () => {
+    const pair = await setupPair(new ThrowingDeletePatternApiClient());
+    mcpServer = pair.server;
+    mcpClient = pair.client;
+  });
+
+  afterEach(async () => {
+    await mcpClient.close();
+    await mcpServer.close();
+  });
+
+  it("returns isError: true when the API client throws", async () => {
+    // Arrange + Act
+    const result = await mcpClient.callTool({
+      name: "delete_pattern",
+      arguments: { tripId: crypto.randomUUID(), patternId: crypto.randomUUID() },
     });
 
     // Assert

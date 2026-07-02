@@ -21,6 +21,21 @@ Claude Desktop や Claude Code から自分の旅行データの読み取りと�
 
 `list_articles` / `list_bookmarks` / `list_candidates` / `list_souvenirs` は `q` で名前の部分一致検索ができます (大文字小文字を区別しません)。
 
+### パターン・スケジュール割り当て
+
+1 日の予定を複数案（パターン）で用意して管理できます（例: 晴れの日プラン vs 雨の日プラン）。1 日最大 3 パターン、旅行全体で最大 300 スケジュールの上限があります。
+
+| ツール名 | 説明 |
+|---|---|
+| `create_pattern` | 指定した日（dayNumber、1 始まり）にパターンを作成 |
+| `update_pattern` | パターンのラベルを変更（リネーム） |
+| `delete_pattern` | パターンを削除（冪等。デフォルトパターンは削除不可） |
+| `duplicate_pattern` | パターンを複製（スケジュール込みで同一日内にコピー） |
+| `overwrite_pattern` | パターンを別パターンで上書き（スケジュールをすべて置き換え） |
+| `assign_candidate` | 候補（未割り当てスポット）をパターンに割り当てて、スケジュールに変更 |
+| `unassign_schedule` | スケジュールをパターンから外して、候補プール（未割り当て）に戻す |
+| `move_schedule` | スケジュールを別パターンに移動 |
+
 ### 作成・更新・削除
 
 対応する write スコープを持つ API キーが必要です。
@@ -54,6 +69,8 @@ Claude Desktop や Claude Code から自分の旅行データの読み取りと�
 | `delete_article` | 記事を削除 (`articles:write` が必要。自分の記事のみ。冪等) |
 
 **memberNo について**: `get_trip` や `list_trip_expenses` に登場する `memberNo` は旅行内の連番です。データベースの内部 ID ではありません。メンバーの増減で振り直されるため、`create_expense` 等で指定する前に `get_trip` で最新の対応を確認してください。
+
+**全体統計**: 読み取りツール 9 個、パターン・スケジュール割り当てツール 8 個、作成・更新・削除ツール 25 個、合計 42 ツール。
 
 ## セットアップ
 

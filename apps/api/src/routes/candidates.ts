@@ -19,6 +19,7 @@ import { ERROR_MSG } from "../lib/constants";
 import { hasChanges } from "../lib/has-changes";
 import { notifyTripMembersExcluding } from "../lib/notifications";
 import { getParam } from "../lib/params";
+import { assignScheduleToPattern } from "../lib/schedule-assignment";
 import { buildScheduleCloneValues } from "../lib/schedule-clone";
 import { getScheduleCount } from "../lib/schedule-count";
 import { getNextSortOrder } from "../lib/sort-order";
@@ -494,27 +495,7 @@ candidateRoutes.post(
       return c.json({ error: ERROR_MSG.PATTERN_NOT_FOUND }, 404);
     }
 
-    const updated = await db.transaction(async (tx) => {
-      const nextOrder = await getNextSortOrder(
-        tx,
-        schedules.sortOrder,
-        schedules,
-        eq(schedules.dayPatternId, parsed.data.dayPatternId),
-        `schedule:pattern:${parsed.data.dayPatternId}`,
-      );
-
-      const [row] = await tx
-        .update(schedules)
-        .set({
-          dayPatternId: parsed.data.dayPatternId,
-          sortOrder: nextOrder,
-          updatedAt: new Date(),
-        })
-        .where(eq(schedules.id, scheduleId))
-        .returning();
-
-      return row;
-    });
+    const updated = await assignScheduleToPattern(scheduleId, parsed.data.dayPatternId);
 
     logActivity({
       tripId,

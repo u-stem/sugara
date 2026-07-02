@@ -46,7 +46,9 @@ export type ApiV1ErrorReason =
   | "bookmark_limit_reached"
   | "article_limit_reached"
   | "souvenir_limit_reached"
-  | "trip_has_no_days";
+  | "trip_has_no_days"
+  | "pattern_limit_reached"
+  | "cannot_delete_default_pattern";
 
 export type ApiV1ErrorOptions = {
   reason?: ApiV1ErrorReason;

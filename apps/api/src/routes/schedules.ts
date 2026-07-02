@@ -19,6 +19,7 @@ import { hasChanges } from "../lib/has-changes";
 import { notifyTripMembersExcluding } from "../lib/notifications";
 import { getParam } from "../lib/params";
 import { canEdit, verifyPatternAccess } from "../lib/permissions";
+import { unassignScheduleToCandidates } from "../lib/schedule-assignment";
 import { buildScheduleCloneValues } from "../lib/schedule-clone";
 import { getScheduleCount } from "../lib/schedule-count";
 import { getNextSortOrder } from "../lib/sort-order";
@@ -670,30 +671,7 @@ scheduleRoutes.post(
       return c.json({ error: ERROR_MSG.SCHEDULE_NOT_FOUND }, 404);
     }
 
-    // Candidates cannot have anchors (no dayPatternId → no cross-day context).
-    const updated = await db.transaction(async (tx) => {
-      const nextOrder = await getNextSortOrder(
-        tx,
-        schedules.sortOrder,
-        schedules,
-        and(eq(schedules.tripId, tripId), isNull(schedules.dayPatternId)),
-        `schedule:candidates:${tripId}`,
-      );
-
-      const [row] = await tx
-        .update(schedules)
-        .set({
-          dayPatternId: null,
-          sortOrder: nextOrder,
-          crossDayAnchor: null,
-          crossDayAnchorSourceId: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(schedules.id, scheduleId))
-        .returning();
-
-      return row;
-    });
+    const updated = await unassignScheduleToCandidates(tripId, scheduleId);
 
     logActivity({
       tripId,

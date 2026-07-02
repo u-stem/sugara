@@ -70,11 +70,20 @@ const scheduleItemSchema = z.object({
   memo: z.string().nullable(),
 });
 
+// A day can have up to MAX_PATTERNS_PER_DAY (3) alternative schedule variants
+// (e.g. "sunny plan" / "rainy plan"); each pattern carries its own schedules[].
+const tripDayPatternSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  isDefault: z.boolean(),
+  schedules: z.array(scheduleItemSchema),
+});
+
 const tripDaySchema = z.object({
   dayNumber: z.number().int(),
   // DB: date("date").notNull() — never null.
   date: z.string(),
-  schedules: z.array(scheduleItemSchema),
+  patterns: z.array(tripDayPatternSchema),
 });
 
 export const tripDetailResponseSchema = z.object({

@@ -1673,4 +1673,443 @@ describe("v1 write routes integration", () => {
     const row = await db.query.articles.findFirst({ where: eq(articles.id, art.id) });
     expect(row).toBeDefined();
   });
+
+  // -------------------------------------------------------------------------
+  // v1 day-pattern write endpoints
+  // -------------------------------------------------------------------------
+
+  describe("v1 day-pattern write endpoints", () => {
+    beforeEach(() => {
+      // GET /trips/:id (used to read back pattern ids) requires trips:read
+      // in addition to the trips:write scope the outer beforeEach sets up.
+      apiKey = { ...apiKey, scopes: ["trips:write", "trips:read"] };
+      mockVerifyApiKey.mockResolvedValue(apiKey);
+    });
+
+    async function createPatternTrip(days = 1) {
+      const endDate = days === 1 ? "2026-07-01" : `2026-07-${String(days).padStart(2, "0")}`;
+      const tripRes = await v1App.request("/trips", {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "Pattern Trip", startDate: "2026-07-01", endDate }),
+      });
+      expect(tripRes.status).toBe(201);
+      return tripRes.json();
+    }
+
+    it("POST create_schedule with patternId appends schedules at sortOrder end of that pattern", async () => {
+      // Arrange: trip with a non-default pattern on day 1
+      const trip = await createPatternTrip();
+      const patternRes = await v1App.request(`/trips/${trip.id}/days/1/patterns`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "Rainy plan" }),
+      });
+      expect(patternRes.status).toBe(201);
+      const pattern = await patternRes.json();
+
+      // Act: two schedules created with patternId targeting the new pattern
+      const first = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Museum", category: "sightseeing", patternId: pattern.id }),
+      });
+      const second = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Aquarium", category: "sightseeing", patternId: pattern.id }),
+      });
+
+      // Assert: consecutive sortOrder starting at 0, both persisted under the pattern
+      expect(first.status).toBe(201);
+      expect(second.status).toBe(201);
+      const firstBody = await first.json();
+      const secondBody = await second.json();
+      expect(firstBody.sortOrder).toBe(0);
+      expect(secondBody.sortOrder).toBe(1);
+
+      const db = getTestDb();
+      const rows = await db.query.schedules.findMany({
+        where: eq(schedules.dayPatternId, pattern.id),
+      });
+      expect(rows).toHaveLength(2);
+    });
+
+    it("POST duplicate clones schedules with new ids under a new pattern", async () => {
+      // Arrange: default pattern with one schedule
+      const trip = await createPatternTrip();
+      const schedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Tokyo Tower", category: "sightseeing" }),
+      });
+      const sched = await schedRes.json();
+
+      const tripDetail = await (
+        await v1App.request(`/trips/${trip.id}`, {
+          headers: { Authorization: "Bearer sk_test" },
+        })
+      ).json();
+      const defaultPattern = tripDetail.days[0].patterns[0];
+
+      // Act
+      const res = await v1App.request(`/trips/${trip.id}/patterns/${defaultPattern.id}/duplicate`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test" },
+      });
+
+      // Assert: new pattern created, distinct from the source
+      expect(res.status).toBe(201);
+      const duplicated = await res.json();
+      expect(duplicated.id).not.toBe(defaultPattern.id);
+
+      // Assert: cloned schedule persisted with a new id, source schedule untouched
+      const db = getTestDb();
+      const clonedRows = await db.query.schedules.findMany({
+        where: eq(schedules.dayPatternId, duplicated.id),
+      });
+      expect(clonedRows).toHaveLength(1);
+      expect(clonedRows[0].id).not.toBe(sched.id);
+      expect(clonedRows[0].name).toBe("Tokyo Tower");
+    });
+
+    it("POST duplicate returns 409 pattern_limit_reached once a day already has 3 patterns", async () => {
+      // Arrange: day 1 starts with 1 default pattern; add 2 more to hit the cap of 3
+      const trip = await createPatternTrip();
+      for (const label of ["Plan B", "Plan C"]) {
+        const res = await v1App.request(`/trips/${trip.id}/days/1/patterns`, {
+          method: "POST",
+          headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+          body: JSON.stringify({ label }),
+        });
+        expect(res.status).toBe(201);
+      }
+
+      const tripDetail = await (
+        await v1App.request(`/trips/${trip.id}`, {
+          headers: { Authorization: "Bearer sk_test" },
+        })
+      ).json();
+      const defaultPattern = tripDetail.days[0].patterns[0];
+
+      // Act: attempt to duplicate the default pattern (would create a 4th pattern)
+      const res = await v1App.request(`/trips/${trip.id}/patterns/${defaultPattern.id}/duplicate`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test" },
+      });
+
+      // Assert
+      expect(res.status).toBe(409);
+      const body = await res.json();
+      expect(body.error.reason).toBe("pattern_limit_reached");
+    });
+
+    it("POST overwrite replaces the target pattern's schedules with clones of the source's", async () => {
+      // Arrange: default pattern has "Old Spot"; a second pattern has "New Spot"
+      const trip = await createPatternTrip();
+      const targetSchedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Old Spot", category: "sightseeing" }),
+      });
+      const targetSched = await targetSchedRes.json();
+
+      const sourcePatternRes = await v1App.request(`/trips/${trip.id}/days/1/patterns`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "Source" }),
+      });
+      const sourcePattern = await sourcePatternRes.json();
+      await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "New Spot",
+          category: "sightseeing",
+          patternId: sourcePattern.id,
+        }),
+      });
+
+      const tripDetail = await (
+        await v1App.request(`/trips/${trip.id}`, {
+          headers: { Authorization: "Bearer sk_test" },
+        })
+      ).json();
+      const targetPattern = tripDetail.days[0].patterns[0];
+
+      // Act
+      const res = await v1App.request(`/trips/${trip.id}/patterns/${targetPattern.id}/overwrite`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ sourcePatternId: sourcePattern.id }),
+      });
+
+      // Assert: HTTP response
+      expect(res.status).toBe(200);
+
+      // Assert: target pattern now holds only the cloned "New Spot", the original schedule is gone
+      const db = getTestDb();
+      const targetRows = await db.query.schedules.findMany({
+        where: eq(schedules.dayPatternId, targetPattern.id),
+      });
+      expect(targetRows).toHaveLength(1);
+      expect(targetRows[0].name).toBe("New Spot");
+
+      const oldRow = await db.query.schedules.findFirst({
+        where: eq(schedules.id, targetSched.id),
+      });
+      expect(oldRow).toBeUndefined();
+    });
+
+    it("POST assign moves a candidate into the pattern's schedule order and appends at the end", async () => {
+      // Arrange: default pattern with one existing schedule, plus an unassigned candidate
+      const trip = await createPatternTrip();
+      await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Existing Spot", category: "sightseeing" }),
+      });
+
+      const candRes = await v1App.request(`/trips/${trip.id}/candidates`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Akihabara", category: "sightseeing" }),
+      });
+      const cand = await candRes.json();
+
+      const tripDetail = await (
+        await v1App.request(`/trips/${trip.id}`, {
+          headers: { Authorization: "Bearer sk_test" },
+        })
+      ).json();
+      const defaultPattern = tripDetail.days[0].patterns[0];
+
+      // Act
+      const res = await v1App.request(`/trips/${trip.id}/candidates/${cand.id}/assign`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ patternId: defaultPattern.id }),
+      });
+
+      // Assert: appended after the existing schedule
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.sortOrder).toBe(1);
+
+      const db = getTestDb();
+      const row = await db.query.schedules.findFirst({ where: eq(schedules.id, cand.id) });
+      expect(row?.dayPatternId).toBe(defaultPattern.id);
+    });
+
+    it("POST unassign clears dayPatternId, sortOrder, and cross-day anchor fields", async () => {
+      // Arrange: two schedules assigned to the default pattern; anchor the second onto the first
+      const trip = await createPatternTrip();
+      const firstRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Departure", category: "transport" }),
+      });
+      const first = await firstRes.json();
+      const secondRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Arrival", category: "transport" }),
+      });
+      const second = await secondRes.json();
+
+      const db = getTestDb();
+      await db
+        .update(schedules)
+        .set({ crossDayAnchor: "after", crossDayAnchorSourceId: first.id })
+        .where(eq(schedules.id, second.id));
+
+      // Act
+      const res = await v1App.request(`/trips/${trip.id}/schedules/${second.id}/unassign`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test" },
+      });
+
+      // Assert: HTTP response reflects the candidate pool move
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.id).toBe(second.id);
+
+      // Assert: dayPatternId cleared and anchor fields wiped
+      const row = await db.query.schedules.findFirst({ where: eq(schedules.id, second.id) });
+      expect(row?.dayPatternId).toBeNull();
+      expect(row?.crossDayAnchor).toBeNull();
+      expect(row?.crossDayAnchorSourceId).toBeNull();
+    });
+
+    it("POST move relocates an assigned schedule to another pattern's end", async () => {
+      // Arrange: default pattern with one schedule to move, plus a second pattern
+      const trip = await createPatternTrip();
+      const schedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Movable Spot", category: "sightseeing" }),
+      });
+      const sched = await schedRes.json();
+
+      const targetPatternRes = await v1App.request(`/trips/${trip.id}/days/1/patterns`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "Alt plan" }),
+      });
+      const targetPattern = await targetPatternRes.json();
+      await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Already there",
+          category: "sightseeing",
+          patternId: targetPattern.id,
+        }),
+      });
+
+      // Act
+      const res = await v1App.request(`/trips/${trip.id}/schedules/${sched.id}/move`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ patternId: targetPattern.id }),
+      });
+
+      // Assert: moved to the end of the target pattern's order
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.sortOrder).toBe(1);
+
+      const db = getTestDb();
+      const row = await db.query.schedules.findFirst({ where: eq(schedules.id, sched.id) });
+      expect(row?.dayPatternId).toBe(targetPattern.id);
+    });
+
+    it("DELETE pattern cascades to its schedules in the DB", async () => {
+      // Arrange: non-default pattern with one schedule
+      const trip = await createPatternTrip();
+      const patternRes = await v1App.request(`/trips/${trip.id}/days/1/patterns`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "Disposable" }),
+      });
+      const pattern = await patternRes.json();
+      const schedRes = await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Doomed Spot",
+          category: "sightseeing",
+          patternId: pattern.id,
+        }),
+      });
+      const sched = await schedRes.json();
+
+      // Act
+      const res = await v1App.request(`/trips/${trip.id}/patterns/${pattern.id}`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer sk_test" },
+      });
+
+      // Assert: HTTP response
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.deleted).toBe(true);
+
+      // Assert: cascade removed the pattern's schedule
+      const db = getTestDb();
+      const row = await db.query.schedules.findFirst({ where: eq(schedules.id, sched.id) });
+      expect(row).toBeUndefined();
+    });
+
+    it("DELETE pattern is idempotent: second call returns deleted:false", async () => {
+      // Arrange
+      const trip = await createPatternTrip();
+      const patternRes = await v1App.request(`/trips/${trip.id}/days/1/patterns`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "Once" }),
+      });
+      const pattern = await patternRes.json();
+
+      const first = await v1App.request(`/trips/${trip.id}/patterns/${pattern.id}`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer sk_test" },
+      });
+      expect((await first.json()).deleted).toBe(true);
+
+      // Act: second delete
+      const second = await v1App.request(`/trips/${trip.id}/patterns/${pattern.id}`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer sk_test" },
+      });
+
+      // Assert
+      expect(second.status).toBe(200);
+      expect((await second.json()).deleted).toBe(false);
+    });
+
+    it("DELETE pattern returns 400 cannot_delete_default_pattern when targeting the default pattern", async () => {
+      // Arrange
+      const trip = await createPatternTrip();
+      const tripDetail = await (
+        await v1App.request(`/trips/${trip.id}`, {
+          headers: { Authorization: "Bearer sk_test" },
+        })
+      ).json();
+      const defaultPattern = tripDetail.days[0].patterns[0];
+
+      // Act
+      const res = await v1App.request(`/trips/${trip.id}/patterns/${defaultPattern.id}`, {
+        method: "DELETE",
+        headers: { Authorization: "Bearer sk_test" },
+      });
+
+      // Assert
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error.reason).toBe("cannot_delete_default_pattern");
+    });
+
+    it("GET /trips/:id returns multiple patterns per day nested with their own schedules", async () => {
+      // Arrange: default pattern gets one schedule, a second pattern gets another
+      const trip = await createPatternTrip();
+      await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Default Spot", category: "sightseeing" }),
+      });
+      const patternRes = await v1App.request(`/trips/${trip.id}/days/1/patterns`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "Alt plan" }),
+      });
+      const altPattern = await patternRes.json();
+      await v1App.request(`/trips/${trip.id}/days/1/schedules`, {
+        method: "POST",
+        headers: { Authorization: "Bearer sk_test", "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Alt Spot",
+          category: "sightseeing",
+          patternId: altPattern.id,
+        }),
+      });
+
+      // Act
+      const res = await v1App.request(`/trips/${trip.id}`, {
+        headers: { Authorization: "Bearer sk_test" },
+      });
+
+      // Assert: day 1 has two patterns, each holding exactly its own schedule
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      const day = body.days[0];
+      expect(day.patterns).toHaveLength(2);
+      type PatternDto = { label: string; schedules: { name: string }[] };
+      const byLabel = new Map<string, PatternDto>(
+        day.patterns.map((p: PatternDto) => [p.label, p]),
+      );
+      expect(byLabel.get("デフォルト")?.schedules.map((s) => s.name)).toEqual(["Default Spot"]);
+      expect(byLabel.get("Alt plan")?.schedules.map((s) => s.name)).toEqual(["Alt Spot"]);
+    });
+  });
 });
