@@ -39,7 +39,7 @@ write は read を**含意しない**（最小権限。read と write は独立�
 | メソッド | パス | スコープ | 概要 |
 |---|---|---|---|
 | GET | `/trips` | `trips:read` | 自分がアクセスできる旅行の一覧 |
-| GET | `/trips/:id` | `trips:read` | 旅行詳細（日程・メンバーを含む） |
+| GET | `/trips/:id` | `trips:read` | 旅行詳細（日程・メンバー・パターンを含む） |
 | GET | `/trips/:tripId/expenses` | `expenses:read` | 旅行の費用一覧 |
 | GET | `/articles` | `articles:read` | 自分の記事一覧（本文なし） |
 | GET | `/articles/:id` | `articles:read` | 記事詳細（本文あり） |
@@ -47,7 +47,7 @@ write は read を**含意しない**（最小権限。read と write は独立�
 | GET | `/bookmark-lists/:listId/bookmarks` | `bookmarks:read` | リスト内のブックマーク |
 | POST | `/trips` | `trips:write` | 旅行作成（キー所有者が owner。上限超過は 409） |
 | PATCH | `/trips/:id` | `trips:write` | 旅行更新（部分更新。費用がある旅行の通貨変更は 409） |
-| POST | `/trips/:tripId/days/:dayNumber/schedules` | `trips:write` | 指定日（1 始まり）への予定追加（末尾に挿入） |
+| POST | `/trips/:tripId/days/:dayNumber/schedules` | `trips:write` | 指定日（1 始まり）への予定追加（パターンID オプション。省略時はデフォルトパターン） |
 | PATCH | `/trips/:tripId/schedules/:scheduleId` | `trips:write` | 予定更新 |
 | POST | `/trips/:tripId/expenses` | `expenses:write` | 費用作成（memberNo ベース入力） |
 | PATCH | `/trips/:tripId/expenses/:expenseId` | `expenses:write` | 費用更新 |
@@ -62,6 +62,14 @@ write は read を**含意しない**（最小権限。read と write は独立�
 | PATCH | `/trips/:tripId/candidates/:scheduleId` | `trips:write` | 候補更新（割り当て済みは 404） |
 | DELETE | `/trips/:tripId/candidates/:scheduleId` | `trips:write` | 候補削除（冪等。未割り当て候補のみ対象。割り当て済み・不明は `deleted: false`） |
 | DELETE | `/trips/:tripId/schedules/:scheduleId` | `trips:write` | 予定削除（冪等。editor 以上のロールが必要。不明は `deleted: false`） |
+| POST | `/trips/:tripId/days/:dayNumber/patterns` | `trips:write` | パターン作成（1 日最大 3 パターン。超過時は 409） |
+| PATCH | `/trips/:tripId/patterns/:patternId` | `trips:write` | パターンリネーム |
+| DELETE | `/trips/:tripId/patterns/:patternId` | `trips:write` | パターン削除（冪等。デフォルトパターンは 400） |
+| POST | `/trips/:tripId/patterns/:patternId/duplicate` | `trips:write` | パターン複製（同一日内。1 日 3 パターン上限、旅行 300 スケジュール上限） |
+| POST | `/trips/:tripId/patterns/:patternId/overwrite` | `trips:write` | パターン上書き（別パターンのスケジュールをコピー。旅行 300 スケジュール上限） |
+| POST | `/trips/:tripId/candidates/:scheduleId/assign` | `trips:write` | 候補をパターンに割り当て（候補 → スケジュール化） |
+| POST | `/trips/:tripId/schedules/:scheduleId/unassign` | `trips:write` | スケジュールを候補に戻す（パターン割り当て解除） |
+| POST | `/trips/:tripId/schedules/:scheduleId/move` | `trips:write` | スケジュールを別パターンに移動 |
 | GET | `/trips/:tripId/souvenirs` | `souvenirs:read` | 旅行のお土産一覧（自分のもの + 共有アイテム） |
 | POST | `/trips/:tripId/souvenirs` | `souvenirs:write` | お土産作成（上限超過は 409） |
 | PATCH | `/trips/:tripId/souvenirs/:itemId` | `souvenirs:write` | お土産更新（自分のお土産のみ） |
@@ -147,6 +155,9 @@ Web UI は設定画面の「API キー」タブ（`apps/web/components/api-keys-
 | reason | 付随する code | details |
 |---|---|---|
 | `trip_limit_reached` | `conflict` (409) | `{ "max": <ユーザー毎の旅行数上限の実値> }` |
+| `pattern_limit_reached` | `conflict` (409) | `{ "max": <1 日あたりのパターン上限。常に 3> }` |
+| `cannot_delete_default_pattern` | `invalid_request` (400) | なし |
+| `schedule_limit_reached` | `conflict` (409) | `{ "max": 300 }` |
 
 v1 は独立した `onError` を持ち、グローバルの `handleError`（内部エラー形・日本語メッセージ）を継承しない。
 
@@ -175,7 +186,7 @@ v1 エンドポイントの OpenAPI 3.1 仕様と Scalar UI を提供する。
 
 **認証**: `requireAuth` + `requireNonGuest`（Cookie セッション + 本登録ユーザー限定）。ゲストアカウントや未認証ユーザーには公開しない。
 
-**spec の内容**: v1 の 34 エンドポイント（read 9 + write 25）のみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
+**spec の内容**: v1 の 42 エンドポイント（read 9 + write 33）のみ記載。Bearer セキュリティスキーム（`type: http, scheme: bearer`）を `components.securitySchemes.bearerAuth` に定義し、全操作に適用。`servers: [{ url: "/api/v1" }]` でベースパスを明示。
 
 **Scalar UI のアセット**: `@scalar/api-reference` を `apps/web` の devDependency として固定バージョン管理する。`apps/web/scripts/copy-scalar-assets.ts` が dev サーバ起動時（`predev`）とビルド時（`prebuild`）に standalone バンドルを `apps/web/public/scalar/standalone.js` へコピーし、Next.js が同一オリジン（`/scalar/standalone.js`）から配信する。第三者オリジン依存ゼロ。生成物は `.gitignore` で除外済み（3.5 MB をリポジトリにコミットしない）。
 
