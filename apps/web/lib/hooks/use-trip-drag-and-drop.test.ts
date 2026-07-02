@@ -1296,3 +1296,211 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
     expect(onScheduleUnassigned).not.toHaveBeenCalled();
   });
 });
+
+describe("useTripDragAndDrop — operation serialization (bug #2)", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  function dragScheduleOntoCandidate(
+    result: { current: ReturnType<typeof useTripDragAndDrop> },
+    activeId: string,
+    overId: string,
+  ) {
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: activeId,
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    act(() => {
+      result.current.handleDragEnd({
+        active: {
+          id: activeId,
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: overId,
+          data: { current: { type: "candidate" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]);
+    });
+  }
+
+  it("holds the second drop's API call until the first drop's API call settles, then runs both in order", async () => {
+    // Bug #2 repro: without the queue, op2's unassign POST used to fire
+    // immediately after op2's drop even though op1's unassign hadn't
+    // committed yet — the server could then see op2's scheduleIds computed
+    // against a pre-op1 snapshot and reject the reorder with a 400.
+    let resolveUnassignS1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveUnassignS1 = () => res(undefined);
+        }),
+    );
+
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    // op1: drag s1 onto c1 — the unassign POST hangs. The API call itself
+    // fires from the queued task, one microtask after the synchronous drop.
+    dragScheduleOntoCandidate(result, "s1", "c1");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1);
+
+    // op2: drag s2 onto c1 before op1 has settled. op2's task is chained
+    // behind op1's still-pending task, so it can't even start yet.
+    dragScheduleOntoCandidate(result, "s2", "c1");
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1);
+
+    // op2's optimistic update is visible immediately regardless of op1's
+    // in-flight API call.
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual([]);
+    expect(result.current.localCandidates.map((c) => c.id)).toEqual(["s1", "s2", "c1"]);
+
+    resolveUnassignS1();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(4);
+    const urls = vi.mocked(api).mock.calls.map((call) => call[0]);
+    expect(urls).toEqual([
+      "/api/trips/trip1/schedules/s1/unassign", // op1 unassign
+      "/api/trips/trip1/candidates/reorder", // op1 reorder
+      "/api/trips/trip1/schedules/s2/unassign", // op2 unassign
+      "/api/trips/trip1/candidates/reorder", // op2 reorder
+    ]);
+  });
+
+  it("queues a no-op drop's snapshot reset behind an in-flight operation instead of resetting immediately", async () => {
+    let resolveUnassignS1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveUnassignS1 = () => res(undefined);
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    // op1: drag s1 into the empty candidates zone — unassign POST hangs.
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    act(() => {
+      result.current.handleDragEnd({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "candidates",
+          data: { current: { type: "candidates" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]);
+    });
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2"]);
+
+    // Let op1's queued task start and call the (hung) unassign POST, so
+    // `resolveUnassignS1` gets assigned before we need it below.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // op2: a drop that resolves to no-op (released outside all droppables
+    // with no last hovered zone).
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    act(() => {
+      result.current.handleDragEnd({
+        active: {
+          id: "s2",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: null,
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]);
+    });
+
+    // op2's no-op reset must not run while op1's API is still in-flight —
+    // resetting now would fall back to props ([s1, s2]) that don't yet
+    // reflect op1's unassign (a visible snap-back).
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2"]);
+
+    resolveUnassignS1();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // After op1 settles and op2's queued no-op reset runs, local state falls
+    // back to props.
+    expect(result.current.localSchedules).toStrictEqual([s1, s2]);
+  });
+});
