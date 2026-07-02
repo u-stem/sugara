@@ -1504,3 +1504,222 @@ describe("useTripDragAndDrop — operation serialization (bug #2)", () => {
     expect(result.current.localSchedules).toStrictEqual([s1, s2]);
   });
 });
+
+describe("useTripDragAndDrop — drag snapshot protection and cancel", () => {
+  afterEach(() => vi.clearAllMocks());
+
+  function startDrag(result: { current: ReturnType<typeof useTripDragAndDrop> }, id: string) {
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id,
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+  }
+
+  it("keeps the drag snapshot intact when a preceding operation's finally runs mid-drag", async () => {
+    // Amplification-factor repro (bug #1): without the opId bump in
+    // handleDragStart, op1's finally (queued behind nothing here, but
+    // conceptually any in-flight op) would see opIdRef unchanged and reset
+    // localSchedules to null, falling back to the pre-mutation props while
+    // this drag is in progress.
+    let resolveOp1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveOp1 = () => res(undefined);
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.reorderSchedule("s2", "up");
+    });
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    // Let op1's queued task start and call the (hung) API, so `resolveOp1`
+    // gets assigned before we need it below.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // A new drag starts while op1's API call is still in-flight — this must
+    // claim a fresh op id so op1's eventual finally can't clobber the
+    // snapshot this drag captures.
+    startDrag(result, "s1");
+
+    resolveOp1();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+  });
+
+  it("clears activeDragItem and releases the snapshot on cancel", async () => {
+    const { result, rerender } = renderHook(
+      ({ schedules }) =>
+        useTripDragAndDrop({
+          tripId: "trip1",
+          currentDayId: "day1",
+          currentPatternId: "pattern1",
+          schedules,
+          candidates: [],
+          onDone: vi.fn(),
+          onSchedulesReordered: vi.fn(),
+          onCandidatesReordered: vi.fn(),
+          onCandidateAssigned: vi.fn(),
+          onScheduleUnassigned: vi.fn(),
+        }),
+      { initialProps: { schedules: [s1, s2] } },
+    );
+
+    startDrag(result, "s1");
+    expect(result.current.activeDragItem).not.toBeNull();
+
+    await act(async () => {
+      await result.current.handleDragCancel();
+    });
+
+    expect(result.current.activeDragItem).toBeNull();
+
+    // Local snapshot released — prop changes are reflected again.
+    rerender({ schedules: [s1, s2, s3] });
+    expect(result.current.localSchedules).toHaveLength(3);
+  });
+
+  it("defers the cancel's snapshot reset until an in-flight operation completes", async () => {
+    let resolveOp1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveOp1 = () => res(undefined);
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.reorderSchedule("s2", "up");
+    });
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    // Let op1's queued task start and call the (hung) API, so `resolveOp1`
+    // gets assigned before we need it below.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    startDrag(result, "s1");
+
+    let cancelPromise!: Promise<void>;
+    act(() => {
+      cancelPromise = result.current.handleDragCancel();
+    });
+
+    // The cancel's reset is queued behind op1's still-pending task — the
+    // snapshot must not be cleared yet.
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    resolveOp1();
+    await act(async () => {
+      await cancelPromise;
+    });
+
+    // op1 settles, its own finally is skipped (opId moved on), and the
+    // queued cancel reset runs — falling back to props.
+    expect(result.current.localSchedules).toStrictEqual([s1, s2]);
+  });
+
+  it("skips the cancel's reset when a new drag has already started", async () => {
+    let resolveOp1!: () => void;
+    vi.mocked(api).mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveOp1 = () => res(undefined);
+        }),
+    );
+
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      result.current.reorderSchedule("s2", "up");
+    });
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    // Let op1's queued task start and call the (hung) API, so `resolveOp1`
+    // gets assigned before we need it below.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    startDrag(result, "s1");
+
+    let cancelPromise!: Promise<void>;
+    act(() => {
+      cancelPromise = result.current.handleDragCancel();
+    });
+
+    // A new drag starts before the cancel's queued reset has run — it must
+    // capture its own snapshot and be protected from the stale cancel reset.
+    startDrag(result, "s2");
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+
+    resolveOp1();
+    await act(async () => {
+      await cancelPromise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // The cancel's reset was for a now-stale op id and must have skipped —
+    // the newer drag's snapshot is still intact, not reset to null.
+    expect(result.current.localSchedules.map((s) => s.id)).toEqual(["s2", "s1"]);
+  });
+});

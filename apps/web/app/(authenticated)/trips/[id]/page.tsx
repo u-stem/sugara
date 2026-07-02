@@ -916,6 +916,7 @@ export default function TripDetailPage() {
                 onDragOver={dnd.handleDragOver}
                 onDragMove={dnd.handleDragMove}
                 onDragEnd={dnd.handleDragEnd}
+                onDragCancel={dnd.handleDragCancel}
                 accessibility={{ announcements: dndAnnouncements }}
               >
                 {/* Mobile layout */}

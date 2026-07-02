@@ -224,6 +224,13 @@ export function useTripDragAndDrop({
     const type = active.data.current?.type as string | undefined;
     if (!type) return;
 
+    // Claim the op id so a still-queued previous operation's finally can no
+    // longer null out the snapshot this drag is about to capture — that
+    // fallback would recompute the drop against possibly-stale props. Bumped
+    // only after the early return above: a bump without a matching reset
+    // (dragEnd/dragCancel) would strand the previous op's snapshot.
+    opIdRef.current += 1;
+
     const source = type === "candidate" ? "candidate" : "schedule";
     const currentSchedules = localSchedules ?? schedules;
     const currentCandidates = localCandidates ?? candidates;
@@ -314,6 +321,28 @@ export function useTripDragAndDrop({
 
   function handleDragMove(event: DragMoveEvent) {
     updateOverState(event);
+  }
+
+  function handleDragCancel(): Promise<void> {
+    // Claim a fresh op id: (1) any in-flight op's queued finally must skip
+    // its reset (we own it now), (2) if a NEW drag starts before our queued
+    // reset runs, the id moves on and our reset skips — never clobbering the
+    // newer drag's snapshot.
+    const myOpId = ++opIdRef.current;
+    setActiveDragItem(null);
+    setOverScheduleId(null);
+    setOverCandidateId(null);
+    setLastOverZone(null);
+    // Route the snapshot reset through the queue: dragStart bumped the op
+    // id, so the pending op's own finally will NOT reset — without this task
+    // the snapshot would leak forever. Queuing (not resetting inline) also
+    // guarantees props already contain the pending op's cache write.
+    return enqueue(async () => {
+      if (opIdRef.current === myOpId) {
+        setLocalSchedules(null);
+        setLocalCandidates(null);
+      }
+    });
   }
 
   // Synchronous phase of handleDragEnd: branch dispatch, payload computation,
@@ -806,6 +835,7 @@ export function useTripDragAndDrop({
     handleDragOver,
     handleDragMove,
     handleDragEnd,
+    handleDragCancel,
     reorderSchedule,
     reorderCandidate,
   };

@@ -605,6 +605,7 @@ export default function SpTripDetailPage() {
                   onDragOver={dnd.handleDragOver}
                   onDragMove={dnd.handleDragMove}
                   onDragEnd={dnd.handleDragEnd}
+                  onDragCancel={dnd.handleDragCancel}
                   accessibility={{ announcements: undefined }}
                 >
                   {/* SP mobile layout — always visible, no lg:hidden */}
