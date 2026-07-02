@@ -445,7 +445,11 @@ export function useTripDragAndDrop({
           // unassign succeeded but reorder failed — surface the error so the
           // user knows the drop position didn't persist (post-refetch the
           // candidate will sit wherever the server's nextOrder placed it).
-          toast.error(tm("scheduleReorderFailed"));
+          if (err instanceof ApiError && (err.status === 400 || err.status === 404)) {
+            toast.error(tm("conflictStale"));
+          } else {
+            toast.error(tm("scheduleReorderFailed"));
+          }
           if (process.env.NODE_ENV !== "production") {
             console.error("[schedule→candidates reorder failed]", err);
           }

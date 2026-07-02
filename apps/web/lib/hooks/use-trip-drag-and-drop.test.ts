@@ -7,7 +7,7 @@ vi.mock("@/lib/api", () => ({
   api: vi.fn().mockResolvedValue(undefined),
   ApiError: class ApiError extends Error {
     status: number;
-    constructor(status: number, message: string) {
+    constructor(message: string, status: number) {
       super(message);
       this.status = status;
     }
@@ -1035,5 +1035,91 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
 
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(onCandidateAssigned).not.toHaveBeenCalled();
+  });
+
+  // Drops schedule "s1" onto candidate "c1": unassign succeeds, then the
+  // reorder PATCH (triggered because overType === "candidate") fails.
+  function dragScheduleOverCandidate(result: {
+    current: ReturnType<typeof useTripDragAndDrop>;
+  }): Promise<void> {
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    return act(() =>
+      result.current.handleDragEnd({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "c1",
+          data: { current: { type: "candidate" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]),
+    );
+  }
+
+  it("shows conflictStale when the post-unassign candidate reorder fails with a 400", async () => {
+    const { ApiError } = await import("@/lib/api");
+    const { toast } = await import("sonner");
+    vi.mocked(api)
+      .mockResolvedValueOnce(undefined) // unassign POST
+      .mockRejectedValueOnce(new ApiError("INVALID_CANDIDATE_REORDER", 400)); // reorder PATCH
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(toast.error).toHaveBeenCalledWith("conflictStale");
+  });
+
+  it("still shows scheduleReorderFailed for a non-ApiError post-unassign reorder failure", async () => {
+    const { toast } = await import("sonner");
+    vi.mocked(api)
+      .mockResolvedValueOnce(undefined) // unassign POST
+      .mockRejectedValueOnce(new Error("network")); // reorder PATCH
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone: vi.fn(),
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(toast.error).toHaveBeenCalledWith("scheduleReorderFailed");
   });
 });
