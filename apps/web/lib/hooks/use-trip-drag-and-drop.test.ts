@@ -95,6 +95,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
           onSchedulesReordered: vi.fn(),
           onCandidatesReordered: vi.fn(),
           onCandidateAssigned: vi.fn(),
+          onScheduleUnassigned: vi.fn(),
         }),
       { initialProps: { schedules: [s1, s2] } },
     );
@@ -119,6 +120,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
           onSchedulesReordered: vi.fn(),
           onCandidatesReordered: vi.fn(),
           onCandidateAssigned: vi.fn(),
+          onScheduleUnassigned: vi.fn(),
         }),
       { initialProps: { schedules: [s1, s2] } },
     );
@@ -176,6 +178,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -227,6 +230,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -299,6 +303,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -352,6 +357,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -420,6 +426,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -490,6 +497,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -567,6 +575,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -618,6 +627,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -661,6 +671,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -695,6 +706,7 @@ describe("useTripDragAndDrop — null-based snapshot isolation", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -787,6 +799,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -816,6 +829,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -839,6 +853,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -873,6 +888,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered,
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -902,6 +918,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered,
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -965,6 +982,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned,
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -997,6 +1015,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned,
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -1028,6 +1047,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned,
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -1090,6 +1110,7 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
@@ -1115,11 +1136,163 @@ describe("useTripDragAndDrop — post-mutation callback routing (#166)", () => {
         onSchedulesReordered: vi.fn(),
         onCandidatesReordered: vi.fn(),
         onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned: vi.fn(),
       }),
     );
 
     await dragScheduleOverCandidate(result);
 
     expect(toast.error).toHaveBeenCalledWith("scheduleReorderFailed");
+  });
+
+  // Drops schedule "s1" into the empty candidates zone (over type
+  // "candidates", not a specific candidate card) — no reorder PATCH.
+  function dragScheduleOverCandidatesZone(result: {
+    current: ReturnType<typeof useTripDragAndDrop>;
+  }): Promise<void> {
+    act(() => {
+      result.current.handleDragStart({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        activatorEvent: new PointerEvent("pointerdown"),
+      } as Parameters<typeof result.current.handleDragStart>[0]);
+    });
+    return act(() =>
+      result.current.handleDragEnd({
+        active: {
+          id: "s1",
+          data: { current: { type: "schedule" } },
+          rect: { current: { initial: null, translated: null } },
+        },
+        over: {
+          id: "candidates",
+          data: { current: { type: "candidates" } },
+          rect: { width: 0, height: 0, top: 0, left: 0, bottom: 0, right: 0 },
+          disabled: false,
+        },
+        delta: { x: 0, y: 0 },
+        activatorEvent: new PointerEvent("pointerup"),
+        collisions: null,
+      } as Parameters<typeof result.current.handleDragEnd>[0]),
+    );
+  }
+
+  it("routes a successful schedule→candidate drop to onScheduleUnassigned, not onDone", async () => {
+    const onDone = vi.fn();
+    const onScheduleUnassigned = vi.fn();
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone,
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned,
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(onScheduleUnassigned).toHaveBeenCalledWith({
+      scheduleId: "s1",
+      dayId: "day1",
+      patternId: "pattern1",
+      candidateIds: ["s1", "c1"],
+      serverData: undefined,
+    });
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("drops into the empty candidates zone with candidateIds undefined and no reorder PATCH", async () => {
+    const onDone = vi.fn();
+    const onScheduleUnassigned = vi.fn();
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [],
+        onDone,
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned,
+      }),
+    );
+
+    await dragScheduleOverCandidatesZone(result);
+
+    expect(onScheduleUnassigned).toHaveBeenCalledWith({
+      scheduleId: "s1",
+      dayId: "day1",
+      patternId: "pattern1",
+      candidateIds: undefined,
+      serverData: undefined,
+    });
+    expect(vi.mocked(api)).toHaveBeenCalledTimes(1); // unassign POST only, no reorder PATCH
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it("falls back to onDone when the unassign POST fails", async () => {
+    vi.mocked(api).mockRejectedValueOnce(new Error("network"));
+    const onDone = vi.fn();
+    const onScheduleUnassigned = vi.fn();
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone,
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned,
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onScheduleUnassigned).not.toHaveBeenCalled();
+  });
+
+  it("falls back to onDone when the post-unassign reorder PATCH fails, without routing to onScheduleUnassigned", async () => {
+    vi.mocked(api)
+      .mockResolvedValueOnce(undefined) // unassign POST
+      .mockRejectedValueOnce(new Error("network")); // reorder PATCH
+    const onDone = vi.fn();
+    const onScheduleUnassigned = vi.fn();
+    const c1 = makeCandidate("c1");
+    const { result } = renderHook(() =>
+      useTripDragAndDrop({
+        tripId: "trip1",
+        currentDayId: "day1",
+        currentPatternId: "pattern1",
+        schedules: [s1, s2],
+        candidates: [c1],
+        onDone,
+        onSchedulesReordered: vi.fn(),
+        onCandidatesReordered: vi.fn(),
+        onCandidateAssigned: vi.fn(),
+        onScheduleUnassigned,
+      }),
+    );
+
+    await dragScheduleOverCandidate(result);
+
+    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onScheduleUnassigned).not.toHaveBeenCalled();
   });
 });

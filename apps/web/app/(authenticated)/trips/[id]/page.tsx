@@ -538,6 +538,7 @@ export default function TripDetailPage() {
     onSchedulesReordered,
     onCandidatesReordered,
     onCandidateAssigned,
+    onScheduleUnassigned,
   } = useTripMutationCallbacks({
     tripId,
     invalidateTrip,
@@ -627,6 +628,7 @@ export default function TripDetailPage() {
     onSchedulesReordered,
     onCandidatesReordered,
     onCandidateAssigned,
+    onScheduleUnassigned,
   });
 
   const patternOps = usePatternOperations({

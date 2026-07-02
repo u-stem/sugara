@@ -79,6 +79,18 @@ type UseTripDragAndDropArgs = {
     anchors: ScheduleAnchorUpdate[];
     serverData?: ScheduleResponse;
   }) => void | Promise<void>;
+  // Schedule→candidates unassign success: writes the confirmed unassign (and,
+  // when dropped onto a specific candidate, the reorder) into the trip cache
+  // directly instead of refetching. Refetching immediately after unassign can
+  // return a stale read that leaves the schedule in the pattern, reverting
+  // the drop (bug #1).
+  onScheduleUnassigned: (args: {
+    scheduleId: string;
+    dayId: string;
+    patternId: string;
+    candidateIds?: string[];
+    serverData?: ScheduleResponse;
+  }) => void | Promise<void>;
 };
 
 // MouseSensor (not PointerSensor) so that touch input is handled exclusively
@@ -147,6 +159,7 @@ export function useTripDragAndDrop({
   onSchedulesReordered,
   onCandidatesReordered,
   onCandidateAssigned,
+  onScheduleUnassigned,
 }: UseTripDragAndDropArgs) {
   const tm = useTranslations("messages");
   const [activeDragItem, setActiveDragItem] = useState<ActiveDragItem | null>(null);
@@ -415,11 +428,16 @@ export function useTripDragAndDrop({
         insertedCandidates.splice(insertIdx, 0, newCandidate);
         setLocalCandidates(insertedCandidates);
         toast.success(tm("scheduleMovedToCandidate"));
+        const candidateIds = insertedCandidates.map((c) => c.id);
 
+        let unassigned: ScheduleResponse;
         try {
-          await api(`/api/trips/${tripId}/schedules/${active.id}/unassign`, {
-            method: "POST",
-          });
+          unassigned = await api<ScheduleResponse>(
+            `/api/trips/${tripId}/schedules/${active.id}/unassign`,
+            {
+              method: "POST",
+            },
+          );
         } catch (err) {
           if (err instanceof ApiError && (err.status === 400 || err.status === 404)) {
             toast.error(tm("conflictStale"));
@@ -432,13 +450,9 @@ export function useTripDragAndDrop({
 
         try {
           if (overType === "candidate") {
-            // Build expected order from pre-mutation snapshot
-            const reordered = [...currentCandidates];
-            reordered.splice(insertIdx, 0, newCandidate);
-            const scheduleIds = reordered.map((c) => c.id);
             await api(`/api/trips/${tripId}/candidates/reorder`, {
               method: "PATCH",
-              body: JSON.stringify({ scheduleIds }),
+              body: JSON.stringify({ scheduleIds: candidateIds }),
             });
           }
         } catch (err) {
@@ -456,7 +470,16 @@ export function useTripDragAndDrop({
           await onDone();
           return;
         }
-        await onDone();
+        // Write the confirmed unassign + order into the cache instead of
+        // refetching: an immediate GET can return a stale read that leaves
+        // the schedule in the pattern, reverting the drop (bug #1).
+        await onScheduleUnassigned({
+          scheduleId: String(active.id),
+          dayId: currentDayId,
+          patternId: currentPatternId,
+          candidateIds: overType === "candidate" ? candidateIds : undefined,
+          serverData: unassigned,
+        });
       } else if (sourceType === "candidate" && isOverTimeline) {
         const candidate = currentCandidates.find((c) => c.id === active.id);
         if (!candidate) return;

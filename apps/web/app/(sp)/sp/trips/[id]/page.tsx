@@ -169,6 +169,7 @@ export default function SpTripDetailPage() {
     onSchedulesReordered,
     onCandidatesReordered,
     onCandidateAssigned,
+    onScheduleUnassigned,
   } = useTripMutationCallbacks({
     tripId: tripId ?? "",
     invalidateTrip,
@@ -256,6 +257,7 @@ export default function SpTripDetailPage() {
     onSchedulesReordered,
     onCandidatesReordered,
     onCandidateAssigned,
+    onScheduleUnassigned,
   });
 
   const patternOps = usePatternOperations({
