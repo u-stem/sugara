@@ -5,6 +5,12 @@ import { supabase } from "../supabase";
 const SYNC_DEBOUNCE_MS = 300;
 const SYNC_JITTER_MS = 200;
 
+// Exponential backoff to prevent tight reconnect loops when subscribe flips
+// immediately to CLOSED (e.g. missing anon key, Realtime auth misconfiguration).
+// Same rationale as use-trip-sync.
+const CLOSE_RECONNECT_MIN_MS = 1000;
+const CLOSE_RECONNECT_MAX_MS = 30_000;
+
 // Track active subscription channels so broadcastFriendsUpdate
 // can send directly instead of creating a temporary channel.
 const activeChannels = new Map<string, RealtimeChannel>();
@@ -12,6 +18,8 @@ const activeChannels = new Map<string, RealtimeChannel>();
 export function useFriendsSync(userId: string | undefined, onSync: () => void): void {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeAttemptsRef = useRef(0);
   const onSyncRef = useRef(onSync);
   onSyncRef.current = onSync;
 
@@ -32,6 +40,11 @@ export function useFriendsSync(userId: string | undefined, onSync: () => void): 
     const channelName = `friends:${userId}`;
 
     function connect() {
+      // Cancel any pending backoff timer so it does not fire against the new channel.
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
       disconnect();
       // SECURITY: Supabase Realtime channels are accessible to anyone with the anon key.
       // userId is a UUIDv4 (122-bit entropy), making brute-force impractical.
@@ -42,12 +55,32 @@ export function useFriendsSync(userId: string | undefined, onSync: () => void): 
           debouncedSync();
         })
         .subscribe((status) => {
+          if (status === "SUBSCRIBED") {
+            closeAttemptsRef.current = 0;
+          }
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             console.debug(`[FriendsSync] ${status} — SDK will auto-rejoin`);
           }
+          // CLOSED means SDK removed the channel; reconnect with exponential backoff
+          // so a persistent failure (bad key, blocked auth) doesn't hammer the server.
           if (status === "CLOSED" && channelRef.current === channel) {
-            console.warn("[FriendsSync] Channel closed, recreating");
-            connect();
+            const attempt = ++closeAttemptsRef.current;
+            const delay = Math.min(
+              CLOSE_RECONNECT_MIN_MS * 2 ** (attempt - 1),
+              CLOSE_RECONNECT_MAX_MS,
+            );
+            console.warn(
+              `[FriendsSync] Channel closed, recreating in ${delay}ms (attempt ${attempt})`,
+            );
+            if (closeTimerRef.current) {
+              clearTimeout(closeTimerRef.current);
+            }
+            closeTimerRef.current = setTimeout(() => {
+              closeTimerRef.current = null;
+              // Only reconnect if this closure's channel is still the live one —
+              // a later CLOSED or unmount may have already replaced it.
+              if (channelRef.current === channel) connect();
+            }, delay);
           }
         });
 
@@ -71,6 +104,9 @@ export function useFriendsSync(userId: string | undefined, onSync: () => void): 
     }
 
     function handleOnline() {
+      // Network recovery is a fresh start; reset attempt counter so the backoff
+      // log reports realistic "attempt N" values.
+      closeAttemptsRef.current = 0;
       connect();
       onSyncRef.current();
     }
@@ -85,6 +121,10 @@ export function useFriendsSync(userId: string | undefined, onSync: () => void): 
       if (syncTimer.current) {
         clearTimeout(syncTimer.current);
         syncTimer.current = null;
+      }
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
       }
       disconnect();
     };
