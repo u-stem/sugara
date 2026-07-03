@@ -33,25 +33,31 @@ quickPollRoutes.post("/", async (c) => {
     return c.json({ error: ERROR_MSG.LIMIT_QUICK_POLLS }, 409);
   }
 
-  const [poll] = await db
-    .insert(quickPolls)
-    .values({
-      creatorId: user.id,
-      shareToken: generateShareToken(),
-      question,
-      allowMultiple,
-      showResultsBeforeVote,
-      expiresAt: new Date(Date.now() + SEVEN_DAYS_MS),
-    })
-    .returning({ id: quickPolls.id, shareToken: quickPolls.shareToken });
+  // Atomic: a failed options insert must not leave an orphaned poll whose
+  // share link opens an empty vote.
+  const poll = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(quickPolls)
+      .values({
+        creatorId: user.id,
+        shareToken: generateShareToken(),
+        question,
+        allowMultiple,
+        showResultsBeforeVote,
+        expiresAt: new Date(Date.now() + SEVEN_DAYS_MS),
+      })
+      .returning({ id: quickPolls.id, shareToken: quickPolls.shareToken });
 
-  await db.insert(quickPollOptions).values(
-    options.map((opt, i) => ({
-      pollId: poll.id,
-      label: opt.label,
-      sortOrder: i,
-    })),
-  );
+    await tx.insert(quickPollOptions).values(
+      options.map((opt, i) => ({
+        pollId: created.id,
+        label: opt.label,
+        sortOrder: i,
+      })),
+    );
+
+    return created;
+  });
 
   return c.json({ id: poll.id, shareToken: poll.shareToken }, 201);
 });

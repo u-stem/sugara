@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp, TEST_USER } from "./test-helpers";
 
-const { mockGetSession, mockDbQuery, mockDbInsert, mockDbUpdate, mockDbDelete } = vi.hoisted(
-  () => ({
+const { mockGetSession, mockDbQuery, mockDbInsert, mockDbUpdate, mockDbDelete, mockDbTransaction } =
+  vi.hoisted(() => ({
     mockGetSession: vi.fn(),
     mockDbQuery: {
       quickPolls: {
@@ -19,8 +19,8 @@ const { mockGetSession, mockDbQuery, mockDbInsert, mockDbUpdate, mockDbDelete } 
     mockDbInsert: vi.fn(),
     mockDbUpdate: vi.fn(),
     mockDbDelete: vi.fn(),
-  }),
-);
+    mockDbTransaction: vi.fn(),
+  }));
 
 vi.mock("../lib/auth", () => ({
   auth: {
@@ -37,8 +37,9 @@ vi.mock("../db/index", () => {
     update: (...args: unknown[]) => mockDbUpdate(...args),
     delete: (...args: unknown[]) => mockDbDelete(...args),
   };
+  mockDbTransaction.mockImplementation((fn: (t: typeof tx) => unknown) => fn(tx));
   return {
-    db: { ...tx, transaction: (fn: (t: typeof tx) => unknown) => fn(tx) },
+    db: { ...tx, transaction: (...args: unknown[]) => mockDbTransaction(...args) },
   };
 });
 
@@ -78,6 +79,26 @@ describe("Quick Poll routes", () => {
       });
 
       expect(res.status).toBe(201);
+    });
+
+    // poll + options must be one atomic unit — a failed options insert must
+    // not leave behind an orphaned poll with zero options.
+    it("should create poll and options within a single transaction", async () => {
+      mockDbQuery.quickPolls.findMany.mockResolvedValue([]);
+      const mockReturning = vi.fn().mockResolvedValue([{ id: "poll-1", shareToken: "abc123" }]);
+      const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
+      mockDbInsert.mockReturnValue({ values: mockValues });
+
+      await app.request("/api/quick-polls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: "Sushi or Ramen?",
+          options: [{ label: "Sushi" }, { label: "Ramen" }],
+        }),
+      });
+
+      expect(mockDbTransaction).toHaveBeenCalledTimes(1);
     });
 
     it("should reject with less than 2 options", async () => {
