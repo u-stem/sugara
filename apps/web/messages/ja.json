@@ -1599,6 +1599,7 @@
       "limits": "上限",
       "desktop": "デスクトップアプリ",
       "notifications": "通知",
+      "api": "外部API",
       "other": "その他"
     }
   },
