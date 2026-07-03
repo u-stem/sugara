@@ -1,8 +1,9 @@
 import { arrayMove } from "@dnd-kit/sortable";
-import type { CrossDayEntry, ScheduleResponse } from "@sugara/shared";
+import type { CandidateResponse, CrossDayEntry, ScheduleResponse } from "@sugara/shared";
 import { describe, expect, it } from "vitest";
 import {
   applyOptimisticReorder,
+  candidateToOptimisticSchedule,
   computeCandidateDropResult,
   computeCandidateInsertIndex,
   computeScheduleReorderIndex,
@@ -36,6 +37,50 @@ function makeCrossDayEntry(overrides: Partial<ScheduleResponse> = {}): CrossDayE
     crossDayPosition: "final",
   };
 }
+
+function makeCandidate(overrides: Partial<CandidateResponse> = {}): CandidateResponse {
+  return {
+    ...makeSchedule(),
+    likeCount: 2,
+    hmmCount: 1,
+    myReaction: "like",
+    ...overrides,
+  };
+}
+
+describe("candidateToOptimisticSchedule", () => {
+  const clearedAnchor = { anchor: null, anchorSourceId: null };
+
+  // The hand-written field list this helper replaced silently dropped `cost`
+  // (optional fields don't type-error when omitted), so a costed candidate
+  // lost its fare estimate during the optimistic window.
+  it("carries cost over to the optimistic schedule", () => {
+    const candidate = makeCandidate({ id: "c-1", cost: 580 });
+
+    const schedule = candidateToOptimisticSchedule(candidate, 3, clearedAnchor);
+
+    expect(schedule.cost).toBe(580);
+  });
+
+  it("does not leak reaction fields into the schedule", () => {
+    const schedule = candidateToOptimisticSchedule(makeCandidate(), 0, clearedAnchor);
+
+    expect("likeCount" in schedule).toBe(false);
+  });
+
+  it("applies the sortOrder and anchor from the drop result", () => {
+    const schedule = candidateToOptimisticSchedule(makeCandidate(), 3, {
+      anchor: "after",
+      anchorSourceId: "s-9",
+    });
+
+    expect(schedule).toMatchObject({
+      sortOrder: 3,
+      crossDayAnchor: "after",
+      crossDayAnchorSourceId: "s-9",
+    });
+  });
+});
 
 describe("isOverUpperHalf", () => {
   it("returns false when overRect is missing", () => {
