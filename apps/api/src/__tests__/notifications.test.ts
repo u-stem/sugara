@@ -1,21 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockDbQuery, mockDbInsert, mockDbSelect, mockDbDelete, mockSendNotification } = vi.hoisted(
-  () => ({
-    mockDbQuery: {
-      notificationPreferences: { findFirst: vi.fn() },
-      pushSubscriptions: { findMany: vi.fn() },
-      notifications: { findMany: vi.fn() },
-      articleTrips: { findMany: vi.fn() },
-      trips: { findFirst: vi.fn() },
-      discordWebhooks: { findFirst: vi.fn() },
-    },
-    mockDbInsert: vi.fn(),
-    mockDbSelect: vi.fn(),
-    mockDbDelete: vi.fn(),
-    mockSendNotification: vi.fn(),
-  }),
-);
+const {
+  mockDbQuery,
+  mockDbInsert,
+  mockDbSelect,
+  mockDbDelete,
+  mockSendNotification,
+  mockLoggerError,
+} = vi.hoisted(() => ({
+  mockDbQuery: {
+    notificationPreferences: { findFirst: vi.fn() },
+    pushSubscriptions: { findMany: vi.fn() },
+    notifications: { findMany: vi.fn() },
+    articleTrips: { findMany: vi.fn() },
+    trips: { findFirst: vi.fn() },
+    tripMembers: { findMany: vi.fn() },
+    discordWebhooks: { findFirst: vi.fn() },
+  },
+  mockDbInsert: vi.fn(),
+  mockDbSelect: vi.fn(),
+  mockDbDelete: vi.fn(),
+  mockSendNotification: vi.fn(),
+  mockLoggerError: vi.fn(),
+}));
+
+vi.mock("../lib/logger", () => ({
+  logger: {
+    error: (...args: unknown[]) => mockLoggerError(...args),
+    warn: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
 
 vi.mock("../db/index", () => ({
   db: {
@@ -33,7 +49,12 @@ vi.mock("web-push", () => ({
   },
 }));
 
-import { createNotification, notifyArticleOwnersOnMemberAdded } from "../lib/notifications";
+import {
+  createNotification,
+  notifyArticleOwnersOnMemberAdded,
+  notifyTripMembersExcluding,
+  notifyUsers,
+} from "../lib/notifications";
 
 const baseParams = {
   type: "member_added" as const,
@@ -230,5 +251,42 @@ describe("notifyArticleOwnersOnMemberAdded", () => {
     await notifyArticleOwnersOnMemberAdded({ tripId: "trip-1", addedUserIds: [] });
 
     expect(mockDbQuery.articleTrips.findMany).not.toHaveBeenCalled();
+  });
+});
+
+// Fire-and-forget entry points must swallow DB failures into logger.error;
+// an uncaught rejection here would surface as an unhandled promise rejection.
+describe("fire-and-forget エントリポイントのエラー処理", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("notifyUsers: trip 取得の reject を logger.error に記録する", async () => {
+    mockDbQuery.trips.findFirst.mockRejectedValue(new Error("db down"));
+
+    notifyUsers({
+      type: "member_added",
+      tripId: "trip-1",
+      userIds: ["u1"],
+      makePayload: (tripName) => ({ tripName }),
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockLoggerError).toHaveBeenCalled();
+  });
+
+  it("notifyTripMembersExcluding: メンバー取得の reject を logger.error に記録する", async () => {
+    mockDbQuery.tripMembers.findMany.mockRejectedValue(new Error("db down"));
+    mockDbQuery.trips.findFirst.mockResolvedValue({ title: "京都旅行" });
+
+    notifyTripMembersExcluding({
+      type: "schedule_created",
+      tripId: "trip-1",
+      actorId: "u1",
+      makePayload: (tripName) => ({ tripName }),
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockLoggerError).toHaveBeenCalled();
   });
 });
