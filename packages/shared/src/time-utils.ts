@@ -13,7 +13,9 @@ export function timeToMinutes(time: string): number {
     throw new Error(`Invalid time format: ${time}`);
   }
   const [h, m] = parts.map(Number);
-  if (Number.isNaN(h) || Number.isNaN(m)) {
+  // Range check, not just NaN: "24:00" or "12:99" would otherwise produce a
+  // minute value that minutesToTime and delta math silently mishandle.
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) {
     throw new Error(`Invalid time format: ${time}`);
   }
   return h * 60 + m;
