@@ -620,6 +620,16 @@ async function tryCreate<T>(fn: () => Promise<T>): Promise<T | null> {
 }
 
 async function main() {
+  // Dev seed creates users with a well-known password — refuse to run against
+  // anything but localhost unless explicitly overridden.
+  const host = new URL(API_URL).hostname;
+  const isLocalhost = host === "localhost" || host === "127.0.0.1";
+  if (!isLocalhost && process.env.ALLOW_REMOTE_SEED !== "1") {
+    console.error(`Error: refusing to seed non-local API_URL (${API_URL}).`);
+    console.error("Set ALLOW_REMOTE_SEED=1 to override.");
+    process.exit(1);
+  }
+
   console.log("Seeding database...");
   console.log(`API: ${API_URL}`);
 
