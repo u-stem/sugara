@@ -31,6 +31,7 @@ vi.mock("../db/index", () => ({
   },
 }));
 
+import { MAX_LOGS_PER_TRIP } from "../lib/constants";
 import { activityLogRoutes } from "../routes/activity-logs";
 import { createTestApp, TEST_USER } from "./test-helpers";
 
@@ -174,6 +175,49 @@ describe("Activity log routes", () => {
 
       expect(res.status).toBe(200);
       expect(body.items).toHaveLength(0);
+    });
+
+    // Number("abc") is NaN, and NaN survives Math.min/Math.max — without a
+    // guard it reaches the SQL LIMIT clause and the query 500s.
+    it("falls back to the default for a non-numeric limit", async () => {
+      const limitFn = vi.fn().mockResolvedValue([]);
+      mockDbSelect.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockReturnValue({
+                limit: limitFn,
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const app = createTestApp(activityLogRoutes, "/api/trips");
+      await app.request(`${basePath}?limit=abc`);
+
+      // hasMore probing queries limit + 1
+      expect(limitFn).toHaveBeenCalledWith(MAX_LOGS_PER_TRIP + 1);
+    });
+
+    it("floors a fractional limit to an integer", async () => {
+      const limitFn = vi.fn().mockResolvedValue([]);
+      mockDbSelect.mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          innerJoin: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              orderBy: vi.fn().mockReturnValue({
+                limit: limitFn,
+              }),
+            }),
+          }),
+        }),
+      });
+
+      const app = createTestApp(activityLogRoutes, "/api/trips");
+      await app.request(`${basePath}?limit=2.5`);
+
+      expect(limitFn).toHaveBeenCalledWith(3);
     });
   });
 });

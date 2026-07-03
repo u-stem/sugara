@@ -15,8 +15,12 @@ activityLogRoutes.use("*", requireAuth);
 activityLogRoutes.get("/:tripId/activity-logs", requireTripAccess(), async (c) => {
   const tripId = getParam(c, "tripId");
 
+  // Number("abc") is NaN and NaN survives Math.min/Math.max, so a non-numeric
+  // limit would reach the SQL LIMIT clause; fall back to the default instead.
   const limitParam = Number(c.req.query("limit") || String(MAX_LOGS_PER_TRIP));
-  const limit = Math.min(Math.max(1, limitParam), MAX_LOGS_PER_TRIP);
+  const limit = Number.isFinite(limitParam)
+    ? Math.min(Math.max(1, Math.floor(limitParam)), MAX_LOGS_PER_TRIP)
+    : MAX_LOGS_PER_TRIP;
   const cursor = c.req.query("cursor");
   if (cursor && Number.isNaN(Date.parse(cursor))) {
     return c.json({ error: "Invalid cursor" }, 400);
