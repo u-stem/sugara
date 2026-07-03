@@ -1,4 +1,4 @@
-import type { CrossDayEntry, ScheduleResponse } from "@sugara/shared";
+import type { CandidateResponse, CrossDayEntry, ScheduleResponse } from "@sugara/shared";
 import { buildMergedTimeline, type TimelineItem, timelineSortableIds } from "./merge-timeline";
 
 /** Current pointer Y = activation position + drag delta. Works with pointer, mouse, and touch events. */
@@ -167,6 +167,31 @@ export type CandidateDropResult = {
   insertIndex: number;
   anchor: AnchorUpdate;
 };
+
+/**
+ * Builds the optimistic ScheduleResponse for a candidate dropped onto the
+ * timeline. Spreads the candidate (minus its reaction-only fields) so every
+ * schedule field — including optional ones like cost, which a hand-written
+ * field list can silently drop without a type error — carries over.
+ */
+export function candidateToOptimisticSchedule(
+  candidate: CandidateResponse,
+  sortOrder: number,
+  anchor: AnchorUpdate,
+): ScheduleResponse {
+  const {
+    likeCount: _likeCount,
+    hmmCount: _hmmCount,
+    myReaction: _myReaction,
+    ...fields
+  } = candidate;
+  return {
+    ...fields,
+    sortOrder,
+    crossDayAnchor: anchor.anchor,
+    crossDayAnchorSourceId: anchor.anchorSourceId,
+  };
+}
 
 /**
  * Like `computeCandidateInsertIndex`, but also returns the anchor update that

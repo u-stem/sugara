@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { ApiError, api } from "@/lib/api";
 import {
   applyOptimisticReorder,
+  candidateToOptimisticSchedule,
   computeCandidateDropResult,
   computeScheduleReorderResult,
   type DropTarget,
@@ -556,28 +557,7 @@ export function useTripDragAndDrop({
       );
 
       const activeId = String(active.id);
-      const newSchedule: ScheduleResponse = {
-        id: candidate.id,
-        name: candidate.name,
-        category: candidate.category,
-        address: candidate.address,
-        startTime: candidate.startTime,
-        endTime: candidate.endTime,
-        sortOrder: insertIdx,
-        memo: candidate.memo,
-        urls: candidate.urls,
-        departurePlace: candidate.departurePlace,
-        arrivalPlace: candidate.arrivalPlace,
-        transportMethod: candidate.transportMethod,
-        color: candidate.color,
-        endDayOffset: candidate.endDayOffset,
-        crossDayAnchor: anchor.anchor,
-        crossDayAnchorSourceId: anchor.anchorSourceId,
-        latitude: candidate.latitude,
-        longitude: candidate.longitude,
-        placeId: candidate.placeId,
-        updatedAt: candidate.updatedAt,
-      };
+      const newSchedule = candidateToOptimisticSchedule(candidate, insertIdx, anchor);
 
       const insertedSchedules = [...currentSchedules];
       insertedSchedules.splice(insertIdx, 0, newSchedule);

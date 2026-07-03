@@ -163,14 +163,54 @@ describe("useFriendsSync reconnection", () => {
     expect(mockRemoveChannel).not.toHaveBeenCalled();
   });
 
-  it("recreates channel on CLOSED", () => {
+  // CLOSED must not trigger a synchronous reconnect: when subscribe flips
+  // straight to CLOSED (missing anon key, Realtime auth misconfiguration),
+  // an immediate connect() would spin connect→CLOSED→connect in a tight loop.
+  it("does not reconnect immediately on CLOSED", () => {
+    renderHook(() => useFriendsSync("user-1", onSync));
+
+    act(() => mockChannels[0]._emitStatus("CLOSED"));
+
+    expect(mockChannels).toHaveLength(1);
+  });
+
+  it("recreates channel after backoff delay on CLOSED", () => {
     renderHook(() => useFriendsSync("user-1", onSync));
     const firstChannel = mockChannels[0];
 
     act(() => firstChannel._emitStatus("CLOSED"));
+    act(() => vi.advanceTimersByTime(1000));
 
     expect(mockRemoveChannel).toHaveBeenCalledWith(firstChannel);
     expect(mockChannels).toHaveLength(2);
+  });
+
+  it("doubles the backoff delay on consecutive CLOSED", () => {
+    renderHook(() => useFriendsSync("user-1", onSync));
+
+    act(() => mockChannels[0]._emitStatus("CLOSED"));
+    act(() => vi.advanceTimersByTime(1000));
+    expect(mockChannels).toHaveLength(2);
+
+    // Second consecutive CLOSED → 2s backoff; 1s must not be enough.
+    act(() => mockChannels[1]._emitStatus("CLOSED"));
+    act(() => vi.advanceTimersByTime(1000));
+
+    expect(mockChannels).toHaveLength(2);
+  });
+
+  it("resets the backoff after a successful subscribe", () => {
+    renderHook(() => useFriendsSync("user-1", onSync));
+
+    act(() => mockChannels[0]._emitStatus("CLOSED"));
+    act(() => vi.advanceTimersByTime(1000));
+    act(() => mockChannels[1]._emitStatus("SUBSCRIBED"));
+
+    // Attempt counter was reset, so the next CLOSED reconnects after 1s again.
+    act(() => mockChannels[1]._emitStatus("CLOSED"));
+    act(() => vi.advanceTimersByTime(1000));
+
+    expect(mockChannels).toHaveLength(3);
   });
 
   it("ignores stale CLOSED from old channel", () => {
@@ -178,10 +218,22 @@ describe("useFriendsSync reconnection", () => {
     const firstChannel = mockChannels[0];
 
     act(() => firstChannel._emitStatus("CLOSED"));
+    act(() => vi.advanceTimersByTime(1000));
     expect(mockChannels).toHaveLength(2);
 
     act(() => firstChannel._emitStatus("CLOSED"));
+    act(() => vi.advanceTimersByTime(30_000));
     expect(mockChannels).toHaveLength(2);
+  });
+
+  it("cancels a pending reconnect on unmount", () => {
+    const { unmount } = renderHook(() => useFriendsSync("user-1", onSync));
+
+    act(() => mockChannels[0]._emitStatus("CLOSED"));
+    unmount();
+    act(() => vi.advanceTimersByTime(30_000));
+
+    expect(mockChannels).toHaveLength(1);
   });
 });
 

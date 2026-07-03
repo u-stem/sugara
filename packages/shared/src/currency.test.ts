@@ -21,6 +21,25 @@ describe("toMinorUnits", () => {
   it("converts KRW amount unchanged (no decimals)", () => {
     expect(toMinorUnits(5000, "KRW")).toBe(5000);
   });
+
+  // Documents the existing Math.round semantics for edge inputs so a future
+  // refactor cannot silently change the rounding direction.
+  it("rounds a fractional JPY amount to the nearest whole unit", () => {
+    expect(toMinorUnits(100.5, "JPY")).toBe(101);
+  });
+
+  it("rounds a negative half value toward positive infinity (Math.round semantics)", () => {
+    expect(toMinorUnits(-12.5, "JPY")).toBe(-12);
+  });
+
+  it("converts zero to zero", () => {
+    expect(toMinorUnits(0, "USD")).toBe(0);
+  });
+
+  it("avoids binary float truncation for amounts like 1.15", () => {
+    // 1.15 * 100 === 114.99999... — Math.round (not trunc) keeps this at 115.
+    expect(toMinorUnits(1.15, "USD")).toBe(115);
+  });
 });
 
 describe("fromMinorUnits", () => {

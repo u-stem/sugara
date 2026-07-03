@@ -1599,6 +1599,7 @@
       "limits": "Limits",
       "desktop": "Desktop App",
       "notifications": "Notifications",
+      "api": "External API",
       "other": "Other"
     }
   },

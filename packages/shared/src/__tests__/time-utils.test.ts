@@ -17,6 +17,18 @@ describe("timeToMinutes", () => {
   test("converts HH:MM:SS by ignoring seconds", () => {
     expect(timeToMinutes("10:30:00")).toBe(630);
   });
+
+  test("throws for out-of-range hours", () => {
+    expect(() => timeToMinutes("24:00")).toThrow("Invalid time format");
+  });
+
+  test("throws for out-of-range minutes", () => {
+    expect(() => timeToMinutes("12:99")).toThrow("Invalid time format");
+  });
+
+  test("throws for a negative minute component", () => {
+    expect(() => timeToMinutes("12:-5")).toThrow("Invalid time format");
+  });
 });
 
 describe("minutesToTime", () => {

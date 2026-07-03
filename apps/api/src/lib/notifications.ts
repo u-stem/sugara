@@ -104,6 +104,9 @@ export function notifyUsers(params: {
           createNotification({ type, userId, tripId, payload: makePayload(tripName) }),
         ),
       );
+    })
+    .catch((err) => {
+      logger.error({ err, tripId }, "Failed to dispatch notifications");
     });
 }
 
@@ -119,7 +122,7 @@ export function notifyTripMembersExcluding(params: {
   makePayload: (tripName: string) => NotificationPayload;
 }): void {
   const { type, tripId, actorId, makePayload } = params;
-  void (async () => {
+  (async () => {
     const [members, trip] = await Promise.all([
       db.query.tripMembers.findMany({
         where: eq(tripMembers.tripId, tripId),
@@ -136,7 +139,9 @@ export function notifyTripMembersExcluding(params: {
           createNotification({ type, userId: m.userId, tripId, payload: makePayload(tripName) }),
         ),
     );
-  })();
+  })().catch((err) => {
+    logger.error({ err, tripId }, "Failed to dispatch notifications to trip members");
+  });
 }
 
 /**

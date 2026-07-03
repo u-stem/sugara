@@ -7,7 +7,7 @@
 // route layer because the actor id/name is resolved differently per surface.
 
 import { MAX_PATTERNS_PER_DAY, MAX_SCHEDULES_PER_TRIP } from "@sugara/shared";
-import { count, eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import { db } from "../db/index";
 import { dayPatterns, schedules } from "../db/schema";
 import { buildScheduleCloneValues } from "./schedule-clone";
@@ -28,15 +28,20 @@ export async function createDayPatternCore(
   tripDayId: string,
   label: string,
 ): Promise<CreatePatternResult> {
-  const [patternCount] = await db
-    .select({ count: count() })
-    .from(dayPatterns)
-    .where(eq(dayPatterns.tripDayId, tripDayId));
-  if (patternCount.count >= MAX_PATTERNS_PER_DAY) {
-    return { ok: false, error: "pattern_limit_reached" };
-  }
+  return db.transaction(async (tx): Promise<CreatePatternResult> => {
+    // Same advisory lock getNextSortOrder takes below (re-acquiring within the
+    // transaction is harmless). Taking it BEFORE the cap count serializes
+    // concurrent creates on the same day so both cannot pass the cap check.
+    await lockDayPatternScope(tx, tripDayId);
 
-  const pattern = await db.transaction(async (tx) => {
+    const [patternCount] = await tx
+      .select({ count: count() })
+      .from(dayPatterns)
+      .where(eq(dayPatterns.tripDayId, tripDayId));
+    if (patternCount.count >= MAX_PATTERNS_PER_DAY) {
+      return { ok: false, error: "pattern_limit_reached" };
+    }
+
     const nextOrder = await getNextSortOrder(
       tx,
       dayPatterns.sortOrder,
@@ -50,10 +55,14 @@ export async function createDayPatternCore(
       .values({ tripDayId, label, isDefault: false, sortOrder: nextOrder })
       .returning();
 
-    return result;
+    return { ok: true, pattern: result };
   });
+}
 
-  return { ok: true, pattern };
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+function lockDayPatternScope(tx: Tx, tripDayId: string): Promise<unknown> {
+  return tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`pattern:day:${tripDayId}`}))`);
 }
 
 export type DuplicatePatternResult =
@@ -69,18 +78,25 @@ export async function duplicateDayPatternCore(
   tripDayId: string,
   source: { label: string; schedules: CloneableSchedule[] },
 ): Promise<DuplicatePatternResult> {
-  const [patternCountRow, scheduleCount] = await Promise.all([
-    db.select({ count: count() }).from(dayPatterns).where(eq(dayPatterns.tripDayId, tripDayId)),
-    getScheduleCount(db, tripId),
-  ]);
-  if (patternCountRow[0].count >= MAX_PATTERNS_PER_DAY) {
-    return { ok: false, error: "pattern_limit_reached" };
-  }
-  if (scheduleCount + source.schedules.length > MAX_SCHEDULES_PER_TRIP) {
-    return { ok: false, error: "schedule_limit_reached" };
-  }
+  return db.transaction(async (tx): Promise<DuplicatePatternResult> => {
+    // The per-day lock serializes concurrent duplicates on the same day for
+    // both caps. (Cross-day duplicates on the same trip can still race the
+    // trip-wide schedule cap — a soft limit, accepted.)
+    await lockDayPatternScope(tx, tripDayId);
 
-  const pattern = await db.transaction(async (tx) => {
+    const [patternCountRow] = await tx
+      .select({ count: count() })
+      .from(dayPatterns)
+      .where(eq(dayPatterns.tripDayId, tripDayId));
+    if (patternCountRow.count >= MAX_PATTERNS_PER_DAY) {
+      return { ok: false, error: "pattern_limit_reached" };
+    }
+
+    const scheduleCount = await getScheduleCount(tx, tripId);
+    if (scheduleCount + source.schedules.length > MAX_SCHEDULES_PER_TRIP) {
+      return { ok: false, error: "schedule_limit_reached" };
+    }
+
     const nextOrder = await getNextSortOrder(
       tx,
       dayPatterns.sortOrder,
@@ -109,10 +125,8 @@ export async function duplicateDayPatternCore(
       );
     }
 
-    return newPattern;
+    return { ok: true, pattern: newPattern };
   });
-
-  return { ok: true, pattern };
 }
 
 export type OverwritePatternResult = { ok: true } | { ok: false; error: "schedule_limit_reached" };

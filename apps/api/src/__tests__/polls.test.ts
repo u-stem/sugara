@@ -242,6 +242,49 @@ describe("Poll routes", () => {
         expect.objectContaining({ type: "poll_started" }),
       );
     });
+
+    // A concurrent duplicate add can slip past the findFirst pre-check and hit
+    // the DB unique index; the resulting 23505 must map to 409, not 500.
+    it("returns 409 when a concurrent insert violates the unique constraint", async () => {
+      mockFindPollAsOwner.mockResolvedValue({
+        id: "poll-1",
+        status: "open",
+        tripId: "trip-1",
+        trip: { ownerId: fakeUser.id },
+      });
+      mockDbSelect.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 0 }]),
+        }),
+      });
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: "00000000-0000-0000-0000-000000000002",
+        name: "New Participant",
+        image: null,
+      });
+      mockDbQuery.tripMembers.findFirst.mockResolvedValue({
+        tripId: "trip-1",
+        userId: "00000000-0000-0000-0000-000000000002",
+        role: "editor",
+      });
+      mockDbQuery.schedulePollParticipants.findFirst.mockResolvedValue(undefined);
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi
+            .fn()
+            .mockRejectedValue(Object.assign(new Error("duplicate key"), { code: "23505" })),
+        }),
+      });
+
+      const app = createTestApp(pollRoutes, "/api/polls");
+      const res = await app.request("/api/polls/poll-1/participants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: "00000000-0000-0000-0000-000000000002" }),
+      });
+
+      expect(res.status).toBe(409);
+    });
   });
 
   describe("POST /api/polls/:pollId/confirm", () => {
