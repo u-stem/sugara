@@ -7,7 +7,7 @@ import {
   toMinorUnits,
   type updateExpenseSchema,
 } from "@sugara/shared";
-import { count, eq } from "drizzle-orm";
+import { count, eq, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "../db/index";
 import {
@@ -100,16 +100,6 @@ export async function createExpenseCore(
       ? convertToBase(minorAmount, currency as CurrencyCode, tripCurrency, exchangeRate)
       : null;
 
-  // Check expense count limit
-  const [{ count: expenseCount }] = await db
-    .select({ count: count() })
-    .from(expenses)
-    .where(eq(expenses.tripId, tripId));
-
-  if (expenseCount >= MAX_EXPENSES_PER_TRIP) {
-    return { ok: false, error: "limit_reached" };
-  }
-
   // Verify all users are trip members.
   // When the caller already fetched members for another purpose (e.g. building
   // a memberNoMap), they can pass the set via options to skip this round-trip.
@@ -162,6 +152,19 @@ export async function createExpenseCore(
       : splits.map((s) => toMinorUnits(s.amount ?? 0, currency));
 
   const result = await db.transaction(async (tx) => {
+    // Serialize concurrent creates per trip so the cap check cannot race:
+    // two transactions could otherwise both read a count just under the cap
+    // and both insert. Lock released at COMMIT.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`expense:trip:${tripId}`}))`);
+
+    const [{ count: expenseCount }] = await tx
+      .select({ count: count() })
+      .from(expenses)
+      .where(eq(expenses.tripId, tripId));
+    if (expenseCount >= MAX_EXPENSES_PER_TRIP) {
+      return null;
+    }
+
     const [expense] = await tx
       .insert(expenses)
       .values({
@@ -217,6 +220,10 @@ export async function createExpenseCore(
 
     return expense;
   });
+
+  if (!result) {
+    return { ok: false, error: "limit_reached" };
+  }
 
   logActivity({
     tripId,

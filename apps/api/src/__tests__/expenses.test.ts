@@ -7,6 +7,7 @@ const {
   mockDbUpdate,
   mockDbDelete,
   mockDbSelect,
+  mockTxSelect,
   mockCreateNotification,
   mockNotifyUsers,
 } = vi.hoisted(() => ({
@@ -31,6 +32,9 @@ const {
   mockDbUpdate: vi.fn(),
   mockDbDelete: vi.fn(),
   mockDbSelect: vi.fn(),
+  // Records selects issued on the transaction handle (still delegates to
+  // mockDbSelect) so tests can assert a query runs INSIDE the transaction.
+  mockTxSelect: vi.fn(),
   mockCreateNotification: vi.fn(),
   mockNotifyUsers: vi.fn(),
 }));
@@ -46,13 +50,21 @@ vi.mock("../lib/auth", () => ({
 vi.mock("../db/index", () => {
   const tx = {
     query: mockDbQuery,
+    execute: async () => undefined,
     insert: (...args: unknown[]) => mockDbInsert(...args),
     update: (...args: unknown[]) => mockDbUpdate(...args),
     delete: (...args: unknown[]) => mockDbDelete(...args),
-    select: (...args: unknown[]) => mockDbSelect(...args),
+    select: (...args: unknown[]) => {
+      mockTxSelect(...args);
+      return mockDbSelect(...args);
+    },
   };
   return {
-    db: { ...tx, transaction: (fn: (t: typeof tx) => unknown) => fn(tx) },
+    db: {
+      ...tx,
+      select: (...args: unknown[]) => mockDbSelect(...args),
+      transaction: (fn: (t: typeof tx) => unknown) => fn(tx),
+    },
   };
 });
 
@@ -644,6 +656,35 @@ describe("Expense routes", () => {
       });
 
       expect(res.status).toBe(400);
+    });
+
+    // The cap count must run inside the transaction (behind the advisory
+    // lock), or two concurrent creates can both pass the cap and exceed it.
+    it("checks the expense limit inside the transaction", async () => {
+      mockDbQuery.tripMembers.findMany.mockResolvedValue([
+        { userId: userId1 },
+        { userId: userId2 },
+      ]);
+      mockCountQuery(0);
+      mockDbInsert
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi
+              .fn()
+              .mockResolvedValueOnce([{ id: "exp-1", ...validBody, createdAt: new Date() }]),
+          }),
+        })
+        .mockReturnValueOnce({
+          values: vi.fn().mockResolvedValueOnce(undefined),
+        });
+
+      await makeApp().request(`/api/trips/${tripId}/expenses`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validBody),
+      });
+
+      expect(mockTxSelect).toHaveBeenCalledTimes(1);
     });
 
     it("POST: 経費作成時に splits の他ユーザーに createNotification を呼ぶ", async () => {

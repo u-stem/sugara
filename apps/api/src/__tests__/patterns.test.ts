@@ -1,26 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestApp, TEST_USER } from "./test-helpers";
 
-const { mockGetSession, mockDbQuery, mockDbInsert, mockDbUpdate, mockDbDelete, mockDbSelect } =
-  vi.hoisted(() => ({
-    mockGetSession: vi.fn(),
-    mockDbQuery: {
-      tripDays: {
-        findFirst: vi.fn(),
-      },
-      dayPatterns: {
-        findFirst: vi.fn(),
-        findMany: vi.fn(),
-      },
-      tripMembers: {
-        findFirst: vi.fn(),
-      },
+const {
+  mockGetSession,
+  mockDbQuery,
+  mockDbInsert,
+  mockDbUpdate,
+  mockDbDelete,
+  mockDbSelect,
+  mockTxSelect,
+} = vi.hoisted(() => ({
+  mockGetSession: vi.fn(),
+  mockDbQuery: {
+    tripDays: {
+      findFirst: vi.fn(),
     },
-    mockDbInsert: vi.fn(),
-    mockDbUpdate: vi.fn(),
-    mockDbDelete: vi.fn(),
-    mockDbSelect: vi.fn(),
-  }));
+    dayPatterns: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+    },
+    tripMembers: {
+      findFirst: vi.fn(),
+    },
+  },
+  mockDbInsert: vi.fn(),
+  mockDbUpdate: vi.fn(),
+  mockDbDelete: vi.fn(),
+  mockDbSelect: vi.fn(),
+  // Records selects issued on the transaction handle (still delegates to
+  // mockDbSelect) so tests can assert a query runs INSIDE the transaction.
+  mockTxSelect: vi.fn(),
+}));
 
 vi.mock("../lib/auth", () => ({
   auth: {
@@ -37,10 +47,17 @@ vi.mock("../db/index", () => {
     insert: (...args: unknown[]) => mockDbInsert(...args),
     delete: (...args: unknown[]) => mockDbDelete(...args),
     update: (...args: unknown[]) => mockDbUpdate(...args),
-    select: (...args: unknown[]) => mockDbSelect(...args),
+    select: (...args: unknown[]) => {
+      mockTxSelect(...args);
+      return mockDbSelect(...args);
+    },
   };
   return {
-    db: { ...tx, transaction: (fn: (t: typeof tx) => unknown) => fn(tx) },
+    db: {
+      ...tx,
+      select: (...args: unknown[]) => mockDbSelect(...args),
+      transaction: (fn: (t: typeof tx) => unknown) => fn(tx),
+    },
   };
 });
 
@@ -184,6 +201,30 @@ describe("Pattern routes", () => {
       });
 
       expect(res.status).toBe(409);
+    });
+
+    // The cap count must run inside the transaction (behind the advisory
+    // lock), or two concurrent creates can both pass the cap and exceed it.
+    it("checks the pattern limit inside the transaction", async () => {
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi
+            .fn()
+            .mockResolvedValue([
+              { id: "p-2", tripDayId: dayId, label: "Rainy", isDefault: false, sortOrder: 1 },
+            ]),
+        }),
+      });
+
+      const app = createTestApp(patternRoutes, "/api/trips");
+      await app.request(basePath, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: "Rainy" }),
+      });
+
+      // pattern count + sortOrder max — both on the tx handle
+      expect(mockTxSelect).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -414,6 +455,36 @@ describe("Pattern routes", () => {
       });
 
       expect(res.status).toBe(409);
+    });
+
+    it("checks the duplicate limits inside the transaction", async () => {
+      mockDbQuery.dayPatterns.findFirst.mockResolvedValue({
+        id: patternId,
+        tripDayId: dayId,
+        label: "Sunny",
+        schedules: [],
+      });
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            {
+              id: "p-new",
+              tripDayId: dayId,
+              label: "Sunny (copy)",
+              isDefault: false,
+              sortOrder: 1,
+            },
+          ]),
+        }),
+      });
+
+      const app = createTestApp(patternRoutes, "/api/trips");
+      await app.request(`${basePath}/${patternId}/duplicate`, {
+        method: "POST",
+      });
+
+      // pattern count + trip schedule count + sortOrder max — all on the tx handle
+      expect(mockTxSelect).toHaveBeenCalledTimes(3);
     });
   });
 
