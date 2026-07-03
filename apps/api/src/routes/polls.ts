@@ -21,7 +21,7 @@ import {
   users,
 } from "../db/schema";
 import { formatShortDateRange, logActivity } from "../lib/activity-logger";
-import { ERROR_MSG } from "../lib/constants";
+import { ERROR_MSG, PG_UNIQUE_VIOLATION } from "../lib/constants";
 import { hasChanges } from "../lib/has-changes";
 import { logger } from "../lib/logger";
 import { createNotification, notifyArticleOwnersOnMemberAdded } from "../lib/notifications";
@@ -422,10 +422,20 @@ pollRoutes.post("/:pollId/participants", async (c) => {
   });
   if (existing) return c.json({ error: ERROR_MSG.POLL_ALREADY_PARTICIPANT }, 409);
 
-  const [participant] = await db
-    .insert(schedulePollParticipants)
-    .values({ pollId, userId: parsed.data.userId })
-    .returning();
+  // The findFirst pre-check above can race a concurrent add; the unique index
+  // (pollId, userId) is the source of truth, so map its violation to 409.
+  let participant: typeof schedulePollParticipants.$inferSelect;
+  try {
+    [participant] = await db
+      .insert(schedulePollParticipants)
+      .values({ pollId, userId: parsed.data.userId })
+      .returning();
+  } catch (err: unknown) {
+    if (err instanceof Error && "code" in err && err.code === PG_UNIQUE_VIOLATION) {
+      return c.json({ error: ERROR_MSG.POLL_ALREADY_PARTICIPANT }, 409);
+    }
+    throw err;
+  }
 
   await db.update(schedulePolls).set({ updatedAt: new Date() }).where(eq(schedulePolls.id, pollId));
 

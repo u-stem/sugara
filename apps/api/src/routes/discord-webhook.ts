@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
 import { discordWebhooks } from "../db/schema";
-import { ERROR_MSG } from "../lib/constants";
+import { ERROR_MSG, PG_UNIQUE_VIOLATION } from "../lib/constants";
 import { validateWebhookUrl } from "../lib/discord";
 import { env } from "../lib/env";
 import { getParam } from "../lib/params";
@@ -67,16 +67,26 @@ discordWebhookRoutes.post("/:tripId/discord-webhook", requireTripAccess("editor"
     return c.json({ error: ERROR_MSG.WEBHOOK_UNREACHABLE }, 400);
   }
 
-  const [inserted] = await db
-    .insert(discordWebhooks)
-    .values({
-      tripId,
-      webhookUrl: parsed.data.webhookUrl,
-      enabledTypes: parsed.data.enabledTypes,
-      locale: parsed.data.locale,
-      createdBy: user.id,
-    })
-    .returning();
+  // The findFirst pre-check above can race a concurrent create; the tripId
+  // unique constraint is the source of truth, so map its violation to 409.
+  let inserted: typeof discordWebhooks.$inferSelect;
+  try {
+    [inserted] = await db
+      .insert(discordWebhooks)
+      .values({
+        tripId,
+        webhookUrl: parsed.data.webhookUrl,
+        enabledTypes: parsed.data.enabledTypes,
+        locale: parsed.data.locale,
+        createdBy: user.id,
+      })
+      .returning();
+  } catch (err: unknown) {
+    if (err instanceof Error && "code" in err && err.code === PG_UNIQUE_VIOLATION) {
+      return c.json({ error: ERROR_MSG.WEBHOOK_ALREADY_EXISTS }, 409);
+    }
+    throw err;
+  }
 
   return c.json(
     {
