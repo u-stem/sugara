@@ -9,6 +9,7 @@ const {
   mockDbQuery,
   mockCreateNotification,
   mockNotifyArticleOwnersOnMemberAdded,
+  mockLoggerError,
 } = vi.hoisted(() => ({
   mockGetSession: vi.fn(),
   mockDbSelect: vi.fn(),
@@ -25,6 +26,15 @@ const {
   },
   mockCreateNotification: vi.fn(),
   mockNotifyArticleOwnersOnMemberAdded: vi.fn(),
+  mockLoggerError: vi.fn(),
+}));
+
+vi.mock("../lib/logger", () => ({
+  logger: {
+    error: (...args: unknown[]) => mockLoggerError(...args),
+    info: vi.fn(),
+    warn: vi.fn(),
+  },
 }));
 
 vi.mock("../lib/auth", () => ({
@@ -302,6 +312,59 @@ describe("Poll routes", () => {
       }
 
       expect(rejections).toEqual([]);
+    });
+
+    // The .catch must record the failure via logger.error, not swallow it
+    // silently — mirrors the coverage notifications.test.ts has for notifyUsers.
+    it("logs the error when the trip lookup for the notification fails", async () => {
+      mockFindPollAsOwner.mockResolvedValue({
+        id: "poll-1",
+        status: "open",
+        tripId: "trip-1",
+        trip: { ownerId: fakeUser.id },
+      });
+      mockDbSelect.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 0 }]),
+        }),
+      });
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: "00000000-0000-0000-0000-000000000002",
+        name: "New Participant",
+        image: null,
+      });
+      mockDbQuery.tripMembers.findFirst.mockResolvedValue({
+        tripId: "trip-1",
+        userId: "00000000-0000-0000-0000-000000000002",
+        role: "editor",
+      });
+      mockDbQuery.schedulePollParticipants.findFirst.mockResolvedValue(undefined);
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi
+            .fn()
+            .mockResolvedValue([
+              { id: "part-1", pollId: "poll-1", userId: "00000000-0000-0000-0000-000000000002" },
+            ]),
+        }),
+      });
+      mockDbUpdate.mockReturnValue({
+        set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+      });
+      mockDbQuery.trips.findFirst.mockRejectedValue(new Error("Failed query"));
+
+      const app = createTestApp(pollRoutes, "/api/polls");
+      await app.request("/api/polls/poll-1/participants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: "00000000-0000-0000-0000-000000000002" }),
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        expect.objectContaining({ tripId: "trip-1" }),
+        "Failed to dispatch poll notification",
+      );
     });
 
     // A concurrent duplicate add can slip past the findFirst pre-check and hit
