@@ -448,6 +448,9 @@ pollRoutes.post("/:pollId/participants", async (c) => {
         tripId: poll.tripId,
         payload: { actorName: user.name, tripName: trip?.title ?? "旅行" },
       });
+    })
+    .catch((err) => {
+      logger.error({ err, tripId: poll.tripId }, "Failed to dispatch poll notification");
     });
 
   return c.json(
