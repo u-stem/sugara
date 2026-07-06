@@ -182,7 +182,7 @@ jobs:
       # every file, which would break the negation; a single positive '**' avoids
       # the 'every' + multi-positive AND pitfall. Negation defaults to true (run
       # CI) for any new non-Markdown path.
-      - uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4.0.1
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: codefilter
         with:
           predicate-quantifier: 'every'
@@ -220,7 +220,7 @@ jobs:
           bun-version: "1.3.2"
 
       - name: Cache bun downloads
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -237,7 +237,7 @@ jobs:
       # The browser build is pinned by @playwright/test in bun.lock, so the
       # lockfile hash keys the cache; on a hit the install step only verifies.
       - name: Cache Playwright browsers
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -246,7 +246,7 @@ jobs:
       # Next.js incremental compilation cache — keyed on sources so warm builds
       # reuse unchanged modules. restore-keys makes any prior cache a useful base.
       - name: Cache Next.js build cache
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: apps/web/.next/cache
           key: nextjs-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ hashFiles('apps/web/**/*.ts', 'apps/web/**/*.tsx', 'apps/api/src/**', 'packages/shared/src/**') }}
