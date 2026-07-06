@@ -243,6 +243,67 @@ describe("Poll routes", () => {
       );
     });
 
+    // The poll_started notification is fire-and-forget; a failing trip lookup
+    // (e.g. connection killed after the response on serverless) must be caught
+    // instead of surfacing as an unhandled rejection (Sentry noise).
+    it("does not leave an unhandled rejection when the trip lookup fails", async () => {
+      mockFindPollAsOwner.mockResolvedValue({
+        id: "poll-1",
+        status: "open",
+        tripId: "trip-1",
+        trip: { ownerId: fakeUser.id },
+      });
+      mockDbSelect.mockReturnValueOnce({
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue([{ count: 0 }]),
+        }),
+      });
+      mockDbQuery.users.findFirst.mockResolvedValue({
+        id: "00000000-0000-0000-0000-000000000002",
+        name: "New Participant",
+        image: null,
+      });
+      mockDbQuery.tripMembers.findFirst.mockResolvedValue({
+        tripId: "trip-1",
+        userId: "00000000-0000-0000-0000-000000000002",
+        role: "editor",
+      });
+      mockDbQuery.schedulePollParticipants.findFirst.mockResolvedValue(undefined);
+      mockDbInsert.mockReturnValue({
+        values: vi.fn().mockReturnValue({
+          returning: vi
+            .fn()
+            .mockResolvedValue([
+              { id: "part-1", pollId: "poll-1", userId: "00000000-0000-0000-0000-000000000002" },
+            ]),
+        }),
+      });
+      mockDbUpdate.mockReturnValue({
+        set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
+      });
+      mockDbQuery.trips.findFirst.mockRejectedValue(new Error("Failed query"));
+
+      const rejections: unknown[] = [];
+      const onRejection = (reason: unknown) => {
+        rejections.push(reason);
+      };
+      process.on("unhandledRejection", onRejection);
+      try {
+        const app = createTestApp(pollRoutes, "/api/polls");
+        await app.request("/api/polls/poll-1/participants", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: "00000000-0000-0000-0000-000000000002" }),
+        });
+        // Unhandled rejections are emitted after the microtask queue drains.
+        await new Promise((resolve) => setImmediate(resolve));
+      } finally {
+        process.off("unhandledRejection", onRejection);
+      }
+
+      expect(rejections).toEqual([]);
+    });
+
     // A concurrent duplicate add can slip past the findFirst pre-check and hit
     // the DB unique index; the resulting 23505 must map to 409, not 500.
     it("returns 409 when a concurrent insert violates the unique constraint", async () => {
