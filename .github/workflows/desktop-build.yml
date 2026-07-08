@@ -40,7 +40,12 @@ jobs:
       - name: Install dependencies
         run: bun install --ignore-scripts
 
-      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+      # Pinned to v0.6.2: v1.0.0 changes latest.json asset URLs to the GitHub API
+      # form (api.github.com/repos/.../releases/assets/<id>), which the publish
+      # job's sed rewrite cannot map to the public sugara-releases repo — the
+      # updater would point at the deleted private draft release. Migrate the
+      # publish job before adopting v1 (see dependabot.yml ignore entry).
+      - uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
