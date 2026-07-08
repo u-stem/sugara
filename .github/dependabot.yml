@@ -25,6 +25,13 @@ updates:
       actions:
         patterns:
           - "*"
+    ignore:
+      # tauri-action v1 breaks the desktop publish flow: latest.json asset URLs
+      # switch to the GitHub API form, which the sed rewrite to sugara-releases
+      # cannot handle. Remove this once the publish job is migrated
+      # (see the note in desktop-build.yml).
+      - dependency-name: "tauri-apps/tauri-action"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "cargo"
     directory: "/apps/desktop/src-tauri"
