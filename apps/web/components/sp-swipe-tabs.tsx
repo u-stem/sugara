@@ -93,6 +93,14 @@ export function SpSwipeTabs<T extends string = string>({
   // (e.g. a Presence update regenerating the tabs array) must not restart a
   // programmatic scroll while the user's finger is still driving the native scroll.
   const isTouchActiveRef = useRef(false);
+  // Whether a user-driven scroll may still be settling (inertia/snap) after touchend
+  // and before scrollend/detectTab runs. A re-render in that window must not start a
+  // programmatic scroll — unless activeTab itself changed (an explicit tab click),
+  // which should win immediately rather than wait for the settle to finish.
+  const nativeSettlingRef = useRef(false);
+  // The activeTab the sync effect last observed, to detect an explicit tab change
+  // (vs. a re-render with the same activeTab) during the settling window above.
+  const lastSyncedActiveTabRef = useRef(activeTab);
   // Visual tab index — ref for synchronous access in scroll handler, state for rendering
   const [visualTabIdx, setVisualTabIdx] = useState(() => tabs.findIndex((t) => t.id === activeTab));
   const visualTabIdxRef = useRef(visualTabIdx);
@@ -145,6 +153,11 @@ export function SpSwipeTabs<T extends string = string>({
 
     function handleScroll() {
       if (!el) return;
+      if (!isProgrammaticRef.current) {
+        // A user-driven scroll is in progress or still settling — mark it so the
+        // sync effect can defer a re-render-triggered flight until scrollend.
+        nativeSettlingRef.current = true;
+      }
       const panelWidth = el.clientWidth;
       if (panelWidth === 0) return;
 
@@ -169,6 +182,8 @@ export function SpSwipeTabs<T extends string = string>({
 
     function detectTab() {
       if (!el || isProgrammaticRef.current) return;
+      // scrollend (or the fallback timer) means the native scroll has settled.
+      nativeSettlingRef.current = false;
       const panelWidth = el.clientWidth;
       if (panelWidth === 0) return;
       const idx = Math.round(el.scrollLeft / panelWidth);
@@ -220,9 +235,23 @@ export function SpSwipeTabs<T extends string = string>({
   useEffect(() => {
     const el = snapRef.current;
     if (!el) return;
+
+    // Whether activeTab changed since the last time this effect ran, updated before
+    // any early return so the next run always compares against the correct baseline.
+    const activeTabChangedSinceLastSync = lastSyncedActiveTabRef.current !== activeTab;
+    lastSyncedActiveTabRef.current = activeTab;
+
     // A touch is already driving the scroll natively — starting a programmatic
     // scroll here would fight the user's finger.
     if (isTouchActiveRef.current) return;
+
+    // Inertia/snap from a user swipe may still be settling after touchend and before
+    // scrollend/detectTab. Defer a re-render-triggered flight during that window,
+    // UNLESS activeTab actually changed — an explicit tab click should win
+    // immediately (the flight below sets isProgrammaticRef, so the eventual
+    // scrollend's detectTab is guarded and won't fight it).
+    if (nativeSettlingRef.current && !activeTabChangedSinceLastSync) return;
+
     const idx = tabs.findIndex((t) => t.id === activeTab);
     if (idx === -1) return;
     const targetLeft = idx * el.clientWidth;
@@ -238,6 +267,8 @@ export function SpSwipeTabs<T extends string = string>({
 
     programmaticTargetRef.current = targetLeft;
     isProgrammaticRef.current = true;
+    // This flight now owns scroll-snap-type; any prior settling window is over.
+    nativeSettlingRef.current = false;
     if (!retargeting) {
       el.style.setProperty("scroll-snap-type", "none");
     }

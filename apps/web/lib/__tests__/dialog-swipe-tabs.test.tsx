@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -148,6 +148,152 @@ describe("DialogSwipeTabs iOS WebKit tap-to-scroll fix", () => {
       setActiveTab("b", [...TABS]);
 
       expect(scrollToSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call removeProperty while the scroll is still in flight", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      setActiveTab("b");
+
+      expect(harness.removePropertySpy).not.toHaveBeenCalled();
+    });
+
+    it("corrects the position with an instant scrollTo when scrollend lands off target", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      setActiveTab("b");
+      el.scrollLeft = 310; // simulate snap settling a few px off the intended target
+      fireEvent(el, new Event("scrollend"));
+
+      expect(harness.scrollToSpy).toHaveBeenCalledWith({ left: 320, behavior: "instant" });
+    });
+
+    it("retargets to the latest tab after consecutive taps", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      setActiveTab("b");
+      setActiveTab("c");
+
+      const lastCall = harness.scrollToSpy.mock.calls.at(-1)?.[0];
+      expect(lastCall).toEqual({ left: 640, behavior: "smooth" });
+    });
+
+    it("calls removeProperty exactly once after consecutive taps settle", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      setActiveTab("b");
+      setActiveTab("c");
+      fireEvent(el, new Event("scrollend"));
+
+      expect(harness.removePropertySpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not call scrollTo again when re-rendered with a new tabs array reference but the same activeTab", () => {
+      const { setActiveTab, rerender, onTabChange } = renderControlled();
+      const el = getSnapContainer();
+      Object.defineProperty(el, "clientWidth", { value: 320, configurable: true });
+      Object.defineProperty(el, "scrollLeft", { value: 0, writable: true, configurable: true });
+      // scrollLeft intentionally never updates, simulating an animation still in flight
+      const scrollToSpy = vi.fn();
+      Object.defineProperty(el, "scrollTo", { value: scrollToSpy, configurable: true });
+
+      setActiveTab("b");
+      rerender(
+        <DialogSwipeTabs
+          tabs={[...TABS]}
+          activeTab="b"
+          onTabChange={onTabChange}
+          renderContent={(id) => <div>Content {id}</div>}
+        />,
+      );
+
+      expect(scrollToSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls removeProperty when unmounted while a scroll is still in flight", () => {
+      const { setActiveTab, unmount } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      setActiveTab("b");
+      unmount();
+
+      expect(harness.removePropertySpy).toHaveBeenCalledWith("scroll-snap-type");
+    });
+
+    it("does not restart a programmatic scroll while a user swipe is still settling after touchend", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      fireEvent.touchStart(el);
+      el.scrollLeft = 150; // user is mid-swipe, hasn't reached the next panel yet
+      fireEvent.scroll(el);
+      fireEvent.touchEnd(el);
+      // Parent re-render regenerates tabs (e.g. a Presence update) before scrollend
+      // fires — activeTab itself hasn't changed, so this must not snap back.
+      setActiveTab("a", [...TABS]);
+
+      expect(harness.scrollToSpy).not.toHaveBeenCalled();
+    });
+
+    it("starts a flight immediately when activeTab changes during the settling window", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      fireEvent.touchStart(el);
+      el.scrollLeft = 150;
+      fireEvent.scroll(el);
+      fireEvent.touchEnd(el);
+      // An explicit tab click arrives before scrollend — it should win immediately.
+      setActiveTab("c");
+
+      expect(harness.scrollToSpy).toHaveBeenCalledWith({ left: 640, behavior: "smooth" });
+    });
+
+    it("resumes normal sync once scrollend clears the settling window", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      fireEvent.touchStart(el);
+      el.scrollLeft = 320; // user's swipe lands exactly on tab b
+      fireEvent.scroll(el);
+      fireEvent.touchEnd(el);
+      fireEvent(el, new Event("scrollend"));
+
+      setActiveTab("c");
+
+      expect(harness.scrollToSpy).toHaveBeenCalledWith({ left: 640, behavior: "smooth" });
+    });
+  });
+
+  describe("without scrollend support", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("falls back to a 700ms timer to end the flight when scrollend is unsupported", () => {
+      vi.useFakeTimers();
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      setActiveTab("b");
+      act(() => {
+        vi.advanceTimersByTime(700);
+      });
+
+      expect(harness.removePropertySpy).toHaveBeenCalledWith("scroll-snap-type");
     });
   });
 });

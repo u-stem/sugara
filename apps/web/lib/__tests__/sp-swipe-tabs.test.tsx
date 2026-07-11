@@ -505,6 +505,53 @@ describe("SpSwipeTabs iOS WebKit tap-to-scroll fix", () => {
 
       expect(harness.removePropertySpy).toHaveBeenCalledWith("scroll-snap-type");
     });
+
+    it("does not restart a programmatic scroll while a user swipe is still settling after touchend", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      fireEvent.touchStart(el);
+      el.scrollLeft = 150; // user is mid-swipe, hasn't reached the next panel yet
+      fireEvent.scroll(el);
+      fireEvent.touchEnd(el);
+      // Parent re-render regenerates tabs (e.g. a Presence update) before scrollend
+      // fires — activeTab itself hasn't changed, so this must not snap back.
+      setActiveTab("a", [...TABS]);
+
+      expect(harness.scrollToSpy).not.toHaveBeenCalled();
+    });
+
+    it("starts a flight immediately when activeTab changes during the settling window", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      fireEvent.touchStart(el);
+      el.scrollLeft = 150;
+      fireEvent.scroll(el);
+      fireEvent.touchEnd(el);
+      // An explicit tab click arrives before scrollend — it should win immediately.
+      setActiveTab("c");
+
+      expect(harness.scrollToSpy).toHaveBeenCalledWith({ left: 640, behavior: "smooth" });
+    });
+
+    it("resumes normal sync once scrollend clears the settling window", () => {
+      const { setActiveTab } = renderControlled();
+      const el = getSnapContainer();
+      const harness = setupWebkitHarness(el);
+
+      fireEvent.touchStart(el);
+      el.scrollLeft = 320; // user's swipe lands exactly on tab b
+      fireEvent.scroll(el);
+      fireEvent.touchEnd(el);
+      fireEvent(el, new Event("scrollend"));
+
+      setActiveTab("c");
+
+      expect(harness.scrollToSpy).toHaveBeenCalledWith({ left: 640, behavior: "smooth" });
+    });
   });
 
   describe("without scrollend support", () => {
