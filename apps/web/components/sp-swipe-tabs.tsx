@@ -79,6 +79,28 @@ export function SpSwipeTabs<T extends string = string>({
 
   // Guard to skip scrollend handling during programmatic scrollTo
   const isProgrammaticRef = useRef(false);
+  // Single owner of the in-flight programmatic scroll's full teardown (removes
+  // listener/timer AND restores scroll-snap-type). Exposed to touchstart/unmount —
+  // interrupting the user's control should always restore snap immediately.
+  const cancelProgrammaticRef = useRef<(() => void) | null>(null);
+  // Single owner of just the in-flight listener/timer cleanup, without restoring
+  // scroll-snap-type. Used internally when retargeting mid-flight, since a retarget
+  // continues the same disabled-snap window rather than toggling it off and on.
+  const dropListenersRef = useRef<(() => void) | null>(null);
+  // In-flight target, to dedupe re-runs caused by parent re-renders
+  const programmaticTargetRef = useRef(-1);
+  // Whether a touch is currently on the snap container. A parent re-render mid-touch
+  // (e.g. a Presence update regenerating the tabs array) must not restart a
+  // programmatic scroll while the user's finger is still driving the native scroll.
+  const isTouchActiveRef = useRef(false);
+  // Whether a user-driven scroll may still be settling (inertia/snap) after touchend
+  // and before scrollend/detectTab runs. A re-render in that window must not start a
+  // programmatic scroll — unless activeTab itself changed (an explicit tab click),
+  // which should win immediately rather than wait for the settle to finish.
+  const nativeSettlingRef = useRef(false);
+  // The activeTab the sync effect last observed, to detect an explicit tab change
+  // (vs. a re-render with the same activeTab) during the settling window above.
+  const lastSyncedActiveTabRef = useRef(activeTab);
   // Visual tab index — ref for synchronous access in scroll handler, state for rendering
   const [visualTabIdx, setVisualTabIdx] = useState(() => tabs.findIndex((t) => t.id === activeTab));
   const visualTabIdxRef = useRef(visualTabIdx);
@@ -111,7 +133,11 @@ export function SpSwipeTabs<T extends string = string>({
 
     function handleTouchStart() {
       if (!el) return;
+      // A touch during a programmatic scroll means the user wants control back —
+      // restore scroll-snap-type immediately so the native snap takes over from here.
+      cancelProgrammaticRef.current?.();
       isProgrammaticRef.current = false;
+      isTouchActiveRef.current = true;
       const panelWidth = el.clientWidth;
       if (panelWidth > 0) {
         anchorLeft = Math.round(el.scrollLeft / panelWidth) * panelWidth;
@@ -120,10 +146,18 @@ export function SpSwipeTabs<T extends string = string>({
 
     function handleTouchEnd() {
       anchorLeft = -1;
+      // Touch ended — native snap will settle and scrollend/detectTab syncs
+      // activeTab, so it's safe to let the sync effect drive scrollTo again.
+      isTouchActiveRef.current = false;
     }
 
     function handleScroll() {
       if (!el) return;
+      if (!isProgrammaticRef.current) {
+        // A user-driven scroll is in progress or still settling — mark it so the
+        // sync effect can defer a re-render-triggered flight until scrollend.
+        nativeSettlingRef.current = true;
+      }
       const panelWidth = el.clientWidth;
       if (panelWidth === 0) return;
 
@@ -148,6 +182,8 @@ export function SpSwipeTabs<T extends string = string>({
 
     function detectTab() {
       if (!el || isProgrammaticRef.current) return;
+      // scrollend (or the fallback timer) means the native scroll has settled.
+      nativeSettlingRef.current = false;
       const panelWidth = el.clientWidth;
       if (panelWidth === 0) return;
       const idx = Math.round(el.scrollLeft / panelWidth);
@@ -189,26 +225,106 @@ export function SpSwipeTabs<T extends string = string>({
   }, [tabs, onTabChange]);
 
   // Sync activeTab prop to scroll position (for tab click, keyboard, external changes)
+  //
+  // iOS WebKit reverts a smooth scrollTo() on a snap-mandatory container back to the
+  // original snap position, which then makes the scrollend handler below think the
+  // user scrolled back and calls onTabChange with the old tab. Disabling
+  // scroll-snap-type for the duration of the programmatic scroll (a known WebKit
+  // workaround) prevents the revert. A position check on completion additionally
+  // guarantees the final scrollLeft always matches activeTab.
   useEffect(() => {
     const el = snapRef.current;
     if (!el) return;
+
+    // Whether activeTab changed since the last time this effect ran, updated before
+    // any early return so the next run always compares against the correct baseline.
+    const activeTabChangedSinceLastSync = lastSyncedActiveTabRef.current !== activeTab;
+    lastSyncedActiveTabRef.current = activeTab;
+
+    // A touch is already driving the scroll natively — starting a programmatic
+    // scroll here would fight the user's finger.
+    if (isTouchActiveRef.current) return;
+
+    // Inertia/snap from a user swipe may still be settling after touchend and before
+    // scrollend/detectTab. Defer a re-render-triggered flight during that window,
+    // UNLESS activeTab actually changed — an explicit tab click should win
+    // immediately (the flight below sets isProgrammaticRef, so the eventual
+    // scrollend's detectTab is guarded and won't fight it).
+    if (nativeSettlingRef.current && !activeTabChangedSinceLastSync) return;
+
     const idx = tabs.findIndex((t) => t.id === activeTab);
     if (idx === -1) return;
     const targetLeft = idx * el.clientWidth;
     if (Math.abs(el.scrollLeft - targetLeft) < 2) return;
+    // Parent re-renders regenerate the tabs array on every render, which would
+    // otherwise re-run this effect and restart the same in-flight animation.
+    if (programmaticTargetRef.current === targetLeft) return;
+
+    // A newer tap arrived before the previous scroll settled — retarget without
+    // restoring scroll-snap-type, since we're continuing straight into a new flight.
+    const retargeting = programmaticTargetRef.current !== -1;
+    dropListenersRef.current?.();
+
+    programmaticTargetRef.current = targetLeft;
     isProgrammaticRef.current = true;
+    // This flight now owns scroll-snap-type; any prior settling window is over.
+    nativeSettlingRef.current = false;
+    if (!retargeting) {
+      el.style.setProperty("scroll-snap-type", "none");
+    }
     el.scrollTo({ left: targetLeft, behavior: "smooth" });
 
-    function clearGuard() {
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    function dropListeners() {
+      if (timer) clearTimeout(timer);
+      el?.removeEventListener("scrollend", finish);
+    }
+
+    function teardown() {
+      if (done) return;
+      done = true;
+      dropListeners();
+      el?.style.removeProperty("scroll-snap-type");
       isProgrammaticRef.current = false;
-      el?.removeEventListener("scrollend", clearGuard);
+      programmaticTargetRef.current = -1;
+      cancelProgrammaticRef.current = null;
+      dropListenersRef.current = null;
     }
+
+    function finish() {
+      if (done) return;
+      // Recompute from clientWidth rather than closing over targetLeft — a screen
+      // rotation mid-flight (up to 700ms) would otherwise correct to stale coordinates.
+      const currentTargetLeft = el ? idx * el.clientWidth : targetLeft;
+      if (el && Math.abs(el.scrollLeft - currentTargetLeft) >= 2) {
+        el.scrollTo({ left: currentTargetLeft, behavior: "instant" });
+      }
+      teardown();
+    }
+
+    // No `{ once: true }` here — teardown() removes the listener explicitly, and a
+    // fallback timer runs alongside since scrollend may not fire if the scroll
+    // distance collapses mid-flight (e.g. an interrupted animation ends where it
+    // started).
     if ("onscrollend" in window) {
-      el.addEventListener("scrollend", clearGuard, { once: true });
-    } else {
-      setTimeout(clearGuard, 600);
+      el.addEventListener("scrollend", finish);
     }
+    timer = setTimeout(finish, 700);
+
+    cancelProgrammaticRef.current = teardown;
+    dropListenersRef.current = dropListeners;
   }, [activeTab, tabs]);
+
+  // Deliberately separate from the effect above: that effect must NOT tear down
+  // in-flight state on every dependency change (re-renders should be deduped, not
+  // cancelled), only on unmount.
+  useEffect(() => {
+    return () => {
+      cancelProgrammaticRef.current?.();
+    };
+  }, []);
 
   const handleTabClick = useCallback(
     (tabId: T) => {
