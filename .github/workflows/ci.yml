@@ -25,7 +25,7 @@ jobs:
     # merge). Pushes to main always run the full suite.
     if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -72,7 +72,7 @@ jobs:
     # Required check; skipped on docs-only PRs (see `check` for rationale).
     if: github.event_name != 'pull_request' || needs.changes.outputs.code == 'true'
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -109,7 +109,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -175,7 +175,7 @@ jobs:
     outputs:
       code: ${{ steps.codefilter.outputs.code }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # `code` is true for any change that is NOT purely Markdown, so docs-only PRs
       # skip check/test/test-integration. predicate-quantifier: 'every' is required
       # because the default 'some' (OR) mode makes a lone '!**/*.md' match nearly
@@ -213,7 +213,7 @@ jobs:
       # (routes/auth.ts defaults to 30 when unset — production is unaffected).
       E2E_AUTH_RATE_LIMIT_MAX: "120"
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
