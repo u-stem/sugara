@@ -9,16 +9,12 @@ import {
 } from "../schemas/schedule";
 
 describe("scheduleCategorySchema", () => {
-  it.each([
-    "sightseeing",
-    "restaurant",
-    "hotel",
-    "transport",
-    "activity",
-    "other",
-  ])("accepts '%s'", (cat) => {
-    expect(scheduleCategorySchema.safeParse(cat).success).toBe(true);
-  });
+  it.each(["sightseeing", "restaurant", "hotel", "transport", "activity", "other"])(
+    "accepts '%s'",
+    (cat) => {
+      expect(scheduleCategorySchema.safeParse(cat).success).toBe(true);
+    },
+  );
 
   it("rejects invalid category", () => {
     expect(scheduleCategorySchema.safeParse("invalid").success).toBe(false);
@@ -64,17 +60,17 @@ describe("createScheduleSchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it.each([
-    "https://example.com",
-    "http://example.com/path?q=1",
-  ])("accepts safe URL '%s'", (url) => {
-    const result = createScheduleSchema.safeParse({
-      name: "Place",
-      category: "sightseeing",
-      urls: [url],
-    });
-    expect(result.success).toBe(true);
-  });
+  it.each(["https://example.com", "http://example.com/path?q=1"])(
+    "accepts safe URL '%s'",
+    (url) => {
+      const result = createScheduleSchema.safeParse({
+        name: "Place",
+        category: "sightseeing",
+        urls: [url],
+      });
+      expect(result.success).toBe(true);
+    },
+  );
 
   it("accepts multiple URLs up to 5", () => {
     const result = createScheduleSchema.safeParse({
@@ -155,18 +151,12 @@ describe("updateScheduleSchema", () => {
 });
 
 describe("transportMethodSchema", () => {
-  it.each([
-    "train",
-    "shinkansen",
-    "bus",
-    "taxi",
-    "walk",
-    "car",
-    "airplane",
-    "bicycle",
-  ])("accepts '%s'", (method) => {
-    expect(transportMethodSchema.safeParse(method).success).toBe(true);
-  });
+  it.each(["train", "shinkansen", "bus", "taxi", "walk", "car", "airplane", "bicycle"])(
+    "accepts '%s'",
+    (method) => {
+      expect(transportMethodSchema.safeParse(method).success).toBe(true);
+    },
+  );
 
   it("rejects invalid method", () => {
     expect(transportMethodSchema.safeParse("helicopter").success).toBe(false);
