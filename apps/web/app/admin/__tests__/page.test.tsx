@@ -36,12 +36,13 @@ describe("AdminPage server-side authorization", () => {
     await expect(AdminPage()).resolves.toBeDefined();
   });
 
-  it.each([
-    401, 403, 429, 500, 503,
-  ])("calls notFound() when stats returns %i (fail-closed)", async (status) => {
-    mockFetchStatus(status);
-    await expect(AdminPage()).rejects.toThrow(NOT_FOUND);
-  });
+  it.each([401, 403, 429, 500, 503])(
+    "calls notFound() when stats returns %i (fail-closed)",
+    async (status) => {
+      mockFetchStatus(status);
+      await expect(AdminPage()).rejects.toThrow(NOT_FOUND);
+    },
+  );
 
   it("calls notFound() when the stats fetch throws", async () => {
     vi.stubGlobal(

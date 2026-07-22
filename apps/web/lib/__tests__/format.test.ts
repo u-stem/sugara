@@ -203,13 +203,12 @@ describe("getDayCount", () => {
 });
 
 describe("isSafeUrl", () => {
-  it.each([
-    "https://example.com",
-    "http://example.com/path?q=1",
-    "https://a.b.c:8080/",
-  ])("returns true for safe URL '%s'", (url) => {
-    expect(isSafeUrl(url)).toBe(true);
-  });
+  it.each(["https://example.com", "http://example.com/path?q=1", "https://a.b.c:8080/"])(
+    "returns true for safe URL '%s'",
+    (url) => {
+      expect(isSafeUrl(url)).toBe(true);
+    },
+  );
 
   it.each([
     "javascript:alert(1)",
