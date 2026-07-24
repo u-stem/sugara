@@ -362,8 +362,10 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
+# Disabled: sugara has no edge functions (supabase/functions does not exist),
+# and the container adds noticeable startup time locally and in CI.
 [edge_runtime]
-enabled = true
+enabled = false
 # Supported request policies: `oneshot`, `per_worker`.
 # `per_worker` (default) — enables hot reload during local development.
 # `oneshot` — fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
@@ -376,8 +378,10 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Disabled: nothing reads the analytics (Logflare) backend, and its container
+# is among the slowest to start in the local stack and CI.
 [analytics]
-enabled = true
+enabled = false
 port = 55327
 # Configure one of the supported backends: `postgres`, `bigquery`.
 backend = "postgres"

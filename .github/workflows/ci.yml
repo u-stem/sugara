@@ -260,9 +260,15 @@ jobs:
         with:
           version: "2.76.7"
 
-      # Studio and the mail-test UI are dev conveniences no test touches.
+      # Exclude everything e2e never touches: studio and mailpit (inbucket is
+      # its pre-2.x alias) are dev conveniences; imgproxy, postgres-meta and
+      # supavisor are unused because DB access goes through drizzle. gotrue and
+      # postgrest stay in: excluding gotrue drops ANON_KEY/SERVICE_ROLE_KEY and
+      # excluding postgrest drops API_URL from `supabase status -o env`, which
+      # the next step needs. analytics and edge_runtime are disabled in
+      # supabase/config.toml.
       - name: Start Supabase stack
-        run: supabase start -x studio,inbucket
+        run: supabase start -x studio,inbucket,mailpit,imgproxy,postgres-meta,supavisor
 
       # The local stack issues deterministic demo keys (not production secrets);
       # export them for the Next.js build (NEXT_PUBLIC_*) and the API runtime.
