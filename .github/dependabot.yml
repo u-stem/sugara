@@ -13,6 +13,14 @@ updates:
           - "minor"
           - "patch"
     open-pull-requests-limit: 10
+    ignore:
+      # TypeScript 7 (tsgo) drops the JS compiler API (exports "." resolves to
+      # lib/version.cjs only), so next build cannot read tsconfig paths and fails
+      # with module-not-found on every "@/*" import (vercel/next.js#95633).
+      # Remove once Next.js >= 16.3 with experimental.useTypeScriptCli is adopted
+      # or TypeScript 7.1 restores the JS API.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
