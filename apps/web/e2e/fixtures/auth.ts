@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { type Page, test as base, expect } from "@playwright/test";
 
 export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
@@ -119,8 +120,10 @@ export const test = base.extend<AuthFixtures>({
     // base36 timestamp keeps the username within USERNAME_MAX_LENGTH (20).
     // The decimal form was 23 chars and only ever worked through the form
     // because the input's maxLength silently truncated it; the API rejects it.
+    // randomUUID over Math.random satisfies CodeQL's insecure-randomness rule
+    // for credential-shaped values, even though these are throwaway test users.
     const credentials = {
-      username: `e2e_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
+      username: `e2e_${Date.now().toString(36)}_${randomUUID().slice(0, 5)}`,
       password: DEFAULT_PASSWORD,
       name: "E2E User",
     };
