@@ -1,4 +1,4 @@
-import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
+import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUserViaApi, test } from "./fixtures/auth";
 
 test.describe("Members", () => {
   test("adds a member and changes role", async ({
@@ -13,7 +13,7 @@ test.describe("Members", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const memberPage = await memberContext.newPage();
-    await signupUser(memberPage, {
+    await signupUserViaApi(memberPage, {
       username: `member${Date.now()}`,
       name: "Member User",
     });
@@ -54,7 +54,7 @@ test.describe("Members", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const memberPage = await memberContext.newPage();
-    await signupUser(memberPage, {
+    await signupUserViaApi(memberPage, {
       username: `remove${Date.now()}`,
       name: "Remove User",
     });

@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { type Page, test as base, expect } from "@playwright/test";
 
 export const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000";
@@ -21,6 +22,30 @@ export async function signupUser(
   await page.locator("#confirmPassword").fill(password);
   await page.getByLabel("利用規約").check({ force: true });
   await page.getByRole("button", { name: "新規登録" }).click();
+  await expect(page).toHaveURL(/\/home/, { timeout: 10000 });
+}
+
+// Signup through the Better Auth endpoint directly instead of the signup form.
+// The signup UI itself is covered by auth.spec.ts; everywhere else signup is
+// just setup cost, and the API round-trip is ~1-2s faster per user than
+// driving the form. Same payload as signup-form.tsx; the terms checkbox is
+// client-side only. page.request shares the context's cookie jar and
+// extraHTTPHeaders (synthetic IP), so the session cookie lands on the page.
+export async function signupUserViaApi(
+  page: Page,
+  options: { username: string; name: string; password?: string },
+): Promise<void> {
+  const password = options.password ?? DEFAULT_PASSWORD;
+  const res = await page.request.post("/api/auth/sign-up/email", {
+    data: {
+      username: options.username,
+      name: options.name,
+      email: `${options.username}@sugara.local`,
+      password,
+    },
+  });
+  expect(res.ok(), `signup API failed: ${res.status()} ${await res.text()}`).toBe(true);
+  await page.goto("/home");
   await expect(page).toHaveURL(/\/home/, { timeout: 10000 });
 }
 
@@ -92,8 +117,13 @@ export const test = base.extend<AuthFixtures>({
   },
 
   userCredentials: async ({}, use) => {
+    // base36 timestamp keeps the username within USERNAME_MAX_LENGTH (20).
+    // The decimal form was 23 chars and only ever worked through the form
+    // because the input's maxLength silently truncated it; the API rejects it.
+    // randomUUID over Math.random satisfies CodeQL's insecure-randomness rule
+    // for credential-shaped values, even though these are throwaway test users.
     const credentials = {
-      username: `e2e_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      username: `e2e_${Date.now().toString(36)}_${randomUUID().slice(0, 5)}`,
       password: DEFAULT_PASSWORD,
       name: "E2E User",
     };
@@ -101,7 +131,7 @@ export const test = base.extend<AuthFixtures>({
   },
 
   authenticatedPage: async ({ page, userCredentials }, use) => {
-    await signupUser(page, userCredentials);
+    await signupUserViaApi(page, userCredentials);
     await use(page);
   },
 });

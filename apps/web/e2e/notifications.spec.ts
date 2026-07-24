@@ -4,7 +4,7 @@ import {
   createTripViaUI,
   expect,
   nextTestIp,
-  signupUser,
+  signupUserViaApi,
   test,
 } from "./fixtures/auth";
 
@@ -20,7 +20,7 @@ test.describe("Notifications", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const memberPage = await memberContext.newPage();
-    await signupUser(memberPage, {
+    await signupUserViaApi(memberPage, {
       username: `notif${Date.now()}`,
       name: "Notif User",
     });
@@ -67,7 +67,7 @@ test.describe("Notifications", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const memberPage = await memberContext.newPage();
-    await signupUser(memberPage, {
+    await signupUserViaApi(memberPage, {
       username: `notif2${Date.now()}`,
       name: "Notif User 2",
     });
