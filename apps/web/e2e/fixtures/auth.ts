@@ -24,6 +24,30 @@ export async function signupUser(
   await expect(page).toHaveURL(/\/home/, { timeout: 10000 });
 }
 
+// Signup through the Better Auth endpoint directly instead of the signup form.
+// The signup UI itself is covered by auth.spec.ts; everywhere else signup is
+// just setup cost, and the API round-trip is ~1-2s faster per user than
+// driving the form. Same payload as signup-form.tsx; the terms checkbox is
+// client-side only. page.request shares the context's cookie jar and
+// extraHTTPHeaders (synthetic IP), so the session cookie lands on the page.
+export async function signupUserViaApi(
+  page: Page,
+  options: { username: string; name: string; password?: string },
+): Promise<void> {
+  const password = options.password ?? DEFAULT_PASSWORD;
+  const res = await page.request.post("/api/auth/sign-up/email", {
+    data: {
+      username: options.username,
+      name: options.name,
+      email: `${options.username}@sugara.local`,
+      password,
+    },
+  });
+  expect(res.ok(), `signup API failed: ${res.status()} ${await res.text()}`).toBe(true);
+  await page.goto("/home");
+  await expect(page).toHaveURL(/\/home/, { timeout: 10000 });
+}
+
 // Per-test counter for synthetic client IPs (workers: 1, so module scope is safe
 // per worker; workerIndex keeps parallel workers collision-free if ever enabled).
 // Start at a random offset so consecutive runs don't reuse the same IPs — the
@@ -92,8 +116,11 @@ export const test = base.extend<AuthFixtures>({
   },
 
   userCredentials: async ({}, use) => {
+    // base36 timestamp keeps the username within USERNAME_MAX_LENGTH (20).
+    // The decimal form was 23 chars and only ever worked through the form
+    // because the input's maxLength silently truncated it; the API rejects it.
     const credentials = {
-      username: `e2e_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      username: `e2e_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
       password: DEFAULT_PASSWORD,
       name: "E2E User",
     };
@@ -101,7 +128,7 @@ export const test = base.extend<AuthFixtures>({
   },
 
   authenticatedPage: async ({ page, userCredentials }, use) => {
-    await signupUser(page, userCredentials);
+    await signupUserViaApi(page, userCredentials);
     await use(page);
   },
 });

@@ -1,4 +1,4 @@
-import { BASE_URL, clearIdbCache, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
+import { BASE_URL, clearIdbCache, expect, nextTestIp, signupUserViaApi, test } from "./fixtures/auth";
 
 test.describe("Friends", () => {
   test("sends a friend request, accepts it, and removes friend", async ({
@@ -11,8 +11,8 @@ test.describe("Friends", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const pageB = await contextB.newPage();
-    await signupUser(pageB, {
-      username: `friend_b_${Date.now()}`,
+    await signupUserViaApi(pageB, {
+      username: `friend_b_${Date.now().toString(36)}`,
       name: "Friend B",
     });
 
@@ -69,8 +69,8 @@ test.describe("Friends", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const pageC = await contextC.newPage();
-    await signupUser(pageC, {
-      username: `friend_c_${Date.now()}`,
+    await signupUserViaApi(pageC, {
+      username: `friend_c_${Date.now().toString(36)}`,
       name: "Friend C",
     });
 
@@ -118,8 +118,8 @@ test.describe("Friends", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const pageB = await contextB.newPage();
-    await signupUser(pageB, {
-      username: `qr_target_${Date.now()}`,
+    await signupUserViaApi(pageB, {
+      username: `qr_target_${Date.now().toString(36)}`,
       name: "QR Target User",
     });
 

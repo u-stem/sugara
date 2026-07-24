@@ -1,4 +1,4 @@
-import { BASE_URL, clearIdbCache, expect, signupUser, test } from "./fixtures/auth";
+import { BASE_URL, clearIdbCache, expect, signupUserViaApi, test } from "./fixtures/auth";
 
 const PASSWORD = "TestPassword123!";
 const DELETE_TIMEOUT_MS = 20000;
@@ -75,7 +75,7 @@ test.describe("Delete Account", () => {
     const pageB = await contextB.newPage();
     const userB = `delf_${shortId()}`;
     await assignUniqueClientIp(pageB, userB);
-    await signupUser(pageB, { username: userB, name: "User B" });
+    await signupUserViaApi(pageB, { username: userB, name: "User B" });
 
     // Get User A's ID
     await pageA.goto("/my");
@@ -130,7 +130,7 @@ test.describe("Delete Account", () => {
     const pageB = await contextB.newPage();
     const userB = `delm_${shortId()}`;
     await assignUniqueClientIp(pageB, userB);
-    await signupUser(pageB, { username: userB, name: "User B" });
+    await signupUserViaApi(pageB, { username: userB, name: "User B" });
 
     // Get User B's ID
     await pageB.goto("/my");

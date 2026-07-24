@@ -1,5 +1,5 @@
 import type { Browser, Page } from "@playwright/test";
-import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
+import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUserViaApi, test } from "./fixtures/auth";
 
 async function setupViewerMember(
   page: Page,
@@ -11,7 +11,7 @@ async function setupViewerMember(
     extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
   });
   const memberPage = await ctx.newPage();
-  await signupUser(memberPage, {
+  await signupUserViaApi(memberPage, {
     username: `viewer${Date.now()}`,
     name: "Viewer User",
   });
@@ -134,7 +134,7 @@ test.describe("Roles and Permissions", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const memberPage = await ctx.newPage();
-    await signupUser(memberPage, {
+    await signupUserViaApi(memberPage, {
       username: `vreact${Date.now()}`,
       name: "Viewer Reactor",
     });
@@ -186,7 +186,7 @@ test.describe("Roles and Permissions", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const editorPage = await ctx.newPage();
-    await signupUser(editorPage, {
+    await signupUserViaApi(editorPage, {
       username: `editor${Date.now()}`,
       name: "Editor User",
     });

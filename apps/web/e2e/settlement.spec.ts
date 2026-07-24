@@ -1,4 +1,4 @@
-import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUser, test } from "./fixtures/auth";
+import { BASE_URL, createTripViaUI, expect, nextTestIp, signupUserViaApi, test } from "./fixtures/auth";
 
 test.describe("Settlement", () => {
   test("checks and unchecks a settlement payment", async ({
@@ -13,7 +13,7 @@ test.describe("Settlement", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const memberPage = await memberContext.newPage();
-    await signupUser(memberPage, {
+    await signupUserViaApi(memberPage, {
       username: `settle${Date.now()}`,
       name: "Settle User",
     });
@@ -84,7 +84,7 @@ test.describe("Settlement", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const memberPage = await memberContext.newPage();
-    await signupUser(memberPage, {
+    await signupUserViaApi(memberPage, {
       username: `reset${Date.now()}`,
       name: "Reset User",
     });

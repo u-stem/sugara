@@ -4,7 +4,7 @@ import {
   createTripViaUI,
   expect,
   nextTestIp,
-  signupUser,
+  signupUserViaApi,
   test,
 } from "./fixtures/auth";
 
@@ -90,7 +90,7 @@ test.describe("Shared Trip", () => {
       extraHTTPHeaders: { "x-forwarded-for": nextTestIp() },
     });
     const memberPage = await memberContext.newPage();
-    await signupUser(memberPage, {
+    await signupUserViaApi(memberPage, {
       username: `shared${Date.now()}`,
       name: "Shared List User",
     });
@@ -117,7 +117,7 @@ test.describe("Shared Trip", () => {
     await expect(page.getByText("メンバーを追加しました")).toBeVisible();
 
     // The member's home page fetched shared trips (returning []) during
-    // signupUser and wrote the result to IDB.  staleTime: 15_000 means
+    // signupUserViaApi and wrote the result to IDB.  staleTime: 15_000 means
     // React Query would restore that empty snapshot without refetching.
     // Wipe the IDB entry so the next goto fires a fresh shared-trips fetch
     // that now includes the newly-added trip.
