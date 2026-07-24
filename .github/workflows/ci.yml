@@ -5,11 +5,16 @@ on:
     branches:
       - main
   pull_request:
-  # E2E is heavy (full prod build + Supabase + serial Playwright) and no longer
+  # E2E is heavy (full prod build + Supabase + Playwright) and no longer
   # runs on PRs; it runs post-merge on main, nightly, and on demand instead.
   schedule:
     - cron: "0 17 * * *" # 02:00 JST
   workflow_dispatch:
+    inputs:
+      playwright_workers:
+        description: "Playwright workers override for test-e2e (default: config value)"
+        required: false
+        type: string
 
 # Least privilege for GITHUB_TOKEN; jobs that need more declare it themselves.
 permissions:
@@ -212,6 +217,9 @@ jobs:
       # than real browsing; raise the broad auth ceiling for the suite only
       # (routes/auth.ts defaults to 30 when unset — production is unaffected).
       E2E_AUTH_RATE_LIMIT_MAX: "120"
+      # Workers override for on-demand experiments; empty (all non-dispatch
+      # events) falls through to the playwright.config.ts default.
+      PLAYWRIGHT_WORKERS: ${{ inputs.playwright_workers }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
