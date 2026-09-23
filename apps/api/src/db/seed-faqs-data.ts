@@ -426,6 +426,12 @@ export const JA_FAQS = [
       "Webhook URLが無効になると自動的に通知が停止します。旅行のメニューからDiscord通知の状態を確認し、必要に応じてURLを再設定してください。",
     sortOrder: 107,
   },
+  {
+    question: "日程投票の開始・終了はいつDiscordに通知されますか？",
+    answer:
+      "「日程投票開始」は、日程投票に最初のメンバーを追加したときに1回だけ通知されます。その後にメンバーを追加しても通知されません。「日程投票終了」は、日程を確定したときに通知されます。どちらもDiscord通知の設定で有効にしている場合のみ送信されます。",
+    sortOrder: 108,
+  },
   // ---- External API ----
   {
     question: "外部APIとは何ができますか？",
@@ -884,6 +890,12 @@ export const EN_FAQS = [
       "If the Webhook URL becomes invalid, notifications are automatically paused. Check the Discord notification settings from the trip menu and reconfigure the URL if needed.",
     sortOrder: 107,
   },
+  {
+    question: "When are date poll start and end sent to Discord?",
+    answer:
+      "'Date poll started' is sent once, when the first member is added to the poll. Adding more members later does not send it again. 'Date poll closed' is sent when the dates are confirmed. Both are sent only if enabled in the Discord notification settings.",
+    sortOrder: 108,
+  },
   // ---- External API ----
   {
     question: "What can I do with the external API?",
@@ -938,7 +950,7 @@ export function resolveCategory(sortOrder: number): string {
   if (sortOrder >= 99 && sortOrder <= 102) return "tools";
   if (sortOrder === 103) return "limits";
   if (sortOrder >= 104 && sortOrder <= 105) return "desktop";
-  if (sortOrder >= 106 && sortOrder <= 107) return "notifications";
+  if (sortOrder >= 106 && sortOrder <= 108) return "notifications";
   if (sortOrder >= 110 && sortOrder <= 114) return "api";
   return "other";
 }

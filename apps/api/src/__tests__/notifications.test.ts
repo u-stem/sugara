@@ -254,6 +254,47 @@ describe("notifyArticleOwnersOnMemberAdded", () => {
   });
 });
 
+describe("notifyUsers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockDbQuery.trips.findFirst.mockResolvedValue({ title: "京都旅行" });
+    mockDbQuery.discordWebhooks.findFirst.mockResolvedValue(null);
+    mockDbQuery.notificationPreferences.findFirst.mockResolvedValue(null);
+    mockDbQuery.pushSubscriptions.findMany.mockResolvedValue([]);
+    mockDbQuery.notifications.findMany.mockResolvedValue([]);
+    mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+    mockDbSelect.mockReturnValue({
+      from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([{ count: 0 }]) }),
+    });
+    mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+  });
+
+  it("notifyDiscord: false の場合は discordWebhooks.findFirst を呼ばない", async () => {
+    notifyUsers({
+      type: "poll_started",
+      tripId: "trip-1",
+      userIds: ["user-1"],
+      makePayload: (tripName) => ({ tripName }),
+      notifyDiscord: false,
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockDbQuery.discordWebhooks.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("notifyDiscord を省略した場合は discordWebhooks.findFirst を呼ぶ(既定で Discord 送信を試みる)", async () => {
+    notifyUsers({
+      type: "poll_started",
+      tripId: "trip-1",
+      userIds: ["user-1"],
+      makePayload: (tripName) => ({ tripName }),
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(mockDbQuery.discordWebhooks.findFirst).toHaveBeenCalled();
+  });
+});
+
 // Fire-and-forget entry points must swallow DB failures into logger.error;
 // an uncaught rejection here would surface as an unhandled promise rejection.
 describe("fire-and-forget エントリポイントのエラー処理", () => {
