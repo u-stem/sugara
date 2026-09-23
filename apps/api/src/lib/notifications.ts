@@ -59,7 +59,7 @@ async function sendDiscordForTrip(params: {
       where: eq(discordWebhooks.tripId, params.tripId),
     });
 
-    if (!webhook || !webhook.isActive) return;
+    if (!webhook?.isActive) return;
 
     const enabledTypes = webhook.enabledTypes as string[];
     if (!enabledTypes.includes(params.type)) return;

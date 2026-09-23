@@ -471,4 +471,4 @@ tripArticleRoutes.get("/:tripId/articles", async (c) => {
   return c.json(summaries);
 });
 
-export { articleRoutes, articleDetailRoutes, tripArticleRoutes };
+export { articleDetailRoutes, articleRoutes, tripArticleRoutes };

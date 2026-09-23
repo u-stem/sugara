@@ -40,17 +40,17 @@ import { z } from "zod";
 // ---------------------------------------------------------------------------
 
 export {
+  createArticleSchema as v1CreateArticleSchema,
   createBookmarkListSchema as v1CreateBookmarkListSchema,
   createBookmarkSchema as v1CreateBookmarkSchema,
-  createArticleSchema as v1CreateArticleSchema,
-  createSouvenirSchema as v1CreateSouvenirSchema,
   // Rename shares the create shape ({ label }) — sortOrder stays internal-only.
   createDayPatternSchema as v1CreatePatternSchema,
   createDayPatternSchema as v1UpdatePatternSchema,
+  createSouvenirSchema as v1CreateSouvenirSchema,
   overwriteDayPatternSchema as v1OverwritePatternSchema,
+  updateArticleSchema as v1UpdateArticleSchema,
   updateBookmarkListSchema as v1UpdateBookmarkListSchema,
   updateBookmarkSchema as v1UpdateBookmarkSchema,
-  updateArticleSchema as v1UpdateArticleSchema,
   updateSouvenirSchema as v1UpdateSouvenirSchema,
 };
 
