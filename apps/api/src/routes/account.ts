@@ -27,7 +27,7 @@ accountRoutes.delete("/account", deleteRateLimit, requireAuth, async (c) => {
     columns: { password: true },
   });
 
-  if (!account || !account.password) {
+  if (!account?.password) {
     return c.json({ error: ERROR_MSG.ACCOUNT_NOT_FOUND }, 404);
   }
 

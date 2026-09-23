@@ -665,7 +665,7 @@ pollRoutes.post("/:pollId/confirm", async (c) => {
       where: eq(schedulePolls.id, pollId),
       columns: { status: true },
     });
-    if (!currentPoll || currentPoll.status !== "open") {
+    if (currentPoll?.status !== "open") {
       return "already_confirmed" as const;
     }
 

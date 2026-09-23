@@ -667,7 +667,7 @@ scheduleRoutes.post(
       where: and(eq(schedules.id, scheduleId), eq(schedules.tripId, tripId)),
       with: { dayPattern: { with: { tripDay: true } } },
     });
-    if (!existing || !existing.dayPatternId) {
+    if (!existing?.dayPatternId) {
       return c.json({ error: ERROR_MSG.SCHEDULE_NOT_FOUND }, 404);
     }
 
