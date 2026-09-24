@@ -45,6 +45,7 @@ describe("POST /api/admin/announcement", () => {
   beforeEach(() => {
     process.env.ADMIN_USERNAME = "adminuser";
     delete process.env.VERCEL_API_TOKEN;
+    delete process.env.GLOBAL_CONFIG_ID;
     delete process.env.EDGE_CONFIG_ID;
     mockFetch.mockReset();
   });
@@ -87,7 +88,7 @@ describe("POST /api/admin/announcement", () => {
 
   it("returns 400 when message is not a string", async () => {
     process.env.VERCEL_API_TOKEN = "token";
-    process.env.EDGE_CONFIG_ID = "ecfg_xxx";
+    process.env.GLOBAL_CONFIG_ID = "gcfg_xxx";
     mockGetSession.mockResolvedValue({
       user: ADMIN_USER,
       session: { id: "session-1" },
@@ -100,9 +101,9 @@ describe("POST /api/admin/announcement", () => {
     expect(res.status).toBe(400);
   });
 
-  it("updates Edge Config and returns message", async () => {
+  it("updates Global Config and returns message", async () => {
     process.env.VERCEL_API_TOKEN = "token";
-    process.env.EDGE_CONFIG_ID = "ecfg_xxx";
+    process.env.GLOBAL_CONFIG_ID = "gcfg_xxx";
     mockGetSession.mockResolvedValue({
       user: ADMIN_USER,
       session: { id: "session-1" },
@@ -116,14 +117,34 @@ describe("POST /api/admin/announcement", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ message: "障害が発生しています" });
     expect(mockFetch).toHaveBeenCalledWith(
-      "https://api.vercel.com/v1/edge-config/ecfg_xxx/items",
+      "https://api.vercel.com/v1/global-config/gcfg_xxx/items",
+      expect.objectContaining({ method: "PATCH" }),
+    );
+  });
+
+  it("updates Global Config using legacy EDGE_CONFIG_ID when GLOBAL_CONFIG_ID is unset", async () => {
+    process.env.VERCEL_API_TOKEN = "token";
+    process.env.EDGE_CONFIG_ID = "ecfg_xxx";
+    mockGetSession.mockResolvedValue({
+      user: ADMIN_USER,
+      session: { id: "session-1" },
+    });
+    mockFetch.mockResolvedValue({ ok: true });
+    const res = await app.request("/api/admin/announcement", {
+      method: "POST",
+      body: JSON.stringify({ message: "障害が発生しています" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.vercel.com/v1/global-config/ecfg_xxx/items",
       expect.objectContaining({ method: "PATCH" }),
     );
   });
 
   it("clears announcement when message is empty string", async () => {
     process.env.VERCEL_API_TOKEN = "token";
-    process.env.EDGE_CONFIG_ID = "ecfg_xxx";
+    process.env.GLOBAL_CONFIG_ID = "gcfg_xxx";
     mockGetSession.mockResolvedValue({
       user: ADMIN_USER,
       session: { id: "session-1" },
@@ -140,7 +161,7 @@ describe("POST /api/admin/announcement", () => {
 
   it("returns 502 when Vercel API fails", async () => {
     process.env.VERCEL_API_TOKEN = "token";
-    process.env.EDGE_CONFIG_ID = "ecfg_xxx";
+    process.env.GLOBAL_CONFIG_ID = "gcfg_xxx";
     mockGetSession.mockResolvedValue({
       user: ADMIN_USER,
       session: { id: "session-1" },
