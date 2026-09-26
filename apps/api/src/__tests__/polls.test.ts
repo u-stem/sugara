@@ -7,7 +7,7 @@ const {
   mockDbUpdate,
   mockFindPollAsOwner,
   mockDbQuery,
-  mockCreateNotification,
+  mockNotifyUsers,
   mockNotifyArticleOwnersOnMemberAdded,
   mockLoggerError,
 } = vi.hoisted(() => ({
@@ -24,7 +24,7 @@ const {
     schedulePolls: { findFirst: vi.fn() },
     schedulePollOptions: { findFirst: vi.fn() },
   },
-  mockCreateNotification: vi.fn(),
+  mockNotifyUsers: vi.fn(),
   mockNotifyArticleOwnersOnMemberAdded: vi.fn(),
   mockLoggerError: vi.fn(),
 }));
@@ -68,7 +68,7 @@ vi.mock("../db/index", () => ({
 }));
 
 vi.mock("../lib/notifications", () => ({
-  createNotification: (...args: unknown[]) => mockCreateNotification(...args),
+  notifyUsers: (...args: unknown[]) => mockNotifyUsers(...args),
   notifyArticleOwnersOnMemberAdded: (...args: unknown[]) =>
     mockNotifyArticleOwnersOnMemberAdded(...args),
 }));
@@ -100,7 +100,6 @@ describe("Poll routes", () => {
       session: { id: "session-1" },
     });
     mockDbQuery.trips.findFirst.mockResolvedValue({ title: "テスト旅行" });
-    mockCreateNotification.mockResolvedValue(undefined);
     mockNotifyArticleOwnersOnMemberAdded.mockResolvedValue(undefined);
   });
 
@@ -204,7 +203,10 @@ describe("Poll routes", () => {
   });
 
   describe("POST /api/polls/:pollId/participants", () => {
-    it("sends poll_started notification when participant is added", async () => {
+    // The pre-add participant count is 1 (only the poll's creator) when this
+    // add is the first time another member is being invited, so the Discord
+    // "poll started" announcement should fire exactly once, on this add.
+    it("sends poll_started notification with notifyDiscord: true when this is the first participant added", async () => {
       mockFindPollAsOwner.mockResolvedValue({
         id: "poll-1",
         status: "open",
@@ -213,7 +215,7 @@ describe("Poll routes", () => {
       });
       mockDbSelect.mockReturnValueOnce({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue([{ count: 0 }]),
+          where: vi.fn().mockResolvedValue([{ count: 1 }]),
         }),
       });
       mockDbQuery.users.findFirst.mockResolvedValue({
@@ -248,15 +250,18 @@ describe("Poll routes", () => {
       });
 
       expect(res.status).toBe(201);
-      expect(mockCreateNotification).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "poll_started" }),
+      expect(mockNotifyUsers).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "poll_started",
+          userIds: ["00000000-0000-0000-0000-000000000002"],
+          notifyDiscord: true,
+        }),
       );
     });
 
-    // The poll_started notification is fire-and-forget; a failing trip lookup
-    // (e.g. connection killed after the response on serverless) must be caught
-    // instead of surfacing as an unhandled rejection (Sentry noise).
-    it("does not leave an unhandled rejection when the trip lookup fails", async () => {
+    // A pre-add count of 2+ means at least one other member was already
+    // invited before this add, so the Discord announcement must not repeat.
+    it("sends poll_started notification with notifyDiscord: false when a participant was already invited before", async () => {
       mockFindPollAsOwner.mockResolvedValue({
         id: "poll-1",
         status: "open",
@@ -265,17 +270,17 @@ describe("Poll routes", () => {
       });
       mockDbSelect.mockReturnValueOnce({
         from: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue([{ count: 0 }]),
+          where: vi.fn().mockResolvedValue([{ count: 2 }]),
         }),
       });
       mockDbQuery.users.findFirst.mockResolvedValue({
-        id: "00000000-0000-0000-0000-000000000002",
-        name: "New Participant",
+        id: "00000000-0000-0000-0000-000000000003",
+        name: "Third Participant",
         image: null,
       });
       mockDbQuery.tripMembers.findFirst.mockResolvedValue({
         tripId: "trip-1",
-        userId: "00000000-0000-0000-0000-000000000002",
+        userId: "00000000-0000-0000-0000-000000000003",
         role: "editor",
       });
       mockDbQuery.schedulePollParticipants.findFirst.mockResolvedValue(undefined);
@@ -284,86 +289,24 @@ describe("Poll routes", () => {
           returning: vi
             .fn()
             .mockResolvedValue([
-              { id: "part-1", pollId: "poll-1", userId: "00000000-0000-0000-0000-000000000002" },
+              { id: "part-2", pollId: "poll-1", userId: "00000000-0000-0000-0000-000000000003" },
             ]),
         }),
       });
       mockDbUpdate.mockReturnValue({
         set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
       });
-      mockDbQuery.trips.findFirst.mockRejectedValue(new Error("Failed query"));
-
-      const rejections: unknown[] = [];
-      const onRejection = (reason: unknown) => {
-        rejections.push(reason);
-      };
-      process.on("unhandledRejection", onRejection);
-      try {
-        const app = createTestApp(pollRoutes, "/api/polls");
-        await app.request("/api/polls/poll-1/participants", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: "00000000-0000-0000-0000-000000000002" }),
-        });
-        // Unhandled rejections are emitted after the microtask queue drains.
-        await new Promise((resolve) => setImmediate(resolve));
-      } finally {
-        process.off("unhandledRejection", onRejection);
-      }
-
-      expect(rejections).toEqual([]);
-    });
-
-    // The .catch must record the failure via logger.error, not swallow it
-    // silently — mirrors the coverage notifications.test.ts has for notifyUsers.
-    it("logs the error when the trip lookup for the notification fails", async () => {
-      mockFindPollAsOwner.mockResolvedValue({
-        id: "poll-1",
-        status: "open",
-        tripId: "trip-1",
-        trip: { ownerId: fakeUser.id },
-      });
-      mockDbSelect.mockReturnValueOnce({
-        from: vi.fn().mockReturnValue({
-          where: vi.fn().mockResolvedValue([{ count: 0 }]),
-        }),
-      });
-      mockDbQuery.users.findFirst.mockResolvedValue({
-        id: "00000000-0000-0000-0000-000000000002",
-        name: "New Participant",
-        image: null,
-      });
-      mockDbQuery.tripMembers.findFirst.mockResolvedValue({
-        tripId: "trip-1",
-        userId: "00000000-0000-0000-0000-000000000002",
-        role: "editor",
-      });
-      mockDbQuery.schedulePollParticipants.findFirst.mockResolvedValue(undefined);
-      mockDbInsert.mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          returning: vi
-            .fn()
-            .mockResolvedValue([
-              { id: "part-1", pollId: "poll-1", userId: "00000000-0000-0000-0000-000000000002" },
-            ]),
-        }),
-      });
-      mockDbUpdate.mockReturnValue({
-        set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }),
-      });
-      mockDbQuery.trips.findFirst.mockRejectedValue(new Error("Failed query"));
 
       const app = createTestApp(pollRoutes, "/api/polls");
-      await app.request("/api/polls/poll-1/participants", {
+      const res = await app.request("/api/polls/poll-1/participants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: "00000000-0000-0000-0000-000000000002" }),
+        body: JSON.stringify({ userId: "00000000-0000-0000-0000-000000000003" }),
       });
-      await new Promise((resolve) => setImmediate(resolve));
 
-      expect(mockLoggerError).toHaveBeenCalledWith(
-        expect.objectContaining({ tripId: "trip-1" }),
-        "Failed to dispatch poll notification",
+      expect(res.status).toBe(201);
+      expect(mockNotifyUsers).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "poll_started", notifyDiscord: false }),
       );
     });
 
@@ -413,6 +356,7 @@ describe("Poll routes", () => {
 
   describe("POST /api/polls/:pollId/confirm", () => {
     const newParticipantId = "00000000-0000-0000-0000-000000000099";
+    const otherParticipantId = "00000000-0000-0000-0000-000000000077";
     const pollId = "poll-1";
     const tripId = "trip-1";
     const optionId = "00000000-0000-0000-0000-000000000001";
@@ -545,6 +489,126 @@ describe("Poll routes", () => {
       // Assert
       expect(res.status).toBe(200);
       expect(mockNotifyArticleOwnersOnMemberAdded).not.toHaveBeenCalled();
+    });
+
+    it("calls notifyUsers with type poll_closed and userIds excluding the confirming actor", async () => {
+      // Arrange
+      mockFindPollAsOwner.mockResolvedValue({
+        id: pollId,
+        status: "open",
+        tripId,
+        trip: { ownerId: fakeUser.id },
+      });
+      mockDbQuery.schedulePollOptions.findFirst.mockResolvedValue({
+        id: optionId,
+        startDate: "2026-02-05",
+        endDate: "2026-02-07",
+      });
+      mockDbQuery.schedulePolls.findFirst.mockResolvedValue({ status: "open" });
+      mockDbUpdate
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue(undefined),
+          }),
+        })
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([confirmedPoll]),
+            }),
+          }),
+        });
+      // All participants are already trip members — no auto-join needed
+      mockDbQuery.schedulePollParticipants.findMany
+        .mockResolvedValueOnce([
+          { pollId, userId: fakeUser.id },
+          { pollId, userId: otherParticipantId },
+        ])
+        // After transaction: for the poll_closed notification's recipient list
+        .mockResolvedValueOnce([{ userId: fakeUser.id }, { userId: otherParticipantId }]);
+      mockDbQuery.tripMembers.findMany.mockResolvedValue([
+        { userId: fakeUser.id },
+        { userId: otherParticipantId },
+      ]);
+      mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+      mockDbQuery.trips.findFirst.mockResolvedValue(confirmedTrip);
+
+      // Act
+      const app = createTestApp(pollRoutes, "/api/polls");
+      const res = await app.request(`/api/polls/${pollId}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionId }),
+      });
+      // The poll_closed notification dispatch is fire-and-forget (chained via
+      // .then after the response is built), so let the microtask queue drain.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // Assert
+      expect(res.status).toBe(200);
+      expect(mockNotifyUsers).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "poll_closed",
+          tripId,
+          userIds: [otherParticipantId],
+        }),
+      );
+    });
+
+    it("passes a makePayload whose entityName is the confirmed date range", async () => {
+      // Arrange
+      mockFindPollAsOwner.mockResolvedValue({
+        id: pollId,
+        status: "open",
+        tripId,
+        trip: { ownerId: fakeUser.id },
+      });
+      mockDbQuery.schedulePollOptions.findFirst.mockResolvedValue({
+        id: optionId,
+        startDate: "2026-02-05",
+        endDate: "2026-02-07",
+      });
+      mockDbQuery.schedulePolls.findFirst.mockResolvedValue({ status: "open" });
+      mockDbUpdate
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockResolvedValue(undefined),
+          }),
+        })
+        .mockReturnValueOnce({
+          set: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([confirmedPoll]),
+            }),
+          }),
+        });
+      mockDbQuery.schedulePollParticipants.findMany
+        .mockResolvedValueOnce([
+          { pollId, userId: fakeUser.id },
+          { pollId, userId: otherParticipantId },
+        ])
+        .mockResolvedValueOnce([{ userId: fakeUser.id }, { userId: otherParticipantId }]);
+      mockDbQuery.tripMembers.findMany.mockResolvedValue([
+        { userId: fakeUser.id },
+        { userId: otherParticipantId },
+      ]);
+      mockDbInsert.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+      mockDbQuery.trips.findFirst.mockResolvedValue(confirmedTrip);
+
+      // Act
+      const app = createTestApp(pollRoutes, "/api/polls");
+      await app.request(`/api/polls/${pollId}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionId }),
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // Assert
+      // formatShortDateRange is mocked (see vi.mock("../lib/activity-logger"))
+      // to always return "2/5〜2/7" regardless of arguments.
+      const { makePayload } = mockNotifyUsers.mock.calls[0][0];
+      expect(makePayload("旅行名").entityName).toBe("2/5〜2/7");
     });
   });
 });
