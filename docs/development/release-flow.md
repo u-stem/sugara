@@ -134,8 +134,8 @@ Vercel `Settings → Environment Variables` で設定、**全て "Sensitive" フ
 | `GITHUB_FEEDBACK_REPO` | 送信先 repo |
 | `GITHUB_SENTRY_REPO` | Sentry issue の送信先 repo (未設定なら `GITHUB_FEEDBACK_REPO` を流用) |
 | `SENTRY_WEBHOOK_SECRET` | Sentry Internal Integration の client secret (`/api/sentry-webhook` の署名検証用)。詳細は [sentry-github-issues.md](sentry-github-issues.md) |
-| `VERCEL_API_TOKEN` | Edge Config 更新 (admin announcement 機能) |
-| `EDGE_CONFIG_ID` / `EDGE_CONFIG` | 管理者告知用 Edge Config |
+| `VERCEL_API_TOKEN` | Global Config 更新 (admin announcement 機能) |
+| `GLOBAL_CONFIG_ID` / `GLOBAL_CONFIG` | 管理者告知用 Global Config (旧 `EDGE_CONFIG_ID` / `EDGE_CONFIG` も後方互換で読む) |
 | `ADMIN_USER_ID` | 本番の管理者 user ID (ADMIN_USERNAME は非推奨) |
 | `FRONTEND_URL` / `BETTER_AUTH_BASE_URL` | CORS / redirect 設定用 |
 | `UPSTASH_REDIS_KV_REST_API_URL` / `UPSTASH_REDIS_KV_REST_API_TOKEN` | rate limit の共有ストア (Vercel Marketplace の Upstash integration が `UPSTASH_REDIS` prefix で自動 inject。READ_ONLY ではなく read-write token を使用)。未設定時は per-instance memory にフォールバック |
