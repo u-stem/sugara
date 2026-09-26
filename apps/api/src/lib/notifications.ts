@@ -91,14 +91,25 @@ export function notifyUsers(params: {
   tripId: string;
   userIds: string[];
   makePayload: (tripName: string) => NotificationPayload;
+  /**
+   * Skip the Discord webhook post for this call while still creating the
+   * per-user in-app/push notifications. Use when the caller is dispatching
+   * what is (or may be) a repeat occurrence of the same event and wants the
+   * Discord announcement limited to a single, meaningful occurrence — e.g.
+   * a poll's "started" post should fire once, not on every participant add.
+   * @default true
+   */
+  notifyDiscord?: boolean;
 }): void {
-  const { type, tripId, userIds, makePayload } = params;
+  const { type, tripId, userIds, makePayload, notifyDiscord = true } = params;
   if (userIds.length === 0) return;
   void db.query.trips
     .findFirst({ where: eq(trips.id, tripId), columns: { title: true } })
     .then((trip) => {
       const tripName = trip?.title ?? "旅行";
-      void sendDiscordForTrip({ type, tripId, payload: makePayload(tripName) });
+      if (notifyDiscord) {
+        void sendDiscordForTrip({ type, tripId, payload: makePayload(tripName) });
+      }
       void Promise.all(
         userIds.map((userId) =>
           createNotification({ type, userId, tripId, payload: makePayload(tripName) }),
