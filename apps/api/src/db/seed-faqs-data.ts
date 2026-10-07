@@ -112,7 +112,7 @@ export const JA_FAQS = [
   {
     question: "オフラインでも旅行を確認できますか？",
     answer:
-      "はい。一度表示した旅行データはブラウザに保存され、オフラインでも閲覧できます。PWAとしてインストールしている場合に最適です。データは最大7日間保持されます。",
+      "はい。一度表示した旅行データはブラウザに保存され、オフラインでも閲覧できます。PWAとしてインストールしている場合に最適です。データは最大7日間保持されます。ログアウトすると、端末に保存された旅行データは削除されます。",
     sortOrder: 26,
   },
   {
@@ -575,7 +575,7 @@ export const EN_FAQS = [
   {
     question: "Can I view trips offline?",
     answer:
-      "Yes. Trip data you've viewed is saved in the browser and can be accessed offline. It works best when sugara is installed as a PWA. Data is kept for up to 7 days.",
+      "Yes. Trip data you've viewed is saved in the browser and can be accessed offline. It works best when sugara is installed as a PWA. Data is kept for up to 7 days. Logging out removes the trip data saved on the device.",
     sortOrder: 26,
   },
   {
