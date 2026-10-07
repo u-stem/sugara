@@ -13,6 +13,7 @@ import {
   users,
 } from "../db/schema";
 import { getAppSettings, isValidMapsMode } from "../lib/app-settings";
+import { revokeApiKeysByUserId } from "../lib/external-api/api-key";
 import { logger } from "../lib/logger";
 import { getParam } from "../lib/params";
 import { hashPassword } from "../lib/password";
@@ -306,15 +307,31 @@ adminRoutes.post("/api/admin/users/:userId/temp-password", requireAuth, requireA
   const tempPassword = generateTempPassword();
   const passwordHash = await hashPassword(tempPassword);
 
-  const updated = await db
-    .update(accounts)
-    .set({ password: passwordHash, updatedAt: new Date() })
-    .where(and(eq(accounts.userId, userId), eq(accounts.providerId, "credential")))
-    .returning({ id: accounts.id });
+  // Password swap and session deletion share a transaction so a stolen session
+  // cookie can never outlive the new password. Admins issue temp passwords when
+  // an account may be compromised, so leaving existing sessions alive would
+  // defeat the purpose (same rationale as revokeSessionsOnPasswordReset in auth.ts).
+  const credentialUpdated = await db.transaction(async (tx) => {
+    const updated = await tx
+      .update(accounts)
+      .set({ password: passwordHash, updatedAt: new Date() })
+      .where(and(eq(accounts.userId, userId), eq(accounts.providerId, "credential")))
+      .returning({ id: accounts.id });
 
-  if (updated.length === 0) {
+    if (updated.length === 0) return false;
+
+    await tx.delete(sessions).where(eq(sessions.userId, userId));
+    return true;
+  });
+
+  if (!credentialUpdated) {
     return c.json({ error: "No credential account found" }, 404);
   }
+
+  // Fail-closed, mirroring emailAndPassword.onPasswordReset in auth.ts: no
+  // try-catch, so a revocation failure surfaces as a 500 and the temp password
+  // is never returned. Re-issuing is safe because each call rotates the password.
+  await revokeApiKeysByUserId(userId);
 
   return c.json({ tempPassword });
 });
