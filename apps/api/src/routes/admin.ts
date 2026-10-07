@@ -337,9 +337,11 @@ adminRoutes.post("/api/admin/weather/refresh", requireAuth, requireAdmin, async 
 
 adminRoutes.post("/api/admin/announcement", requireAuth, requireAdmin, async (c) => {
   const apiToken = process.env.VERCEL_API_TOKEN;
-  const configId = process.env.EDGE_CONFIG_ID;
+  // Same GLOBAL_CONFIG-first fallback as announcement.ts, so an unmigrated
+  // project's EDGE_CONFIG_ID keeps working.
+  const configId = process.env.GLOBAL_CONFIG_ID ?? process.env.EDGE_CONFIG_ID;
   if (!apiToken || !configId) {
-    return c.json({ error: "Edge Config not configured" }, 503);
+    return c.json({ error: "Global Config not configured" }, 503);
   }
 
   const body = await c.req.json<{ message: unknown }>();
@@ -347,7 +349,7 @@ adminRoutes.post("/api/admin/announcement", requireAuth, requireAdmin, async (c)
     return c.json({ error: "message must be a string" }, 400);
   }
 
-  const res = await fetch(`https://api.vercel.com/v1/edge-config/${configId}/items`, {
+  const res = await fetch(`https://api.vercel.com/v1/global-config/${configId}/items`, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${apiToken}`,
@@ -359,7 +361,7 @@ adminRoutes.post("/api/admin/announcement", requireAuth, requireAdmin, async (c)
   });
 
   if (!res.ok) {
-    return c.json({ error: "Failed to update Edge Config" }, 502);
+    return c.json({ error: "Failed to update Global Config" }, 502);
   }
 
   return c.json({ message: body.message || null });

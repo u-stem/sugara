@@ -22,7 +22,7 @@ graph LR
     end
 
     subgraph external["外部サービス"]
-        Edge["Vercel Edge Config"]
+        Edge["Vercel Global Config"]
         Maps["Google Maps API"]
         GitHub["GitHub API"]
     end
