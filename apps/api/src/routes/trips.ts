@@ -3,9 +3,10 @@ import {
   createTripSchema,
   createTripWithPollSchema,
   ERROR_CODE,
+  isOwner,
   updateTripSchema,
 } from "@sugara/shared";
-import { and, count, desc, eq, getTableColumns, ne, sql } from "drizzle-orm";
+import { and, count, desc, eq, ne, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { db } from "../db/index";
 import {
@@ -28,6 +29,7 @@ import { logger } from "../lib/logger";
 import { getParam } from "../lib/params";
 import { getAdminUserId } from "../lib/resolve-is-admin";
 import { buildScheduleCloneValues } from "../lib/schedule-clone";
+import { deriveShareChannelKey, omitShareSecrets } from "../lib/share-token";
 import {
   copyCoverImage,
   deleteCoverImage,
@@ -47,6 +49,23 @@ function resolveMapsEnabled(mapsMode: MapsMode, isAdminTrip: boolean): boolean {
   return isAdminTrip;
 }
 
+// Explicit projection: the list must never carry share secrets (shareToken /
+// shareTokenExpiresAt), so new trips columns are opt-in rather than inherited.
+const tripListColumns = {
+  id: trips.id,
+  ownerId: trips.ownerId,
+  title: trips.title,
+  destination: trips.destination,
+  startDate: trips.startDate,
+  endDate: trips.endDate,
+  status: trips.status,
+  coverImageUrl: trips.coverImageUrl,
+  coverImagePosition: trips.coverImagePosition,
+  currency: trips.currency,
+  createdAt: trips.createdAt,
+  updatedAt: trips.updatedAt,
+};
+
 const tripRoutes = new Hono<AppEnv>();
 tripRoutes.use("*", requireAuth);
 
@@ -65,12 +84,10 @@ tripRoutes.get("/", async (c) => {
         ? ne(tripMembers.role, "owner")
         : undefined;
 
-  const tripColumns = getTableColumns(trips);
-
   // Run sequentially to avoid Supavisor pipeline stalls (see admin.ts fetchStats)
   const result = await db
     .select({
-      ...tripColumns,
+      ...tripListColumns,
       role: tripMembers.role,
       totalSchedules: count(schedules.id),
       memberCount: sql<number>`(SELECT COUNT(*)::int FROM trip_members WHERE trip_members.trip_id = ${trips.id})`,
@@ -295,6 +312,23 @@ tripRoutes.get("/:id", requireTripAccess("viewer", "id"), async (c) => {
   // Run sequentially to avoid Supavisor pipeline stalls (see admin.ts fetchStats)
   const tripWithPoll = await db.query.trips.findFirst({
     where: eq(trips.id, tripId),
+    columns: {
+      id: true,
+      ownerId: true,
+      title: true,
+      destination: true,
+      startDate: true,
+      endDate: true,
+      status: true,
+      coverImageUrl: true,
+      coverImagePosition: true,
+      currency: true,
+      createdAt: true,
+      updatedAt: true,
+      // Needed to derive shareChannelKey; only the owner gets them in the response.
+      shareToken: true,
+      shareTokenExpiresAt: true,
+    },
     with: {
       days: {
         orderBy: (days, { asc }) => [asc(days.dayNumber)],
@@ -336,7 +370,7 @@ tripRoutes.get("/:id", requireTripAccess("viewer", "id"), async (c) => {
     .where(eq(expenses.tripId, tripId));
   const detailSettings = await getAppSettings();
 
-  const { poll: rawPoll, ...trip } = tripWithPoll;
+  const { poll: rawPoll, shareToken, shareTokenExpiresAt, ...trip } = tripWithPoll;
 
   // Derive from already-fetched data instead of an extra DB query
   const scheduleCount =
@@ -358,6 +392,9 @@ tripRoutes.get("/:id", requireTripAccess("viewer", "id"), async (c) => {
       detailSettings.mapsMode === "admin_only" ? trip.ownerId === (await getAdminUserId()) : false,
     ),
     role,
+    // Members get a one-way key for the shared-viewer Realtime channel, never the token.
+    shareChannelKey: shareToken ? deriveShareChannelKey(shareToken) : null,
+    ...(isOwner(role) ? { shareToken, shareTokenExpiresAt } : {}),
     candidates,
     scheduleCount,
     expenseCount,
@@ -402,7 +439,7 @@ tripRoutes.patch("/:id", requireTripAccess("editor", "id"), async (c) => {
     }
   }
 
-  return c.json(result.trip);
+  return c.json(omitShareSecrets(result.trip));
 });
 
 // Duplicate trip (any member can duplicate, new trip is owned by current user)

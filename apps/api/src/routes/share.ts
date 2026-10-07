@@ -4,7 +4,7 @@ import { db } from "../db/index";
 import { trips } from "../db/schema";
 import { ERROR_MSG, RATE_LIMIT_PUBLIC_RESOURCE } from "../lib/constants";
 import { getParam } from "../lib/params";
-import { generateShareToken, shareExpiresAt } from "../lib/share-token";
+import { deriveShareChannelKey, generateShareToken, shareExpiresAt } from "../lib/share-token";
 import { requireAuth } from "../middleware/auth";
 import { rateLimitByIp } from "../middleware/rate-limit";
 import { requireNonGuest } from "../middleware/require-non-guest";
@@ -156,6 +156,9 @@ shareRoutes.get("/api/shared/:token", sharedTripRateLimit, async (c) => {
     days: trip.days,
     candidates,
     shareExpiresAt: trip.shareTokenExpiresAt?.toISOString() ?? null,
+    // Same value members receive from the trip detail API; lets viewers subscribe to
+    // edit notifications without the token ever being used as a channel name.
+    shareChannelKey: deriveShareChannelKey(token),
   });
 });
 

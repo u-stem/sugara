@@ -124,6 +124,30 @@ describe("Share Integration", () => {
     expect(trip.shareToken).toBeUndefined();
   });
 
+  it("gives shared viewers the same channel key that trip members receive", async () => {
+    const shareRes = await app.request(`/api/trips/${tripId}/share`, { method: "POST" });
+    const { shareToken } = await shareRes.json();
+    const detailRes = await app.request(`/api/trips/${tripId}`);
+    const detail = await detailRes.json();
+
+    mockGetSession.mockImplementation(() => null);
+    const sharedRes = await app.request(`/api/shared/${shareToken}`);
+    const shared = await sharedRes.json();
+
+    expect(shared.shareChannelKey).toBe(detail.shareChannelKey);
+  });
+
+  it("derives the channel key from the token without exposing the token", async () => {
+    const shareRes = await app.request(`/api/trips/${tripId}/share`, { method: "POST" });
+    const { shareToken } = await shareRes.json();
+
+    mockGetSession.mockImplementation(() => null);
+    const sharedRes = await app.request(`/api/shared/${shareToken}`);
+    const text = await sharedRes.text();
+
+    expect(text).not.toContain(shareToken);
+  });
+
   it("returns 404 for invalid share token", async () => {
     mockGetSession.mockImplementation(() => null);
 

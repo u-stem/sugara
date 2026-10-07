@@ -74,7 +74,11 @@ export type TripResponse = {
   status: TripStatus;
   coverImageUrl: string | null;
   coverImagePosition: number;
-  shareToken: string | null;
+  /** Only present for the trip owner; other members never receive the token. */
+  shareToken?: string | null;
+  shareTokenExpiresAt?: string | null;
+  /** SHA-256 (hex) of the share token; names the Realtime channel for shared-link viewers. */
+  shareChannelKey: string | null;
   currency: string;
   role: MemberRole;
   days: DayResponse[];
@@ -409,6 +413,8 @@ export type SharedTripResponse = {
   days: DayResponse[];
   candidates: ScheduleResponse[];
   shareExpiresAt: string | null;
+  /** SHA-256 (hex) of the share token; names the Realtime channel for edit notifications. */
+  shareChannelKey: string;
 };
 
 // Activity log paginated response
