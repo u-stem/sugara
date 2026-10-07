@@ -331,12 +331,31 @@ describe("Share routes", () => {
       expect(res.status).toBe(404);
     });
 
+    it("returns 404 for a legacy share link without an expiry", async () => {
+      mockDbQuery.trips.findFirst.mockResolvedValue({
+        id: "trip-1",
+        ownerId: "user-1",
+        shareToken: "legacy-token",
+        shareTokenExpiresAt: null,
+        title: "Tokyo Trip",
+        destination: "Tokyo",
+        days: [],
+        schedules: [],
+      });
+
+      const app = createTestApp(shareRoutes, "/");
+      const res = await app.request("/api/shared/legacy-token");
+
+      expect(res.status).toBe(404);
+    });
+
     it("does not require authentication", async () => {
       mockGetSession.mockResolvedValue(null);
       mockDbQuery.trips.findFirst.mockResolvedValue({
         id: "trip-1",
         ownerId: "user-1",
         shareToken: "valid-token",
+        shareTokenExpiresAt: new Date("2099-01-01"),
         title: "Tokyo Trip",
         destination: "Tokyo",
         days: [],

@@ -187,6 +187,47 @@ describe("Share Integration", () => {
     expect(res.status).toBe(404);
   });
 
+  describe("legacy share link without an expiry", () => {
+    async function makeLegacyToken(token: string) {
+      const db = getTestDb();
+      const { trips } = await import("../../db/schema");
+      const { eq } = await import("drizzle-orm");
+      await db
+        .update(trips)
+        .set({ shareToken: token, shareTokenExpiresAt: null })
+        .where(eq(trips.id, tripId));
+    }
+
+    it("returns 404 for the legacy token", async () => {
+      await makeLegacyToken("legacy-token-without-expiry");
+      mockGetSession.mockImplementation(() => null);
+
+      const res = await app.request("/api/shared/legacy-token-without-expiry");
+
+      expect(res.status).toBe(404);
+    });
+
+    it("issues a fresh, expiring token when the owner opens the share dialog", async () => {
+      await makeLegacyToken("legacy-token-without-expiry");
+
+      const res = await app.request(`/api/trips/${tripId}/share`, { method: "POST" });
+      const data = await res.json();
+
+      expect(new Date(data.shareTokenExpiresAt).getTime()).toBeGreaterThan(Date.now());
+    });
+
+    it("makes the reissued link viewable", async () => {
+      await makeLegacyToken("legacy-token-without-expiry");
+      const reissued = await app.request(`/api/trips/${tripId}/share`, { method: "PUT" });
+      const { shareToken } = await reissued.json();
+      mockGetSession.mockImplementation(() => null);
+
+      const res = await app.request(`/api/shared/${shareToken}`);
+
+      expect(res.status).toBe(200);
+    });
+  });
+
   it("regenerates share link with new token and expiry", async () => {
     const first = await app.request(`/api/trips/${tripId}/share`, {
       method: "POST",

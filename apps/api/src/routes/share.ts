@@ -133,7 +133,9 @@ shareRoutes.get("/api/shared/:token", sharedTripRateLimit, async (c) => {
     return c.json({ error: ERROR_MSG.SHARED_NOT_FOUND }, 404);
   }
 
-  if (trip.shareTokenExpiresAt && trip.shareTokenExpiresAt <= new Date()) {
+  // A missing expiry means a legacy link issued before expiry existed: treat it as revoked.
+  // The owner can reissue it (POST/PUT /share) to get an expiring link.
+  if (!trip.shareTokenExpiresAt || trip.shareTokenExpiresAt <= new Date()) {
     return c.json({ error: ERROR_MSG.SHARED_NOT_FOUND }, 404);
   }
 
