@@ -162,7 +162,7 @@ export const JA_FAQS = [
   {
     question: "共有リンクとメンバー招待はどう使い分けますか？",
     answer:
-      "共有リンクは、リンクを知っている人なら誰でも旅行の内容を閲覧できます（読み取り専用）。メンバー招待は、特定のユーザーに編集権限を含むロールを付与できます。一緒に計画を作るならメンバー招待、完成した計画を見せるだけなら共有リンクが便利です。",
+      "共有リンクは、リンクを知っている人なら誰でも旅行の内容を閲覧できます（読み取り専用）。メンバー招待は、特定のユーザーに編集権限を含むロールを付与できます。一緒に計画を作るならメンバー招待、完成した計画を見せるだけなら共有リンクが便利です。共有リンクには有効期限（発行から7日間）があり、期限が切れたリンクは見られなくなります。共有リンクの発行・再発行は旅行のオーナーだけが行え、編集者や閲覧者には表示されません。",
     sortOrder: 42,
   },
   {
@@ -626,7 +626,7 @@ export const EN_FAQS = [
   {
     question: "When should I use a share link vs. member invitation?",
     answer:
-      "Share links let anyone with the link view the trip (read-only). Member invitations assign roles including edit permissions to specific users. Use member invitations for collaborative planning, and share links for showing a finished plan.",
+      "Share links let anyone with the link view the trip (read-only). Member invitations assign roles including edit permissions to specific users. Use member invitations for collaborative planning, and share links for showing a finished plan. A share link expires 7 days after it is issued, and an expired link can no longer be opened. Only the trip owner can issue or reissue share links; editors and viewers cannot see them.",
     sortOrder: 42,
   },
   {
