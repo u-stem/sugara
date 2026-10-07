@@ -94,6 +94,7 @@ Vercel `buildCommand` が `next build` の前に `bun run db:migrate` を実行�
 - `[skip deploy]` は desktop リリース専用で migration を含まない前提
 - 将来的に staging → production の段階適用や複数人開発への拡張を要するようになった場合、GitHub Actions 側の専用ワークフローへの移行を検討する (Pattern B)
 - `MIGRATION_URL` シークレットは **Vercel env にのみ** 設定 (Supabase Session Pooler URL、ポート 5432、`postgres.<project_ref>` ユーザ)
+- `supabase/migrations/` (Storage の bucket / policy など `storage` スキーマ向け SQL) は `db:migrate` の対象外で、本番には自動適用されない。ローカルは `supabase start` / `supabase db reset` で適用されるが、本番はファイルを追加した PR のマージ後に、運用者が Supabase の SQL Editor などで手動実行する
 
 ### デスクトップアプリのリリース
 
