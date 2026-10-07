@@ -34,7 +34,7 @@
     "@sugara/shared": "workspace:*",
     "@supabase/supabase-js": "2.116.0",
     "@upstash/redis": "1.38.4",
-    "@vercel/edge-config": "1.5.1",
+    "@vercel/global-config": "1.5.1",
     "better-auth": "1.7.5",
     "drizzle-orm": "0.45.2",
     "hono": "4.13.8",
