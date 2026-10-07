@@ -5,6 +5,7 @@ import { trips } from "../db/schema";
 import { ERROR_MSG, RATE_LIMIT_PUBLIC_RESOURCE } from "../lib/constants";
 import { getParam } from "../lib/params";
 import { generateShareToken, shareExpiresAt } from "../lib/share-token";
+import { toSharedTripResponse } from "../lib/shared-trip-view";
 import { requireAuth } from "../middleware/auth";
 import { rateLimitByIp } from "../middleware/rate-limit";
 import { requireNonGuest } from "../middleware/require-non-guest";
@@ -133,30 +134,14 @@ shareRoutes.get("/api/shared/:token", sharedTripRateLimit, async (c) => {
     return c.json({ error: ERROR_MSG.SHARED_NOT_FOUND }, 404);
   }
 
-  if (trip.shareTokenExpiresAt && trip.shareTokenExpiresAt <= new Date()) {
+  // A missing expiry means a legacy link issued before expiry existed: treat it as revoked.
+  // The owner can reissue it (POST/PUT /share) to get an expiring link.
+  if (!trip.shareTokenExpiresAt || trip.shareTokenExpiresAt <= new Date()) {
     return c.json({ error: ERROR_MSG.SHARED_NOT_FOUND }, 404);
   }
 
-  // Candidates are schedules not assigned to any day pattern
-  const candidates = (trip.schedules ?? [])
-    .filter((s) => s.dayPatternId == null)
-    .map(({ dayPatternId: _, tripId: __, ...rest }) => rest);
-
   c.header("Cache-Control", "public, s-maxage=60, stale-while-revalidate=300");
-  return c.json({
-    title: trip.title,
-    destination: trip.destination,
-    startDate: trip.startDate,
-    endDate: trip.endDate,
-    status: trip.status,
-    coverImageUrl: trip.coverImageUrl,
-    coverImagePosition: trip.coverImagePosition,
-    createdAt: trip.createdAt,
-    updatedAt: trip.updatedAt,
-    days: trip.days,
-    candidates,
-    shareExpiresAt: trip.shareTokenExpiresAt?.toISOString() ?? null,
-  });
+  return c.json(toSharedTripResponse(trip, token));
 });
 
 export { shareRoutes };

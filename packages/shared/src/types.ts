@@ -74,7 +74,11 @@ export type TripResponse = {
   status: TripStatus;
   coverImageUrl: string | null;
   coverImagePosition: number;
-  shareToken: string | null;
+  /** Only present for the trip owner; other members never receive the token. */
+  shareToken?: string | null;
+  shareTokenExpiresAt?: string | null;
+  /** SHA-256 (hex) of the share token; names the Realtime channel for shared-link viewers. */
+  shareChannelKey: string | null;
   currency: string;
   role: MemberRole;
   days: DayResponse[];
@@ -396,19 +400,6 @@ export type Notification = {
 export type NotificationsResponse = {
   notifications: Notification[];
   unreadCount: number;
-};
-
-// Shared trip view types
-
-export type SharedTripResponse = {
-  title: string;
-  destination: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  status: TripStatus;
-  days: DayResponse[];
-  candidates: ScheduleResponse[];
-  shareExpiresAt: string | null;
 };
 
 // Activity log paginated response

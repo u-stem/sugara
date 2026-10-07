@@ -521,7 +521,7 @@ export default function TripDetailPage() {
     tripId,
     syncUser,
     invalidateTrip,
-    trip?.shareToken,
+    trip?.shareChannelKey,
   );
 
   const reactionUser = useMemo(

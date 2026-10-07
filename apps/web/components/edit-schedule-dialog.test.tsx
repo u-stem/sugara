@@ -95,7 +95,7 @@ function seedTrip(schedule: ScheduleResponse): TripResponse {
     status: "planned",
     coverImageUrl: null,
     coverImagePosition: 50,
-    shareToken: null,
+    shareChannelKey: null,
     currency: "JPY",
     role: "owner",
     days: [makeDay([schedule])],
