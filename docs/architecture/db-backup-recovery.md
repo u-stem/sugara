@@ -95,5 +95,6 @@ If a migration fails partially on production:
 - Supabase free plan: no automatic backups. Manual dumps recommended.
 - Supabase Pro plan: daily backups with 7-day retention.
 - Transaction Pooler (:6543) does not support advisory locks — DDL may silently fail.
-- RLS is enabled on all tables. Backup/restore preserves RLS policies.
+- RLS is enabled on every table in `schema.ts` (enforced by `apps/api/src/__tests__/schema-rls.test.ts`) with no policies, so the anon key is denied by default. The app connects as the `postgres` role, which bypasses RLS. Backup/restore preserves the RLS flag.
+- Storage (`storage.objects`) policies are not part of the Drizzle migrations. They live in `supabase/migrations/` and must be applied manually (see `docs/development/release-flow.md`).
 - Better Auth tables are included in the schema — they are managed by Drizzle migrations, not by Better Auth itself.
