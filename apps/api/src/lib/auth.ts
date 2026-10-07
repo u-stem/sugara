@@ -1,7 +1,7 @@
 import { isValidAvatarUrl } from "@sugara/shared";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { createAuthMiddleware } from "better-auth/api";
+import { APIError, createAuthMiddleware } from "better-auth/api";
 import { anonymous } from "better-auth/plugins";
 import { username } from "better-auth/plugins/username";
 import { eq } from "drizzle-orm";
@@ -123,14 +123,21 @@ export const auth = betterAuth({
         });
       },
     },
+    // Both fields are server-managed (guest expiry is set in the create hook,
+    // tripLimit is changed only by admins via routes/admin.ts). `input: false`
+    // makes Better Auth reject them in /update-user and /sign-up/email bodies;
+    // without it any signed-in user could raise their own trip limit or extend
+    // a guest account's lifetime.
     additionalFields: {
       guestExpiresAt: {
         type: "date",
         required: false,
+        input: false,
       },
       tripLimit: {
         type: "number",
         required: false,
+        input: false,
       },
     },
   },
@@ -151,6 +158,12 @@ export const auth = betterAuth({
       },
       update: {
         before: async (userData) => {
+          // Defense in depth for `input: false` above. Legitimate writes to these
+          // columns go through drizzle directly (admin route, guest linking) and
+          // never reach this hook, so any occurrence here is a client-driven update.
+          if (userData.tripLimit !== undefined || userData.guestExpiresAt !== undefined) {
+            throw new APIError("BAD_REQUEST", { message: "This field is not allowed to be set" });
+          }
           // Reject arbitrary image URLs — only DiceBear or null allowed
           if (userData.image && !isValidAvatarUrl(userData.image)) {
             return false;
