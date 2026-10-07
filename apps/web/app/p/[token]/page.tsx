@@ -1,4 +1,4 @@
-import type { QuickPollResponse } from "@sugara/shared";
+import { isShareToken, type QuickPollResponse } from "@sugara/shared";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -18,6 +18,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     openGraph: { images: [ogImage] },
     twitter: { card: "summary", images: [ogImage] },
   };
+
+  // Never interpolate an unvalidated URL segment into the API path
+  if (!isShareToken(token)) return fallback;
 
   try {
     const baseUrl = process.env.BETTER_AUTH_BASE_URL ?? "http://localhost:3000";
@@ -54,6 +57,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function QuickPollPage({ params }: Props) {
   const { token } = await params;
+  if (!isShareToken(token)) notFound();
 
   const baseUrl = process.env.BETTER_AUTH_BASE_URL ?? "http://localhost:3000";
   const res = await fetch(`${baseUrl}/api/shared/quick-polls/${token}`, {

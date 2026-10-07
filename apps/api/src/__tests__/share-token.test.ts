@@ -1,3 +1,4 @@
+import { isShareToken } from "@sugara/shared";
 import { describe, expect, it } from "vitest";
 import { deriveShareChannelKey, generateShareToken, omitShareSecrets } from "../lib/share-token";
 
@@ -10,6 +11,11 @@ describe("generateShareToken", () => {
   it("uses only base64url characters", () => {
     const token = generateShareToken();
     expect(token).toMatch(/^[A-Za-z0-9_-]+$/);
+  });
+
+  it("generates tokens the web pages accept (isShareToken)", () => {
+    const tokens = Array.from({ length: 200 }, generateShareToken);
+    expect(tokens.every(isShareToken)).toBe(true);
   });
 
   it("generates unique tokens", () => {
