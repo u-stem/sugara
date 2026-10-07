@@ -8,6 +8,9 @@ const { mockGetSession, mockDbQuery, mockDbDelete, mockVerifyPassword } = vi.hoi
     accounts: {
       findFirst: vi.fn(),
     },
+    trips: {
+      findMany: vi.fn(),
+    },
   },
   mockDbDelete: vi.fn(),
   mockVerifyPassword: vi.fn(),
@@ -44,6 +47,7 @@ describe("Account routes", () => {
       user: fakeUser,
       session: { id: "session-1" },
     });
+    mockDbQuery.trips.findMany.mockResolvedValue([]);
   });
 
   it("returns 401 without auth", async () => {
