@@ -871,7 +871,7 @@ export const appSettings = pgTable(
     mapsMode: text("maps_mode").notNull().default("admin_only"),
   },
   (table) => [check("app_settings_single_row", sql`${table.id} = 1`)],
-);
+).enableRLS();
 
 // Records which seed payload (hash of inserted rows) has been applied. Lets idempotent seed
 // scripts skip their delete+insert churn when the content is unchanged — critical for seeds
@@ -881,7 +881,7 @@ export const seedState = pgTable("seed_state", {
   key: text("key").primaryKey(),
   hash: text("hash").notNull(),
   appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 export const notifications = pgTable(
   "notifications",
@@ -949,7 +949,7 @@ export const routeCache = pgTable("route_cache", {
   durationSeconds: integer("duration_seconds").notNull(),
   encodedPolyline: text("encoded_polyline"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 // JMA forecast office master (prefecture/region). Seeded from a constant table
 // (see seed-weather-areas.ts) so the daily cron depends only on the forecast
@@ -999,7 +999,7 @@ export const faqs = pgTable("faqs", {
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 export const quickPolls = pgTable(
   "quick_polls",
