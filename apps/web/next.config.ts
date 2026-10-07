@@ -29,6 +29,10 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // `next dev` otherwise writes AGENTS.md / CLAUDE.md into apps/web on every start,
+  // leaving untracked files after local dev and E2E runs. Agent guidance for this
+  // repo lives in the root CLAUDE.md.
+  agentRules: false,
   transpilePackages: ["@sugara/api", "@sugara/shared"],
   experimental: {
     optimizePackageImports: [
