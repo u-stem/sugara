@@ -11,7 +11,7 @@ summary: "You can now view previously loaded trip data while offline."
 Trip data you've viewed, including schedules and expenses, is now automatically saved in your browser.
 
 - View trip details even without an internet connection, such as on flights or underground
-- Data is kept for up to 7 days
+- Data is kept for up to 7 days (it is removed from the device when you log out)
 - Works best when sugara is installed as a PWA
 - Access cached trips directly from the offline page
 
