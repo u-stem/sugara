@@ -29,6 +29,7 @@ import { getParam } from "../lib/params";
 import { findPollAsEditor, findPollAsOwner, findPollAsParticipant } from "../lib/poll-access";
 import { generateShareToken, shareExpiresAt } from "../lib/share-token";
 import { getNextSortOrder } from "../lib/sort-order";
+import { deleteCoverImages } from "../lib/storage";
 import { createInitialTripDays } from "../lib/trip-days";
 import { requireAuth } from "../middleware/auth";
 import type { AppEnv } from "../types";
@@ -244,18 +245,25 @@ pollRoutes.delete("/:pollId", async (c) => {
     return c.json({ error: ERROR_MSG.POLL_NOT_FOUND }, 404);
   }
 
-  await db.transaction(async (tx) => {
+  const orphanedCoverUrl = await db.transaction(async (tx) => {
     const trip = await tx.query.trips.findFirst({
       where: eq(trips.id, poll.tripId),
-      columns: { id: true, status: true },
+      columns: { id: true, status: true, coverImageUrl: true },
     });
     if (trip?.status === "scheduling") {
       // CASCADE deletes the poll
       await tx.delete(trips).where(eq(trips.id, trip.id));
-    } else {
-      await tx.delete(schedulePolls).where(eq(schedulePolls.id, pollId));
+      return trip.coverImageUrl;
     }
+    await tx.delete(schedulePolls).where(eq(schedulePolls.id, pollId));
+    return null;
   });
+
+  // Best-effort and after the commit: the trip row (and its URL) is gone, so a Storage
+  // failure only leaves an orphan for the `db:cleanup-orphan-covers` sweep to reclaim.
+  if (orphanedCoverUrl) {
+    await deleteCoverImages([orphanedCoverUrl]);
+  }
 
   return c.json({ ok: true });
 });

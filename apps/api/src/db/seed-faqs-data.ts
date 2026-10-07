@@ -62,7 +62,7 @@ export const JA_FAQS = [
   {
     question: "アカウントを削除するにはどうすればよいですか？",
     answer:
-      "設定画面の「アカウント」タブの「アカウント削除」から削除できます。確認としてパスワードの入力が必要です。削除すると全ての旅行・メンバーシップ・フレンド情報が完全に消去され、元に戻せません。",
+      "設定画面の「アカウント」タブの「アカウント削除」から削除できます。確認としてパスワードの入力が必要です。削除すると全ての旅行（カバー画像を含む）・メンバーシップ・フレンド情報が完全に消去され、元に戻せません。",
     sortOrder: 18,
   },
   // ---- Profile ----
@@ -525,7 +525,7 @@ export const EN_FAQS = [
   {
     question: "How do I delete my account?",
     answer:
-      "Go to 'Delete Account' in the 'Account' tab in Settings. You'll need to enter your password for confirmation. Deletion permanently removes all trips, memberships, and friend data and cannot be undone.",
+      "Go to 'Delete Account' in the 'Account' tab in Settings. You'll need to enter your password for confirmation. Deletion permanently removes all trips (including cover images), memberships, and friend data and cannot be undone.",
     sortOrder: 18,
   },
   // ---- Profile ----

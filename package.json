@@ -21,6 +21,7 @@
     "db:ensure-faqs-table": "bun run --filter @sugara/api db:ensure-faqs-table",
     "db:seed-user": "bun run --filter @sugara/api db:seed-user",
     "db:cleanup-guests": "bun run --filter @sugara/api db:cleanup-guests",
+    "db:cleanup-orphan-covers": "bun run --filter @sugara/api db:cleanup-orphan-covers",
     "postinstall": "command -v git >/dev/null 2>&1 && lefthook install || true"
   },
   "packageManager": "bun@1.3.2",
