@@ -16,7 +16,8 @@ vi.mock("../../lib/auth", () => ({
   },
 }));
 
-import { tripMembers } from "../../db/schema";
+import { sharedTripResponseSchema } from "@sugara/shared";
+import { schedules, tripMembers } from "../../db/schema";
 import { patternRoutes } from "../../routes/patterns";
 import { scheduleRoutes } from "../../routes/schedules";
 import { shareRoutes } from "../../routes/share";
@@ -146,6 +147,56 @@ describe("Share Integration", () => {
     const text = await sharedRes.text();
 
     expect(text).not.toContain(shareToken);
+  });
+
+  describe("shared view projection", () => {
+    async function fetchSharedView() {
+      const db = getTestDb();
+      // A candidate: a schedule that belongs to no day pattern
+      await db.insert(schedules).values({
+        tripId,
+        dayPatternId: null,
+        name: "Candidate spot",
+        category: "sightseeing",
+        sortOrder: 0,
+      });
+      const shareRes = await app.request(`/api/trips/${tripId}/share`, { method: "POST" });
+      const { shareToken } = await shareRes.json();
+      mockGetSession.mockImplementation(() => null);
+      const res = await app.request(`/api/shared/${shareToken}`);
+      return res.text();
+    }
+
+    it("matches the strict shared response schema", async () => {
+      const text = await fetchSharedView();
+
+      expect(sharedTripResponseSchema.safeParse(JSON.parse(text)).success).toBe(true);
+    });
+
+    it("does not contain the trip id", async () => {
+      const text = await fetchSharedView();
+
+      expect(text).not.toContain(tripId);
+    });
+
+    it("does not contain the day pattern id on candidates", async () => {
+      const text = await fetchSharedView();
+
+      expect(text).not.toContain("dayPatternId");
+    });
+
+    it("does not contain the owner user id", async () => {
+      const text = await fetchSharedView();
+
+      expect(text).not.toContain(owner.id);
+    });
+
+    it("keeps the ids the shared page uses as React keys", async () => {
+      const text = await fetchSharedView();
+      const body = JSON.parse(text);
+
+      expect(body.days[0].patterns[0].schedules[0].id).toEqual(expect.any(String));
+    });
   });
 
   it("returns 404 for invalid share token", async () => {

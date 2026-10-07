@@ -16,6 +16,7 @@ export * from "./ogp";
 export * from "./poll";
 export * from "./quick-poll";
 export * from "./schedule";
+export * from "./shared-trip";
 export * from "./souvenir";
 export * from "./trip";
 export * from "./trip-day";

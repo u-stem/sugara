@@ -402,21 +402,6 @@ export type NotificationsResponse = {
   unreadCount: number;
 };
 
-// Shared trip view types
-
-export type SharedTripResponse = {
-  title: string;
-  destination: string | null;
-  startDate: string | null;
-  endDate: string | null;
-  status: TripStatus;
-  days: DayResponse[];
-  candidates: ScheduleResponse[];
-  shareExpiresAt: string | null;
-  /** SHA-256 (hex) of the share token; names the Realtime channel for edit notifications. */
-  shareChannelKey: string;
-};
-
 // Activity log paginated response
 
 export type LogsResponse = {
