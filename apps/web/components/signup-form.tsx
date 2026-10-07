@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,9 +19,11 @@ import {
   MIN_PASSWORD_LENGTH,
   validatePassword,
 } from "@/lib/constants";
+import { clearClientCache } from "@/lib/sign-out";
 
 export function SignupForm() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const t = useTranslations("auth");
   const tm = useTranslations("messages");
   const te = useTranslations("authErrors");
@@ -96,6 +99,9 @@ export function SignupForm() {
       setLoading(false);
       return;
     }
+    // Drop any cache a previous user left behind (e.g. their session expired without
+    // an explicit sign-out) so it is never shown to, or hydrated for, this account.
+    await clearClientCache(queryClient);
     toast.success(tm("authSignupSuccess"));
     setLoading(false);
     router.push("/home");
