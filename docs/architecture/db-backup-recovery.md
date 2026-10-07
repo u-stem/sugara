@@ -108,7 +108,8 @@ Required environment: `DATABASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERV
 
 Safety rules:
 
-- `DATABASE_URL` and the Supabase project (`NEXT_PUBLIC_SUPABASE_URL` + service role key) must belong to the same environment. Against a mismatched DB every object looks unreferenced.
+- Environment check: the script extracts the Supabase project ref from `DATABASE_URL` and `NEXT_PUBLIC_SUPABASE_URL` and aborts, even in dry-run, if they differ or if only one side is local (`127.0.0.1` / `localhost`). Recognised forms: API `https://<ref>.supabase.co`; database direct host `db.<ref>.supabase.co` or pooler user `postgres.<ref>` on `*.pooler.supabase.com`. If a ref cannot be extracted (custom domain, other host), dry-run runs with a warning and `--apply` is refused.
+- Ratio guard: with `--apply`, the script refuses to delete when more than 50% of the eligible objects (those older than one hour) would be deleted, or when no trip references any cover image while the bucket has candidates. Both usually mean the wrong database or a failed query. `--apply --force` bypasses these two guards; use it only after reviewing the dry-run output and confirming the volume is intended. `--force` without `--apply` does nothing.
 - Objects created within the last hour are never reported, so an upload that has not yet been saved to its trip is safe. Objects without a creation time are also skipped.
 - Always run the dry-run first and check that the count is plausible. Deleted objects cannot be recovered.
 - After restoring the database from a backup, run only the dry-run until you have confirmed the restored `trips` rows match what is in Storage.

@@ -100,3 +100,98 @@ describe("cleanupOrphanedCoverImages", () => {
     );
   });
 });
+
+describe("cleanupOrphanedCoverImages safety guards", () => {
+  const objectsWith = (orphanCount: number, referencedCount: number) => [
+    ...Array.from({ length: orphanCount }, (_, i) => ({ path: `gone/${i}.jpg`, createdAt: OLD })),
+    ...Array.from({ length: referencedCount }, (_, i) => ({
+      path: `live/${i}.jpg`,
+      createdAt: OLD,
+    })),
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRemovePaths.mockResolvedValue(undefined);
+    mockSelectWhere.mockResolvedValue(
+      Array.from({ length: 10 }, (_, i) => ({ url: urlOf(`live/${i}.jpg`) })),
+    );
+  });
+
+  it("refuses to apply when orphans exceed 50% of eligible objects", async () => {
+    mockListObjects.mockResolvedValue(objectsWith(3, 1));
+
+    await expect(cleanupOrphanedCoverImages({ apply: true, now: NOW })).rejects.toThrow(/50%/);
+  });
+
+  it("deletes nothing when the ratio guard trips", async () => {
+    mockListObjects.mockResolvedValue(objectsWith(3, 1));
+
+    await cleanupOrphanedCoverImages({ apply: true, now: NOW }).catch(() => undefined);
+
+    expect(mockRemovePaths).not.toHaveBeenCalled();
+  });
+
+  it("allows apply at exactly 50% orphans", async () => {
+    mockListObjects.mockResolvedValue(objectsWith(1, 1));
+
+    const result = await cleanupOrphanedCoverImages({ apply: true, now: NOW });
+
+    expect(result.deleted).toBe(1);
+  });
+
+  it("excludes recent objects from the ratio denominator", async () => {
+    mockListObjects.mockResolvedValue([
+      ...objectsWith(1, 3),
+      ...Array.from({ length: 20 }, (_, i) => ({ path: `new/${i}.jpg`, createdAt: RECENT })),
+    ]);
+
+    const result = await cleanupOrphanedCoverImages({ apply: true, now: NOW });
+
+    expect(result.deleted).toBe(1);
+  });
+
+  it("refuses to apply when no trip references any cover image but objects exist", async () => {
+    mockSelectWhere.mockResolvedValue([]);
+    mockListObjects.mockResolvedValue(objectsWith(1, 0));
+
+    await expect(cleanupOrphanedCoverImages({ apply: true, now: NOW })).rejects.toThrow(
+      /no trip references/,
+    );
+  });
+
+  it("still reports orphans in dry-run when the guards would trip", async () => {
+    mockSelectWhere.mockResolvedValue([]);
+    mockListObjects.mockResolvedValue(objectsWith(2, 0));
+
+    const result = await cleanupOrphanedCoverImages({ apply: false, now: NOW });
+
+    expect(result.orphans).toHaveLength(2);
+  });
+
+  it("bypasses the ratio guard with force", async () => {
+    mockListObjects.mockResolvedValue(objectsWith(3, 1));
+
+    const result = await cleanupOrphanedCoverImages({ apply: true, force: true, now: NOW });
+
+    expect(result.deleted).toBe(3);
+  });
+
+  it("bypasses the zero-reference guard with force", async () => {
+    mockSelectWhere.mockResolvedValue([]);
+    mockListObjects.mockResolvedValue(objectsWith(2, 0));
+
+    const result = await cleanupOrphanedCoverImages({ apply: true, force: true, now: NOW });
+
+    expect(result.deleted).toBe(2);
+  });
+
+  it("allows apply on an empty bucket with no references", async () => {
+    mockSelectWhere.mockResolvedValue([]);
+    mockListObjects.mockResolvedValue([]);
+
+    const result = await cleanupOrphanedCoverImages({ apply: true, now: NOW });
+
+    expect(result.deleted).toBe(0);
+  });
+});
