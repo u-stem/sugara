@@ -1,6 +1,7 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { sharedTripChannelName } from "../share-channel";
 import { supabase } from "../supabase";
 
 export type PresenceUser = {
@@ -22,7 +23,7 @@ export function useTripSync(
   tripId: string,
   user: { id: string; name: string; image?: string | null } | null,
   onSync: () => void,
-  shareToken?: string | null,
+  shareChannelKey?: string | null,
 ): {
   presence: PresenceUser[];
   isConnected: boolean;
@@ -60,8 +61,10 @@ export function useTripSync(
         closeTimerRef.current = null;
       }
       disconnect();
-      // SECURITY: Supabase Realtime channels are accessible to anyone with the anon key.
-      // tripId is a UUIDv4 (122-bit entropy), making brute-force impractical.
+      // SECURITY: this channel is public — anyone with the anon key and the tripId can
+      // join it and observe Presence. tripId is not a secret: shared-link viewers (via the
+      // cover image URL path) and former members can learn it. Real authorization requires
+      // private channels, which are designed separately (Phase 3).
       const channel = supabase.channel(`trip:${tripId}`);
 
       channel
@@ -192,8 +195,8 @@ export function useTripSync(
     });
   }, []);
 
-  const shareTokenRef = useRef(shareToken);
-  shareTokenRef.current = shareToken;
+  const shareChannelKeyRef = useRef(shareChannelKey);
+  shareChannelKeyRef.current = shareChannelKey;
 
   const broadcastChange = useCallback(() => {
     channelRef.current?.send({
@@ -202,11 +205,12 @@ export function useTripSync(
       payload: {},
     });
 
-    // Also notify shared-link viewers via a separate channel keyed by shareToken.
-    // This keeps tripId private (Presence isolation) while providing real-time updates.
-    const token = shareTokenRef.current;
-    if (!token) return;
-    const channelName = `trip-shared:${token}`;
+    // Also notify shared-link viewers via a separate channel keyed by a one-way hash of
+    // the share token. This keeps tripId private (Presence isolation) and never puts the
+    // token itself in front of members who are not allowed to issue share links.
+    const key = shareChannelKeyRef.current;
+    if (!key) return;
+    const channelName = sharedTripChannelName(key);
     let cleaned = false;
     const temp = supabase.channel(channelName);
     const cleanup = () => {

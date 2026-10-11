@@ -32,6 +32,7 @@ bun run db:seed      # 開発用シードデータ投入
 bun run db:seed-user # 本番用ユーザー作成 (環境変数で指定)
 bun run db:seed-faqs # FAQ データ投入
 bun run db:cleanup-guests  # 期限切れゲストユーザーを削除
+bun run db:cleanup-orphan-covers  # どの旅行からも参照されないカバー画像を表示 (dry-run)。削除は --apply を付ける
 bun run test:coverage      # カバレッジ付きテスト
 bun run test:e2e           # E2E テスト (Playwright)
 ```

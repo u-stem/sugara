@@ -62,7 +62,7 @@ export const JA_FAQS = [
   {
     question: "アカウントを削除するにはどうすればよいですか？",
     answer:
-      "設定画面の「アカウント」タブの「アカウント削除」から削除できます。確認としてパスワードの入力が必要です。削除すると全ての旅行・メンバーシップ・フレンド情報が完全に消去され、元に戻せません。",
+      "設定画面の「アカウント」タブの「アカウント削除」から削除できます。確認としてパスワードの入力が必要です。削除すると全ての旅行（カバー画像を含む）・メンバーシップ・フレンド情報が完全に消去され、元に戻せません。",
     sortOrder: 18,
   },
   // ---- Profile ----
@@ -112,7 +112,7 @@ export const JA_FAQS = [
   {
     question: "オフラインでも旅行を確認できますか？",
     answer:
-      "はい。一度表示した旅行データはブラウザに保存され、オフラインでも閲覧できます。PWAとしてインストールしている場合に最適です。データは最大7日間保持されます。",
+      "はい。一度表示した旅行データはブラウザに保存され、オフラインでも閲覧できます。PWAとしてインストールしている場合に最適です。データは最大7日間保持されます。ログアウトすると、端末に保存された旅行データは削除されます。",
     sortOrder: 26,
   },
   {
@@ -162,7 +162,7 @@ export const JA_FAQS = [
   {
     question: "共有リンクとメンバー招待はどう使い分けますか？",
     answer:
-      "共有リンクは、リンクを知っている人なら誰でも旅行の内容を閲覧できます（読み取り専用）。メンバー招待は、特定のユーザーに編集権限を含むロールを付与できます。一緒に計画を作るならメンバー招待、完成した計画を見せるだけなら共有リンクが便利です。",
+      "共有リンクは、リンクを知っている人なら誰でも旅行の内容を閲覧できます（読み取り専用）。メンバー招待は、特定のユーザーに編集権限を含むロールを付与できます。一緒に計画を作るならメンバー招待、完成した計画を見せるだけなら共有リンクが便利です。共有リンクには有効期限（発行から7日間）があり、期限が切れたリンクは見られなくなります。共有リンクの発行・再発行は旅行のオーナーだけが行え、編集者や閲覧者には表示されません。",
     sortOrder: 42,
   },
   {
@@ -525,7 +525,7 @@ export const EN_FAQS = [
   {
     question: "How do I delete my account?",
     answer:
-      "Go to 'Delete Account' in the 'Account' tab in Settings. You'll need to enter your password for confirmation. Deletion permanently removes all trips, memberships, and friend data and cannot be undone.",
+      "Go to 'Delete Account' in the 'Account' tab in Settings. You'll need to enter your password for confirmation. Deletion permanently removes all trips (including cover images), memberships, and friend data and cannot be undone.",
     sortOrder: 18,
   },
   // ---- Profile ----
@@ -575,7 +575,7 @@ export const EN_FAQS = [
   {
     question: "Can I view trips offline?",
     answer:
-      "Yes. Trip data you've viewed is saved in the browser and can be accessed offline. It works best when sugara is installed as a PWA. Data is kept for up to 7 days.",
+      "Yes. Trip data you've viewed is saved in the browser and can be accessed offline. It works best when sugara is installed as a PWA. Data is kept for up to 7 days. Logging out removes the trip data saved on the device.",
     sortOrder: 26,
   },
   {
@@ -626,7 +626,7 @@ export const EN_FAQS = [
   {
     question: "When should I use a share link vs. member invitation?",
     answer:
-      "Share links let anyone with the link view the trip (read-only). Member invitations assign roles including edit permissions to specific users. Use member invitations for collaborative planning, and share links for showing a finished plan.",
+      "Share links let anyone with the link view the trip (read-only). Member invitations assign roles including edit permissions to specific users. Use member invitations for collaborative planning, and share links for showing a finished plan. A share link expires 7 days after it is issued, and an expired link can no longer be opened. Only the trip owner can issue or reissue share links; editors and viewers cannot see them.",
     sortOrder: 42,
   },
   {

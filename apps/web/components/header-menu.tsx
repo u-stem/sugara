@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { Keyboard, LogOut, Monitor, Settings, Smartphone, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -19,8 +20,8 @@ import {
   ResponsiveAlertDialogTrigger,
 } from "@/components/ui/responsive-alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { authClient } from "@/lib/auth-client";
 import { useShortcutHelp } from "@/lib/shortcut-help-context";
+import { signOutAndClearClientCache } from "@/lib/sign-out";
 import { cn } from "@/lib/utils";
 import { switchViewMode } from "@/lib/view-mode";
 
@@ -219,10 +220,11 @@ function SignOutButton() {
   const tc = useTranslations("common");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
 
   async function handleSignOut() {
     setLoading(true);
-    await authClient.signOut();
+    await signOutAndClearClientCache(queryClient);
     window.location.href = "/auth/login";
   }
 

@@ -246,6 +246,27 @@ describe("Poll share routes", () => {
       expect(res.status).toBe(404);
     });
 
+    it("returns 404 for a legacy token without an expiry", async () => {
+      mockDbQuery.schedulePolls.findFirst.mockResolvedValue({
+        id: "poll-1",
+        trip: { title: "Trip Poll", destination: "Kyoto" },
+        note: null,
+        status: "open",
+        deadline: null,
+        confirmedOptionId: null,
+        shareTokenExpiresAt: null,
+        createdAt: new Date("2026-01-01"),
+        updatedAt: new Date("2026-01-01"),
+        options: [],
+        participants: [],
+      });
+
+      const app = createTestApp(pollShareRoutes, "/");
+      const res = await app.request("/api/shared/polls/legacy-token");
+
+      expect(res.status).toBe(404);
+    });
+
     it("returns 404 for invalid token", async () => {
       mockDbQuery.schedulePolls.findFirst.mockResolvedValue(undefined);
 
@@ -264,7 +285,7 @@ describe("Poll share routes", () => {
         status: "open",
         deadline: null,
         confirmedOptionId: null,
-        shareTokenExpiresAt: null,
+        shareTokenExpiresAt: new Date("2099-01-01"),
         createdAt: new Date("2026-01-01"),
         updatedAt: new Date("2026-01-01"),
         options: [],

@@ -43,6 +43,7 @@ import {
 import { CATEGORY_ICONS } from "@/lib/icons";
 import { buildMergedTimeline } from "@/lib/merge-timeline";
 import { queryKeys } from "@/lib/query-keys";
+import { sharedTripChannelName } from "@/lib/share-channel";
 import { supabase } from "@/lib/supabase";
 import { buildMapsSearchUrl, buildTransportUrl } from "@/lib/transport-link";
 import { cn } from "@/lib/utils";
@@ -132,12 +133,15 @@ export function SharedTripClient({ token }: { token: string }) {
     queryClient.invalidateQueries({ queryKey: queryKeys.shared.trip(token) });
   }
 
-  // Subscribe to broadcast updates via share-token channel.
-  // Shared viewers use trip-shared:${token} (not trip:${tripId}) to prevent
+  // Subscribe to broadcast updates via the channel derived from the share token.
+  // Shared viewers use trip-shared:<hash> (not trip:${tripId}) to prevent
   // Presence pollution — they cannot see or pollute the members-only channel.
+  // The key comes from the API, so the raw token never becomes a channel name.
+  const shareChannelKey = trip?.shareChannelKey;
   useEffect(() => {
+    if (!shareChannelKey) return;
     const channel = supabase
-      .channel(`trip-shared:${token}`)
+      .channel(sharedTripChannelName(shareChannelKey))
       .on("broadcast", { event: "trip:updated" }, () => {
         setHasUpdate(true);
       })
@@ -145,7 +149,7 @@ export function SharedTripClient({ token }: { token: string }) {
     return () => {
       channel.unsubscribe();
     };
-  }, [token]);
+  }, [shareChannelKey]);
 
   const dayCount = trip?.startDate && trip?.endDate ? getDayCount(trip.startDate, trip.endDate) : 0;
 

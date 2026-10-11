@@ -30,7 +30,9 @@ pollShareRoutes.get("/api/shared/polls/:token", sharedPollRateLimit, async (c) =
 
   if (!poll) return c.json({ error: ERROR_MSG.POLL_SHARED_NOT_FOUND }, 404);
 
-  if (poll.shareTokenExpiresAt && poll.shareTokenExpiresAt < new Date()) {
+  // A missing expiry means a legacy link issued before expiry existed: treat it as revoked.
+  // The owner can reissue it (POST/PUT /api/polls/:pollId/share) to get an expiring link.
+  if (!poll.shareTokenExpiresAt || poll.shareTokenExpiresAt < new Date()) {
     return c.json({ error: ERROR_MSG.POLL_SHARED_NOT_FOUND }, 404);
   }
 

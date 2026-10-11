@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { LogIn } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -13,9 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signIn } from "@/lib/auth-client";
 import { MIN_PASSWORD_LENGTH } from "@/lib/constants";
+import { clearClientCache } from "@/lib/sign-out";
 
 export function AuthForm() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const t = useTranslations("auth");
   const tm = useTranslations("messages");
   const te = useTranslations("authErrors");
@@ -46,6 +49,9 @@ export function AuthForm() {
       setLoading(false);
       return;
     }
+    // Drop any cache a previous user left behind (e.g. their session expired without
+    // an explicit sign-out) so it is never shown to, or hydrated for, this account.
+    await clearClientCache(queryClient);
     toast.success(tm("authLoginSuccess"));
     setLoading(false);
     router.push("/home");

@@ -1,3 +1,4 @@
+import { sharedTripResponseSchema } from "@sugara/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockGetSession, mockDbQuery, mockDbUpdate } = vi.hoisted(() => ({
@@ -32,6 +33,76 @@ import { shareRoutes } from "../routes/share";
 import { createTestApp, TEST_USER } from "./test-helpers";
 
 const fakeUser = TEST_USER;
+
+// Raw rows as the relational query returns them (including internal ids)
+const rawSchedule = {
+  id: "sched-1",
+  tripId: "trip-1",
+  dayPatternId: "pattern-1",
+  name: "Senso-ji Temple",
+  category: "sightseeing",
+  address: null,
+  startTime: null,
+  endTime: null,
+  sortOrder: 0,
+  memo: null,
+  urls: [],
+  departurePlace: null,
+  arrivalPlace: null,
+  transportMethod: null,
+  cost: null,
+  color: "blue",
+  endDayOffset: null,
+  crossDayAnchor: null,
+  crossDayAnchorSourceId: null,
+  latitude: null,
+  longitude: null,
+  placeId: null,
+  createdAt: new Date("2025-06-01T00:00:00Z"),
+  updatedAt: new Date("2025-06-02T00:00:00Z"),
+};
+const rawTrip = {
+  id: "trip-1",
+  ownerId: "user-1",
+  shareToken: "valid-token",
+  shareTokenExpiresAt: new Date("2099-01-01"),
+  title: "Tokyo Trip",
+  destination: "Tokyo",
+  startDate: "2025-07-01",
+  endDate: "2025-07-01",
+  status: "planned",
+  coverImageUrl: null,
+  coverImagePosition: 50,
+  mapsEnabled: false,
+  currency: "JPY",
+  createdAt: new Date("2025-06-01T00:00:00Z"),
+  updatedAt: new Date("2025-06-02T00:00:00Z"),
+  days: [
+    {
+      id: "day-1",
+      tripId: "trip-1",
+      date: "2025-07-01",
+      dayNumber: 1,
+      memo: null,
+      weatherType: null,
+      weatherTypeSecondary: null,
+      tempHigh: null,
+      tempLow: null,
+      patterns: [
+        {
+          id: "pattern-1",
+          tripDayId: "day-1",
+          label: "Default",
+          isDefault: true,
+          sortOrder: 0,
+          createdAt: new Date("2025-06-01T00:00:00Z"),
+          schedules: [rawSchedule],
+        },
+      ],
+    },
+  ],
+  schedules: [{ ...rawSchedule, id: "cand-1", dayPatternId: null }],
+};
 
 describe("Share routes", () => {
   beforeEach(() => {
@@ -215,18 +286,7 @@ describe("Share routes", () => {
     });
 
     it("returns trip without sensitive fields", async () => {
-      const sharedTrip = {
-        id: "trip-1",
-        ownerId: "user-1",
-        shareToken: "valid-token",
-        shareTokenExpiresAt: new Date("2030-01-01"),
-        title: "Tokyo Trip",
-        destination: "Tokyo",
-        startDate: "2025-07-01",
-        endDate: "2025-07-03",
-        days: [],
-        schedules: [],
-      };
+      const sharedTrip = { ...rawTrip, days: [], schedules: [] };
       mockDbQuery.trips.findFirst.mockResolvedValue(sharedTrip);
 
       const app = createTestApp(shareRoutes, "/");
@@ -242,42 +302,11 @@ describe("Share routes", () => {
 
     it("returns candidates (schedules without dayPatternId) in response", async () => {
       const sharedTrip = {
-        id: "trip-1",
-        ownerId: "user-1",
-        shareToken: "valid-token",
-        shareTokenExpiresAt: new Date("2030-01-01"),
-        title: "Tokyo Trip",
-        destination: "Tokyo",
-        startDate: "2025-07-01",
-        endDate: "2025-07-03",
+        ...rawTrip,
         days: [],
         schedules: [
-          {
-            id: "sched-1",
-            name: "Senso-ji Temple",
-            category: "sightseeing",
-            dayPatternId: null,
-            address: "Asakusa",
-            memo: null,
-            urls: [],
-            startTime: null,
-            endTime: null,
-            color: "blue",
-            sortOrder: 0,
-          },
-          {
-            id: "sched-2",
-            name: "Assigned Schedule",
-            category: "restaurant",
-            dayPatternId: "pattern-1",
-            address: null,
-            memo: null,
-            urls: [],
-            startTime: null,
-            endTime: null,
-            color: "red",
-            sortOrder: 1,
-          },
+          { ...rawSchedule, id: "sched-1", name: "Senso-ji Temple", dayPatternId: null },
+          { ...rawSchedule, id: "sched-2", name: "Assigned Schedule", dayPatternId: "pattern-1" },
         ],
       };
       mockDbQuery.trips.findFirst.mockResolvedValue(sharedTrip);
@@ -290,6 +319,38 @@ describe("Share routes", () => {
       expect(body.candidates).toHaveLength(1);
       expect(body.candidates[0].name).toBe("Senso-ji Temple");
       expect(body.candidates[0].dayPatternId).toBeUndefined();
+    });
+
+    describe("projection of raw rows", () => {
+      it("returns a body that satisfies the strict shared response schema", async () => {
+        mockDbQuery.trips.findFirst.mockResolvedValue(rawTrip);
+
+        const app = createTestApp(shareRoutes, "/");
+        const res = await app.request("/api/shared/valid-token");
+        const body = await res.json();
+
+        expect(sharedTripResponseSchema.safeParse(body).success).toBe(true);
+      });
+
+      it("keeps the schedule content the page renders", async () => {
+        mockDbQuery.trips.findFirst.mockResolvedValue(rawTrip);
+
+        const app = createTestApp(shareRoutes, "/");
+        const res = await app.request("/api/shared/valid-token");
+        const body = await res.json();
+
+        expect(body.days[0].patterns[0].schedules[0].name).toBe("Senso-ji Temple");
+      });
+
+      it("serialises updatedAt as an ISO string", async () => {
+        mockDbQuery.trips.findFirst.mockResolvedValue(rawTrip);
+
+        const app = createTestApp(shareRoutes, "/");
+        const res = await app.request("/api/shared/valid-token");
+        const body = await res.json();
+
+        expect(body.candidates[0].updatedAt).toBe("2025-06-02T00:00:00.000Z");
+      });
     });
 
     it("returns 404 when share link expires at exactly current time", async () => {
@@ -331,16 +392,27 @@ describe("Share routes", () => {
       expect(res.status).toBe(404);
     });
 
-    it("does not require authentication", async () => {
-      mockGetSession.mockResolvedValue(null);
+    it("returns 404 for a legacy share link without an expiry", async () => {
       mockDbQuery.trips.findFirst.mockResolvedValue({
         id: "trip-1",
         ownerId: "user-1",
-        shareToken: "valid-token",
+        shareToken: "legacy-token",
+        shareTokenExpiresAt: null,
         title: "Tokyo Trip",
         destination: "Tokyo",
         days: [],
+        schedules: [],
       });
+
+      const app = createTestApp(shareRoutes, "/");
+      const res = await app.request("/api/shared/legacy-token");
+
+      expect(res.status).toBe(404);
+    });
+
+    it("does not require authentication", async () => {
+      mockGetSession.mockResolvedValue(null);
+      mockDbQuery.trips.findFirst.mockResolvedValue({ ...rawTrip, days: [], schedules: [] });
 
       const app = createTestApp(shareRoutes, "/");
       const res = await app.request("/api/shared/valid-token");

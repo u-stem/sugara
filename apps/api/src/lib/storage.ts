@@ -112,3 +112,102 @@ export async function deleteCoverImage(url: string): Promise<void> {
     logger.error({ err: error.message }, "Storage delete failed");
   }
 }
+
+// Supabase Storage accepts many paths per remove() call, but keeping batches small
+// bounds the blast radius of a failed request and the request body size.
+const REMOVE_BATCH_SIZE = 100;
+const LIST_PAGE_SIZE = 100;
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function removePaths(paths: string[]): Promise<void> {
+  const { error } = await getSupabaseAdmin().storage.from(TRIP_COVERS_BUCKET).remove(paths);
+  if (error) {
+    throw new Error(`Storage delete failed: ${error.message}`);
+  }
+}
+
+/**
+ * Remove objects by storage path. Throws on the first failed batch so callers that
+ * must know about partial failure (the orphan sweep) can abort.
+ */
+export async function removeCoverImagePaths(paths: string[]): Promise<void> {
+  for (const batch of chunk(paths, REMOVE_BATCH_SIZE)) {
+    await removePaths(batch);
+  }
+}
+
+/**
+ * Best-effort bulk delete of cover images by public URL. Never throws.
+ *
+ * Callers delete the owning DB rows first and call this afterwards: if Storage fails
+ * the user's data is already gone (the deletion the user asked for succeeded) and the
+ * leftover objects are unreferenced orphans that the `db:cleanup-orphan-covers` sweep
+ * reclaims. The opposite order could remove images for rows that then fail to delete.
+ */
+export async function deleteCoverImages(urls: string[]): Promise<void> {
+  const paths = new Set<string>();
+  for (const url of urls) {
+    const path = extractStoragePath(url);
+    if (path) paths.add(path);
+  }
+
+  for (const batch of chunk([...paths], REMOVE_BATCH_SIZE)) {
+    try {
+      await removePaths(batch);
+    } catch (err) {
+      logger.error({ err, count: batch.length }, "Storage bulk delete of cover images failed");
+    }
+  }
+}
+
+export interface CoverImageObject {
+  path: string;
+  /** null when Storage did not report a creation time */
+  createdAt: Date | null;
+}
+
+async function listFolder(prefix: string, found: CoverImageObject[]): Promise<void> {
+  const supabaseAdmin = getSupabaseAdmin();
+  for (let offset = 0; ; offset += LIST_PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin.storage.from(TRIP_COVERS_BUCKET).list(prefix, {
+      limit: LIST_PAGE_SIZE,
+      offset,
+      sortBy: { column: "name", order: "asc" },
+    });
+    if (error) {
+      throw new Error(`Storage list failed: ${error.message}`);
+    }
+
+    for (const entry of data) {
+      const entryPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.id === null) {
+        // list() reports folders (the per-trip prefixes) with a null id
+        await listFolder(entryPath, found);
+      } else {
+        found.push({
+          path: entryPath,
+          createdAt: entry.created_at ? new Date(entry.created_at) : null,
+        });
+      }
+    }
+
+    if (data.length < LIST_PAGE_SIZE) return;
+  }
+}
+
+/**
+ * List every object in the cover bucket. Throws if any page fails, so a partial
+ * listing is never mistaken for the full set.
+ */
+export async function listCoverImageObjects(): Promise<CoverImageObject[]> {
+  const found: CoverImageObject[] = [];
+  await listFolder("", found);
+  return found;
+}

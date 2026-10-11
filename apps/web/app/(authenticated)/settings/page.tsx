@@ -1,6 +1,7 @@
 "use client";
 
 import { buildDiceBearUrl, DICEBEAR_STYLES, type DiceBearStyle } from "@sugara/shared";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Bell,
   Download,
@@ -63,6 +64,7 @@ import { DESKTOP_RELEASES_URL, useDesktopDownload } from "@/lib/hooks/use-deskto
 import { useInstallPrompt } from "@/lib/hooks/use-install-prompt";
 import { useSwipeTab } from "@/lib/hooks/use-swipe-tab";
 import { setLocale } from "@/lib/locale";
+import { signOutAndClearClientCache } from "@/lib/sign-out";
 import { cn } from "@/lib/utils";
 
 const FeedbackDialog = dynamic(() =>
@@ -726,6 +728,7 @@ function DeleteAccountSection({ username }: { username: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState("");
+  const queryClient = useQueryClient();
 
   async function handleDelete() {
     setError(null);
@@ -737,12 +740,9 @@ function DeleteAccountSection({ username }: { username: string }) {
         body: JSON.stringify({ password }),
       });
       toast.success(tm("accountDeleted"));
-      // Clear session cookie before redirect to prevent cookieCache from keeping the user logged in
-      try {
-        await authClient.signOut();
-      } catch {
-        // Session may already be invalidated by CASCADE delete
-      }
+      // Clear session cookie before redirect to prevent cookieCache from keeping the user logged in.
+      // The session may already be invalidated by CASCADE delete; local data is wiped regardless.
+      await signOutAndClearClientCache(queryClient);
       window.location.href = "/auth/login";
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {

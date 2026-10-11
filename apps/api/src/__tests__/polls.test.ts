@@ -5,6 +5,8 @@ const {
   mockDbSelect,
   mockDbInsert,
   mockDbUpdate,
+  mockDbDelete,
+  mockDeleteCoverImages,
   mockFindPollAsOwner,
   mockDbQuery,
   mockNotifyUsers,
@@ -15,6 +17,8 @@ const {
   mockDbSelect: vi.fn(),
   mockDbInsert: vi.fn(),
   mockDbUpdate: vi.fn(),
+  mockDbDelete: vi.fn(),
+  mockDeleteCoverImages: vi.fn(),
   mockFindPollAsOwner: vi.fn(),
   mockDbQuery: {
     users: { findFirst: vi.fn(), findMany: vi.fn() },
@@ -51,6 +55,7 @@ vi.mock("../db/index", () => ({
     select: (...args: unknown[]) => mockDbSelect(...args),
     insert: (...args: unknown[]) => mockDbInsert(...args),
     update: (...args: unknown[]) => mockDbUpdate(...args),
+    delete: (...args: unknown[]) => mockDbDelete(...args),
     // No-op advisory-lock executor. polls.ts derives sort order via tx, so the
     // tx proxy below is what actually runs it; kept here defensively.
     execute: async () => undefined,
@@ -61,6 +66,7 @@ vi.mock("../db/index", () => ({
         query: mockDbQuery,
         insert: (...args: unknown[]) => mockDbInsert(...args),
         update: (...args: unknown[]) => mockDbUpdate(...args),
+        delete: (...args: unknown[]) => mockDbDelete(...args),
         select: (...args: unknown[]) => mockDbSelect(...args),
         execute: async () => undefined,
       }),
@@ -80,6 +86,10 @@ vi.mock("../lib/poll-access", () => ({
 vi.mock("../lib/activity-logger", () => ({
   logActivity: vi.fn().mockResolvedValue(undefined),
   formatShortDateRange: vi.fn().mockReturnValue("2/5〜2/7"),
+}));
+
+vi.mock("../lib/storage", () => ({
+  deleteCoverImages: (...args: unknown[]) => mockDeleteCoverImages(...args),
 }));
 
 vi.mock("../lib/trip-days", () => ({
@@ -609,6 +619,38 @@ describe("Poll routes", () => {
       // to always return "2/5〜2/7" regardless of arguments.
       const { makePayload } = mockNotifyUsers.mock.calls[0][0];
       expect(makePayload("旅行名").entityName).toBe("2/5〜2/7");
+    });
+  });
+
+  describe("DELETE /api/polls/:pollId", () => {
+    const pollId = "poll-1";
+
+    function arrangeDelete(trip: { id: string; status: string; coverImageUrl: string | null }) {
+      mockFindPollAsOwner.mockResolvedValue({ id: pollId, tripId: trip.id });
+      mockDbQuery.trips.findFirst.mockResolvedValue(trip);
+      mockDbDelete.mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+      mockDeleteCoverImages.mockResolvedValue(undefined);
+    }
+
+    async function requestDelete() {
+      const app = createTestApp(pollRoutes, "/api/polls");
+      return app.request(`/api/polls/${pollId}`, { method: "DELETE" });
+    }
+
+    it("deletes the cover image when the scheduling trip is removed with the poll", async () => {
+      arrangeDelete({ id: "trip-1", status: "scheduling", coverImageUrl: "https://x/cover.jpg" });
+
+      await requestDelete();
+
+      expect(mockDeleteCoverImages).toHaveBeenCalledExactlyOnceWith(["https://x/cover.jpg"]);
+    });
+
+    it("keeps the cover image when only the poll is deleted", async () => {
+      arrangeDelete({ id: "trip-1", status: "planned", coverImageUrl: "https://x/cover.jpg" });
+
+      await requestDelete();
+
+      expect(mockDeleteCoverImages).not.toHaveBeenCalled();
     });
   });
 });

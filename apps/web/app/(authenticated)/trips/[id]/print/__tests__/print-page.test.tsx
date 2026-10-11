@@ -44,7 +44,7 @@ const tripFixture: TripResponse = {
   status: "planned",
   coverImageUrl: null,
   coverImagePosition: 50,
-  shareToken: null,
+  shareChannelKey: null,
   currency: "JPY",
   role: "owner",
   candidates: [],
