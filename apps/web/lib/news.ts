@@ -1,17 +1,35 @@
 import fs from "node:fs";
 import path from "node:path";
-import matter from "gray-matter";
+import { parse as parseYaml } from "yaml";
+import { z } from "zod";
 
-type NewsMeta = {
-  title: string;
-  date: string;
-  summary: string;
+const frontMatterSchema = z.object({
+  title: z.string(),
+  date: z.string(),
+  summary: z.string(),
+});
+
+type NewsMeta = z.infer<typeof frontMatterSchema> & {
   slug: string;
 };
 
 type NewsArticle = NewsMeta & {
   content: string;
 };
+
+// Leading "---" fenced block; the newline after the closing fence is not part of the body.
+const FRONT_MATTER_PATTERN = /^﻿?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/;
+
+export function parseNewsMarkdown(
+  raw: string,
+): z.infer<typeof frontMatterSchema> & { content: string } {
+  const match = FRONT_MATTER_PATTERN.exec(raw);
+  if (!match) {
+    throw new Error("News article is missing front matter");
+  }
+  const meta = frontMatterSchema.parse(parseYaml(match[1]));
+  return { ...meta, content: raw.slice(match[0].length) };
+}
 
 const DEFAULT_LOCALE = "ja";
 const newsDir = path.join(process.cwd(), "content", "news");
@@ -22,14 +40,7 @@ function localeDir(locale: string): string {
 
 function parseFile(filePath: string, slug: string): NewsMeta & { content: string } {
   const raw = fs.readFileSync(filePath, "utf-8");
-  const { data, content } = matter(raw);
-  return {
-    title: data.title as string,
-    date: data.date as string,
-    summary: data.summary as string,
-    slug,
-    content,
-  };
+  return { ...parseNewsMarkdown(raw), slug };
 }
 
 export function getAllNews(locale: string = DEFAULT_LOCALE): NewsMeta[] {
