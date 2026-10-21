@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "copy-scalar": "bun run scripts/copy-scalar-assets.ts",
     "predev": "bun run copy-scalar",

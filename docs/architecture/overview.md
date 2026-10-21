@@ -51,6 +51,7 @@ graph LR
 ```
 
 - Web: main への push で Vercel が自動デプロイ。Vercel native skipping で関連変更がなければスキップ
+- Vercel の Node.js ランタイムのメジャー版は `apps/web/package.json` の `engines.node` で固定する (ダッシュボード設定より優先される)。パッチ版は Vercel が最新を適用する
 - デスクトップ: `tauri.conf.json` のバージョン変更 → タグ作成 → ビルド → リリース
 - DB マイグレーション (`apps/api/drizzle/`) は Vercel ビルド時に `MIGRATION_URL` (Direct Connection) 経由で自動実行。`supabase/migrations/` (Storage 用 SQL) は自動適用されず、本番では手動適用が必要 (詳細は `docs/development/release-flow.md`)
 
