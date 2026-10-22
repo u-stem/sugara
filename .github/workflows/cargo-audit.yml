@@ -14,6 +14,7 @@ on:
     paths:
       - "apps/desktop/src-tauri/Cargo.toml"
       - "apps/desktop/src-tauri/Cargo.lock"
+      - ".github/workflows/cargo-audit.yml"
   schedule:
     - cron: "0 3 * * 1" # Monday 03:00 UTC, aligned with CodeQL cadence
 
@@ -34,3 +35,9 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: apps/desktop/src-tauri
+          # zip 4.x extraction advisories (#284, #285, #286). tauri-plugin-updater pins
+          # zip ^4 even in its latest release, so no fixed version can be resolved yet.
+          # Accepted because zip is only extracted on Windows by the updater, after
+          # download() has verified the minisign signature against our public key.
+          # Remove these once tauri-plugin-updater moves to zip >= 9.
+          ignore: RUSTSEC-2026-0367,RUSTSEC-2026-0368,RUSTSEC-2026-0369
