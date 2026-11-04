@@ -4,13 +4,20 @@ use chrono::Datelike;
 use tauri::menu::{
     AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
-use tauri::webview::PageLoadEvent;
+use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
-use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_updater::UpdaterExt;
 
 const BASE_URL: &str = "https://sugara.vercel.app";
+
+// New-window URLs come from page content, so other schemes (file:, custom app
+// handlers) must not reach the OS. Same set as tauri-plugin-opener's default scope.
+const EXTERNAL_URL_SCHEMES: [&str; 4] = ["http", "https", "mailto", "tel"];
+
+fn is_external_url(url: &tauri::Url) -> bool {
+    EXTERNAL_URL_SCHEMES.contains(&url.scheme())
+}
 
 fn seasonal_colors() -> (&'static str, &'static str) {
     let month = chrono::Local::now().month();
@@ -152,7 +159,6 @@ pub fn run() {
     let splash_html = build_splash_html();
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol("splash", move |_req, _responder| {
@@ -268,6 +274,25 @@ pub fn run() {
 
             app.set_menu(menu)?;
 
+            // Built here instead of by tauri.conf.json (`create: false`) because
+            // on_new_window can only be set on the builder. Without a handler the
+            // webview silently drops target="_blank" links.
+            let main_config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|window| window.label == "main")
+                .ok_or("main window config is missing")?;
+            WebviewWindowBuilder::from_config(app, main_config)?
+                .on_new_window(|url, _features| {
+                    if is_external_url(&url) {
+                        let _ = open::that_detached(url.as_str());
+                    }
+                    NewWindowResponse::Deny
+                })
+                .build()?;
+
             // Splash screen
             WebviewWindowBuilder::new(
                 app,
@@ -311,13 +336,13 @@ pub fn run() {
                 "go_back" => eval_main_webview(app, "history.back()"),
                 "go_forward" => eval_main_webview(app, "history.forward()"),
                 "help_faq" => {
-                    let _ = app.opener().open_url(&format!("{BASE_URL}/faq"), None::<&str>);
+                    let _ = open::that_detached(format!("{BASE_URL}/faq"));
                 }
                 "help_news" => {
-                    let _ = app.opener().open_url(&format!("{BASE_URL}/news"), None::<&str>);
+                    let _ = open::that_detached(format!("{BASE_URL}/news"));
                 }
                 "help_terms" => {
-                    let _ = app.opener().open_url(&format!("{BASE_URL}/terms"), None::<&str>);
+                    let _ = open::that_detached(format!("{BASE_URL}/terms"));
                 }
                 _ => {}
             }
@@ -341,4 +366,53 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_external_url;
+
+    fn check(url: &str) -> bool {
+        is_external_url(&url.parse::<tauri::Url>().expect("valid test url"))
+    }
+
+    #[test]
+    fn allows_http() {
+        assert!(check("http://example.com/"));
+    }
+
+    #[test]
+    fn allows_https() {
+        assert!(check("https://www.google.com/maps?q=tokyo"));
+    }
+
+    #[test]
+    fn allows_mailto() {
+        assert!(check("mailto:someone@example.com"));
+    }
+
+    #[test]
+    fn allows_tel() {
+        assert!(check("tel:+81312345678"));
+    }
+
+    #[test]
+    fn rejects_file() {
+        assert!(!check("file:///etc/passwd"));
+    }
+
+    #[test]
+    fn rejects_javascript() {
+        assert!(!check("javascript:alert(1)"));
+    }
+
+    #[test]
+    fn rejects_about_blank() {
+        assert!(!check("about:blank"));
+    }
+
+    #[test]
+    fn rejects_custom_scheme() {
+        assert!(!check("slack://open"));
+    }
 }
