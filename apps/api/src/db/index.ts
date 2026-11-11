@@ -15,5 +15,9 @@ const client = postgres(connectionString, {
   max_lifetime: 60 * 30,
   // Prevent indefinite hang when the pooler rejects or queues connections
   connect_timeout: 10,
+  // postgres.js 4 pipelines up to 100 queries per connection by default, and Supavisor
+  // before 2.10 (the transaction pooler on :6543) never answers pipelined queries, so
+  // every request would hang. Send one query at a time per connection.
+  max_pipeline: 1,
 });
 export const db = drizzle(client, { schema });
