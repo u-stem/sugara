@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import { z } from "zod";
-import { IGNORE_ERRORS, beforeBreadcrumb, beforeSend } from "./lib/sentry-options";
+import { DATA_COLLECTION, IGNORE_ERRORS, beforeBreadcrumb, beforeSend } from "./lib/sentry-options";
 
 // Disable Zod's JIT path on the browser. Zod probes `new Function("")` to enable a
 // compiled validator, but our production CSP omits `unsafe-eval`, so the probe is
@@ -17,7 +17,7 @@ if (dsn) {
   Sentry.init({
     dsn,
     environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? process.env.NODE_ENV,
-    sendDefaultPii: false,
+    dataCollection: DATA_COLLECTION,
     ignoreErrors: IGNORE_ERRORS,
     beforeSend,
     beforeBreadcrumb,
