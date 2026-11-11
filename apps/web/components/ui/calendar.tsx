@@ -2,11 +2,21 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ComponentProps } from "react";
-import { DayPicker } from "react-day-picker";
+import { type ChevronProps, DayPicker } from "react-day-picker";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type CalendarProps = ComponentProps<typeof DayPicker>;
+
+// Module-level so its identity is stable: a component created inside Calendar's
+// render would be a new type each time and remount on every render.
+function CalendarChevron({ orientation }: ChevronProps) {
+  if (orientation === "left") return <ChevronLeft className="h-4 w-4" />;
+  if (orientation === "right") return <ChevronRight className="h-4 w-4" />;
+  return (
+    <ChevronRight className="h-3 w-3 ml-1 opacity-50 transition-transform duration-200 group-focus-within:rotate-90" />
+  );
+}
 
 function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
   return (
@@ -57,15 +67,7 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }: C
         hidden: "invisible",
         ...classNames,
       }}
-      components={{
-        Chevron: ({ orientation }) => {
-          if (orientation === "left") return <ChevronLeft className="h-4 w-4" />;
-          if (orientation === "right") return <ChevronRight className="h-4 w-4" />;
-          return (
-            <ChevronRight className="h-3 w-3 ml-1 opacity-50 transition-transform duration-200 group-focus-within:rotate-90" />
-          );
-        },
-      }}
+      components={{ Chevron: CalendarChevron }}
       {...props}
     />
   );
