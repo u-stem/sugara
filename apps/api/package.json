@@ -49,7 +49,7 @@
   "devDependencies": {
     "@types/bun": "1.4.4",
     "@types/web-push": "3.6.4",
-    "@vitest/coverage-v8": "4.1.12",
+    "@vitest/coverage-v8": "5.1.0",
     "drizzle-kit": "0.31.11",
     "typescript": "6.0.3",
     "vitest": "4.1.12"
