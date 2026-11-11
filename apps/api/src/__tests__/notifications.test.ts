@@ -43,10 +43,8 @@ vi.mock("../db/index", () => ({
 }));
 
 vi.mock("web-push", () => ({
-  default: {
-    setVapidDetails: vi.fn(),
-    sendNotification: (...args: unknown[]) => mockSendNotification(...args),
-  },
+  setVapidDetails: vi.fn(),
+  sendNotification: (...args: unknown[]) => mockSendNotification(...args),
 }));
 
 import {
