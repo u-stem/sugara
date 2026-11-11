@@ -111,7 +111,8 @@ Vercel `buildCommand` が `next build` の前に `bun run db:migrate` を実行�
 - minor / patch の更新は `dependabot-auto-merge.yml` で auto-merge
 - Branch Protection の required CI が green になった時点で自動的に squash merge される
 - major は人手でレビューして merge
-- `dependabot-auto-merge.yml` の `update-lockfile` ジョブが `bun install --ignore-scripts` で `bun.lock` を再解決してコミットする (Dependabot 自体は `bun.lock` を更新しない)
+- `dependabot-auto-merge.yml` の `update-lockfile` ジョブが `bun install --ignore-scripts` で `bun.lock` を再解決し、差分があればコミットする (Dependabot は `bun` ecosystem で `bun.lock` も更新するため、通常は差分なし。ずれた場合の保険)
+  - `dependabot.yml` の JS 依存は `package-ecosystem: "bun"` を指定する。`"npm"` は `bun.lock` のみのリポジトリを拒否し、更新ジョブ全体が失敗する
   - バンプ直後の依存の lifecycle script を実行させないため `--ignore-scripts` を付ける。`--frozen-lockfile` は lockfile を書き換える必要があるため付けない
   - 権限はワークフロー全体では `permissions: {}` とし、ジョブ単位で付与する。`update-lockfile` は `contents: write` のみ、`auto-merge` は `contents: write` + `pull-requests: write` (`gh pr merge --auto` に必要)
   - `actions/checkout` は `persist-credentials: false` で書き込み権限付きトークンを `.git/config` に残さず、lockfile を push するステップだけが env 経由でトークンを使う

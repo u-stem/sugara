@@ -38,7 +38,8 @@ jobs:
 
       # --ignore-scripts blocks postinstall hooks at install time to defend against supply-chain
       # compromises. For dependabot PRs we drop --frozen-lockfile so bun can rewrite bun.lock
-      # (dependabot itself doesn't update bun.lock); a follow-up workflow commits the result.
+      # if dependabot's own lockfile update left it out of sync; a follow-up workflow commits
+      # the result.
       - name: Install dependencies
         run: |
           if [ "${{ github.actor }}" = "dependabot[bot]" ]; then
