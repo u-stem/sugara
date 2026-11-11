@@ -38,7 +38,7 @@ function isStringArray(value: unknown): value is string[] {
 function resolveAreaIndex(areas: unknown, areaCode: string | undefined): number {
   if (!areaCode || !Array.isArray(areas)) return 0;
   const idx = areas.findIndex((a) => a?.area?.code === areaCode);
-  return idx >= 0 ? idx : 0;
+  return Math.max(idx, 0);
 }
 
 type MutableDay = {

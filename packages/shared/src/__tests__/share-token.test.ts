@@ -7,7 +7,7 @@ describe("isShareToken", () => {
   });
 
   it("accepts underscores and hyphens", () => {
-    expect(isShareToken("_-".repeat(21) + "a")).toBe(true);
+    expect(isShareToken(`${"_-".repeat(21)}a`)).toBe(true);
   });
 
   it("rejects a path traversal value", () => {
