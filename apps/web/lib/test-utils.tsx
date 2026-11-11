@@ -33,12 +33,10 @@ export function renderWithIntlAndQuery(
       mutations: { retry: false },
     },
   });
-  function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <IntlWrapper>
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      </IntlWrapper>
-    );
-  }
-  return render(ui, { wrapper: Wrapper, ...options });
+  return render(
+    <IntlWrapper>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </IntlWrapper>,
+    options,
+  );
 }
