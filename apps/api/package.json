@@ -52,6 +52,6 @@
     "@vitest/coverage-v8": "4.1.12",
     "drizzle-kit": "0.31.11",
     "typescript": "6.0.3",
-    "vitest": "4.1.12"
+    "vitest": "5.1.0"
   }
 }
