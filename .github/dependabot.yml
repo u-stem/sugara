@@ -1,6 +1,8 @@
 version: 2
 updates:
-  - package-ecosystem: "npm"
+  # "bun", not "npm": the npm ecosystem refuses repositories that only have a
+  # bun.lock and aborts the whole update job.
+  - package-ecosystem: "bun"
     directory: "/"
     schedule:
       interval: "weekly"
