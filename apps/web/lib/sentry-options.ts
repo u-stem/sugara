@@ -1,9 +1,38 @@
+import type { BrowserOptions } from "@sentry/nextjs";
 import { ApiError } from "./api";
+
+// @sentry/nextjs does not re-export the DataCollection type; derive it from the
+// options so the same value type-checks for the browser and server inits.
+type DataCollection = NonNullable<BrowserOptions["dataCollection"]>;
 
 // Shared Sentry configuration: PII scrubbing and noise suppression, used by both
 // the browser and server inits. Pure functions so they can be unit-tested without
 // initializing the SDK. The structural ScrubbableEvent type is a supertype of
 // Sentry's ErrorEvent, so beforeSend can be passed to Sentry.init directly.
+
+// Keys that can reveal the client IP or identity; same list as the SDK's v10 default.
+const IP_REVEALING_KEYS = ["forwarded", "-ip", "remote-", "via", "-user"];
+
+// Sentry v11 removed `sendDefaultPii` and, when `dataCollection` is unset, collects
+// cookies, bodies, user info, DB query data, etc. This pins the v10 default
+// (`sendDefaultPii: false`) so the upgrade does not widen what leaves the app.
+// Mirrors the "keep the v10 default behavior" baseline in the SDK's MIGRATION.md,
+// plus `mcp` (new in v11, default on) which v10 never collected.
+export const DATA_COLLECTION: DataCollection = {
+  userInfo: false,
+  cookies: false,
+  httpHeaders: {
+    request: { deny: IP_REVEALING_KEYS },
+    response: { deny: IP_REVEALING_KEYS },
+  },
+  httpBodies: [],
+  urlQueryParams: { deny: IP_REVEALING_KEYS },
+  genAI: { inputs: false, outputs: false },
+  mcp: { inputs: false, outputs: false },
+  graphQL: { document: false, variables: false },
+  databaseQueryData: false,
+  queues: false,
+};
 
 // Expected client errors (handled by the UI) that should not be reported as issues.
 const EXPECTED_CLIENT_STATUSES = new Set([400, 401, 403, 404, 409, 429]);
