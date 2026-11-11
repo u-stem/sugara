@@ -5,7 +5,7 @@ import {
   PUSH_MSG,
 } from "@sugara/shared";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import webpush from "web-push";
+import { sendNotification, setVapidDetails } from "web-push";
 import { db } from "../db/index";
 import {
   articleTrips,
@@ -27,7 +27,7 @@ const MAX_NOTIFICATIONS_PER_USER = 100;
 let vapidConfigured = false;
 function ensureVapid() {
   if (!vapidConfigured && env.VAPID_PUBLIC_KEY) {
-    webpush.setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
+    setVapidDetails(env.VAPID_SUBJECT, env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
     vapidConfigured = true;
   }
 }
@@ -296,25 +296,23 @@ async function sendPushToUser(
   const message = buildPushMessage(type, payload, tripId);
   await Promise.allSettled(
     enabledSubs.map((sub) =>
-      webpush
-        .sendNotification(
-          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-          JSON.stringify(message),
-        )
-        .catch(async (err: unknown) => {
-          // 410 Gone / 404 Not Found means the subscription has expired; remove it
-          const status = (err as { statusCode?: number })?.statusCode;
-          if (status === 410 || status === 404) {
-            await db
-              .delete(pushSubscriptions)
-              .where(
-                and(
-                  eq(pushSubscriptions.endpoint, sub.endpoint),
-                  eq(pushSubscriptions.userId, userId),
-                ),
-              );
-          }
-        }),
+      sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        JSON.stringify(message),
+      ).catch(async (err: unknown) => {
+        // 410 Gone / 404 Not Found means the subscription has expired; remove it
+        const status = (err as { statusCode?: number })?.statusCode;
+        if (status === 410 || status === 404) {
+          await db
+            .delete(pushSubscriptions)
+            .where(
+              and(
+                eq(pushSubscriptions.endpoint, sub.endpoint),
+                eq(pushSubscriptions.userId, userId),
+              ),
+            );
+        }
+      }),
     ),
   );
 }
