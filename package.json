@@ -42,12 +42,12 @@
     "next-intl": "4.14.9",
     "nodemailer": "10.4.0",
     "postcss": "8.5.32",
-    "vitest": "4.1.12"
+    "vitest": "5.1.0"
   },
   "overrides": {
     "hono": "4.13.17",
     "undici": "8.12.3",
-    "picomatch": "4.0.4",
+    "picomatch": "4.0.7",
     "postcss": "8.5.32",
     "tmp": "0.2.7",
     "rollup": "4.60.4",
