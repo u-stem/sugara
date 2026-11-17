@@ -45,10 +45,10 @@
     "vitest": "5.1.0"
   },
   "overrides": {
-    "hono": "4.13.17",
+    "hono": "4.13.18",
     "undici": "8.12.3",
     "picomatch": "4.0.7",
-    "postcss": "8.5.32",
+    "postcss": "8.5.33",
     "tmp": "0.2.7",
     "rollup": "4.60.4",
     "defu": "6.1.7",
