@@ -26,23 +26,23 @@
   },
   "packageManager": "bun@1.3.2",
   "devDependencies": {
-    "@biomejs/biome": "2.6.7",
+    "@biomejs/biome": "2.6.8",
     "lefthook": "2.2.2",
-    "turbo": "2.11.11"
+    "turbo": "2.11.13"
   },
   "dependencies": {
-    "@serwist/next": "9.5.13",
-    "@supabase/supabase-js": "2.119.0",
-    "better-auth": "1.7.23",
+    "@serwist/next": "9.5.15",
+    "@supabase/supabase-js": "2.119.2",
+    "better-auth": "1.7.27",
     "drizzle-kit": "0.31.11",
     "drizzle-orm": "0.45.4",
     "exceljs": "4.4.0",
-    "hono": "4.13.18",
+    "hono": "4.13.19",
     "next": "16.4.6",
-    "next-intl": "4.15.1",
-    "nodemailer": "10.5.0",
+    "next-intl": "4.15.3",
+    "nodemailer": "10.6.1",
     "postcss": "8.5.33",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   },
   "overrides": {
     "hono": "4.13.18",
