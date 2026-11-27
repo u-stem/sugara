@@ -109,7 +109,7 @@ async fn perform_update_check(handle: AppHandle, updating: Arc<AtomicBool>) {
                     let updating_flag = updating_for_dialog;
                     // Download progress: show a non-interactive message during download
                     show_update_dialog(&h, "ダウンロード中...");
-                    let _ = tauri::async_runtime::spawn(async move {
+                    tauri::async_runtime::spawn(async move {
                         let install_result =
                             update.download_and_install(|_, _| {}, || {}).await;
                         updating_flag.store(false, Ordering::SeqCst);
@@ -319,7 +319,7 @@ pub fn run() {
                 "check_update" => {
                     let handle = app.clone();
                     let updating = updating.clone();
-                    let _ = tauri::async_runtime::spawn(async move {
+                    tauri::async_runtime::spawn(async move {
                         perform_update_check(handle, updating).await;
                     });
                 }
