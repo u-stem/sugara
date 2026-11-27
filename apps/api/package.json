@@ -31,27 +31,27 @@
   },
   "dependencies": {
     "@hono/standard-validator": "0.4.1",
-    "@scalar/hono-api-reference": "0.12.20",
+    "@scalar/hono-api-reference": "0.12.23",
     "@sugara/shared": "workspace:*",
-    "@supabase/supabase-js": "2.119.0",
+    "@supabase/supabase-js": "2.119.2",
     "@upstash/redis": "1.41.0",
     "@vercel/global-config": "1.5.1",
-    "better-auth": "1.7.23",
+    "better-auth": "1.7.27",
     "drizzle-orm": "0.45.4",
-    "hono": "4.13.18",
-    "hono-openapi": "1.5.0",
-    "nodemailer": "10.5.0",
+    "hono": "4.13.19",
+    "hono-openapi": "1.6.0",
+    "nodemailer": "10.6.1",
     "pino": "10.4.0",
     "postgres": "4.1.1",
     "web-push": "4.0.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "1.4.4",
+    "@types/bun": "1.4.5",
     "@types/web-push": "3.6.4",
-    "@vitest/coverage-v8": "5.1.0",
+    "@vitest/coverage-v8": "5.1.1",
     "drizzle-kit": "0.31.11",
     "typescript": "6.0.3",
-    "vitest": "5.1.0"
+    "vitest": "5.1.1"
   }
 }
