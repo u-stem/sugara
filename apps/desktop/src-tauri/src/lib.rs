@@ -1,6 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use chrono::Datelike;
 use tauri::menu::{
     AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
@@ -19,41 +18,43 @@ fn is_external_url(url: &tauri::Url) -> bool {
     EXTERNAL_URL_SCHEMES.contains(&url.scheme())
 }
 
-fn seasonal_colors() -> (&'static str, &'static str) {
-    let month = chrono::Local::now().month();
-    match month {
-        3..=5 => ("#f472b6", "#c084fc"),   // spring: pink -> purple
-        6..=8 => ("#22c55e", "#2dd4bf"),   // summer: green -> teal
-        9..=11 => ("#f59e0b", "#ef4444"),  // autumn: amber -> red
-        _ => ("#60a5fa", "#818cf8"),       // winter: blue -> indigo
-    }
-}
-
-fn build_splash_html() -> String {
-    let (from, to) = seasonal_colors();
-    format!(r#"<!DOCTYPE html>
+// The seasonal gradient is picked by the splash page itself: JS Date already uses
+// the OS local time zone, so the app needs no Rust date/time crate (chrono is
+// unmaintained, RUSTSEC-2026-0543). The script runs in <head>, before first paint.
+const SPLASH_HTML: &str = r##"<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<script>
+(function () {
+  var m = new Date().getMonth() + 1;
+  var c = m >= 3 && m <= 5 ? ["#f472b6", "#c084fc"]  // spring: pink -> purple
+    : m >= 6 && m <= 8 ? ["#22c55e", "#2dd4bf"]       // summer: green -> teal
+    : m >= 9 && m <= 11 ? ["#f59e0b", "#ef4444"]      // autumn: amber -> red
+    : ["#60a5fa", "#818cf8"];                         // winter: blue -> indigo
+  var s = document.documentElement.style;
+  s.setProperty("--from", c[0]);
+  s.setProperty("--to", c[1]);
+})();
+</script>
 <style>
-*{{margin:0;padding:0;box-sizing:border-box}}
-body{{display:flex;align-items:center;justify-content:center;height:100vh;
+*{margin:0;padding:0;box-sizing:border-box}
+body{display:flex;align-items:center;justify-content:center;height:100vh;
 background:#09090b;color:#fafafa;font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-flex-direction:column;gap:24px}}
-.name{{font-size:28px;font-weight:700;letter-spacing:1px;
-background:linear-gradient(to right,{from},{to});
--webkit-background-clip:text;-webkit-text-fill-color:transparent}}
-.spinner{{width:24px;height:24px;border:2px solid rgba(250,250,250,0.2);
-border-top-color:#fafafa;border-radius:50%;animation:spin .8s linear infinite}}
-@keyframes spin{{to{{transform:rotate(360deg)}}}}
+flex-direction:column;gap:24px}
+.name{font-size:28px;font-weight:700;letter-spacing:1px;
+background:linear-gradient(to right,var(--from),var(--to));
+-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.spinner{width:24px;height:24px;border:2px solid rgba(250,250,250,0.2);
+border-top-color:#fafafa;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 <div class="name" aria-label="sugara">sugara</div>
 <div class="spinner" aria-label="読み込み中" role="status"></div>
 </body>
-</html>"#)
-}
+</html>"##;
 
 fn show_update_dialog(handle: &AppHandle, message: &str) {
     handle
@@ -156,7 +157,6 @@ fn eval_main_webview(app: &tauri::AppHandle, js: &str) {
 pub fn run() {
     let splash_closed = Arc::new(AtomicBool::new(false));
     let updating = Arc::new(AtomicBool::new(false));
-    let splash_html = build_splash_html();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -164,7 +164,7 @@ pub fn run() {
         .register_uri_scheme_protocol("splash", move |_req, _responder| {
             tauri::http::Response::builder()
                 .header("Content-Type", "text/html; charset=utf-8")
-                .body(splash_html.as_bytes().to_vec())
+                .body(SPLASH_HTML.as_bytes().to_vec())
                 .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
         })
         .setup(|app| {
